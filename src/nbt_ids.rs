@@ -14,7 +14,7 @@ pub const COMPOUND_ID: u8 = 10;
 pub const INT_ARRAY_ID: u8 = 11;
 pub const LONG_ARRAY_ID: u8 = 12;
 
-#[derive(Debug, TryFromPrimitive, Clone, Copy)]
+#[derive(Debug, TryFromPrimitive, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum NBTId {
     EndId = 0,

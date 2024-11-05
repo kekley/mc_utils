@@ -80,6 +80,9 @@ impl std::fmt::Display for RegionError {
             RegionError::JavaStringDecodingError(cesu8_decoding_error) => f.write_fmt(
                 format_args!("Error parsing a java string: {cesu8_decoding_error:?}"),
             ),
+            RegionError::ListError(len) => {
+                f.write_fmt(format_args!("Error parsing list of len {len}"))
+            }
         }
     }
 }
