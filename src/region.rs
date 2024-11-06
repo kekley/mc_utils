@@ -1,9 +1,10 @@
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use num_enum::{TryFromPrimitive, TryFromPrimitiveError};
-use std::io::{self, Error, Read, Seek, Write};
+use std::io::{self, Cursor, Error, Read, Seek, Write};
 use std::time::SystemTime;
 use std::{usize, vec};
 
+use crate::chunk::Chunk;
 use crate::compression::{CompressionData, CompressionScheme};
 use crate::nbt_ids::NBTId;
 use crate::spider_eye_error::SpiderEyeError;
@@ -18,10 +19,19 @@ pub(crate) const REGION_HEADER_SIZE: usize = 2 * SECTOR_SIZE;
 // The size of the header for a chunk which immediate proceeds the compressed chunk data
 pub(crate) const CHUNK_HEADER_SIZE: usize = 5;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Region<S> {
     pub stream: S,
-    pub chunk_segments: Vec<FileSegment>,
+    pub chunk_segments: [Option<FileSegment>; CHUNKS_PER_FILE],
+}
+
+impl<S: Default> Default for Region<S> {
+    fn default() -> Self {
+        Self {
+            stream: Default::default(),
+            chunk_segments: [None; 1024],
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -36,38 +46,26 @@ impl FileSegment {
     }
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct ChunkData {}
-
 impl<S> Region<S>
 where
     S: Read + Seek,
 {
     pub fn from_stream(mut stream: S) -> Result<Self, SpiderEyeError> {
-        let mut region = Self {
-            stream,
-            chunk_segments: vec![],
+        let mut region: Region<S> = Self {
+            stream: stream,
+            chunk_segments: [None; 1024],
         };
-        let mut chunk_segments: Vec<FileSegment> = Vec::with_capacity(CHUNKS_PER_FILE);
         for x in 0..32 {
             for z in 0..32 {
-                let segment = region.get_chunk_segment(x, z)?;
-                match segment {
-                    Some(chunk_segment) => {
-                        chunk_segments.push(chunk_segment);
-                    }
-                    None => {
-                        continue;
-                    }
-                }
+                let segment = region.read_chunk_segment(x, z)?;
+                region.chunk_segments[x * 32 + z] = segment;
             }
         }
 
-        region.chunk_segments = chunk_segments;
         Ok(region)
     }
 
-    pub fn get_chunk_segment(
+    fn read_chunk_segment(
         &mut self,
         x: usize,
         z: usize,
@@ -84,6 +82,24 @@ where
             Ok(None)
         } else {
             Ok(Some(FileSegment::new(offset, sectors)))
+        }
+    }
+
+    pub fn get_chunk_segment(&mut self, x: usize, z: usize) -> Option<FileSegment> {
+        self.chunk_segments[x * 32 + z]
+    }
+    pub fn get_chunk(&mut self, x: usize, z: usize) -> Option<Chunk> {
+        if x > 32 || z > 32 {
+            return None;
+        }
+        if let Some(segment) = self.get_chunk_segment(x, z) {
+            let data = self
+                .read_chunk_from_segment(segment)
+                .expect("Failed to read chunk. Likely invalid file");
+            let mut cursor = Cursor::new(data);
+            Some(Chunk::from_data(&mut cursor).expect("Failed to parse chunk data"))
+        } else {
+            None
         }
     }
 
@@ -131,7 +147,7 @@ where
         Ok(compression_data)
     }
 
-    pub fn get_header_pos_in_stream(x: usize, z: usize) -> usize {
+    fn get_header_pos_in_stream(x: usize, z: usize) -> usize {
         4 * ((x & 32) + (z & 32) * 32)
     }
 }

@@ -1,4 +1,5 @@
 use byteorder::ReadBytesExt;
+use bytes::Buf;
 use num_enum::TryFromPrimitive;
 use std::{fmt::Debug, io::Read, u16};
 
@@ -32,6 +33,9 @@ impl NBTCompound {
                     res = res + &str;
                 }
                 _ => {
+                    for _ in 0..indentation + 1 {
+                        res = res + "\t"
+                    }
                     let str = format!("{:?}", child.tag);
                     res = res + &str;
                 }
@@ -45,22 +49,11 @@ impl NBTCompound {
     pub fn add_tag(&mut self, name: String, tag: NBTTag) {
         self.children.push((name, tag).into());
     }
-    pub fn from_borrowed_stream(stream: &mut dyn Read) -> Result<Self, SpiderEyeError> {
+    pub fn from_borrowed_stream(stream: &mut dyn Buf) -> Result<Self, SpiderEyeError> {
         let mut tmp = Self { children: vec![] };
 
-        loop {
-            let result = stream.read_u8();
-            let tag_id;
-            match result {
-                Ok(val) => {
-                    tag_id = val;
-                }
-                Err(e) => {
-                    println!("EOF");
-                    break;
-                }
-            }
-            let tag_id = NBTId::try_from_primitive(tag_id)?;
+        while stream.has_remaining() {
+            let tag_id = NBTId::try_from_primitive(stream.get_u8())?;
             if tag_id == NBTId::EndId {
                 break;
             }

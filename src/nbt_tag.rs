@@ -5,7 +5,7 @@ use std::{
 };
 
 use byteorder::{BigEndian, ReadBytesExt};
-use bytes::Bytes;
+use bytes::{Buf, Bytes};
 use cesu8::from_java_cesu8;
 use num_enum::TryFromPrimitive;
 
@@ -36,7 +36,7 @@ pub enum NBTTag {
     Long(i64) = LONG_ID,
     Float(f32) = FLOAT_ID,
     Double(f64) = DOUBLE_ID,
-    ByteArray(Bytes) = BYTE_ARRAY_ID,
+    ByteArray(Vec<i8>) = BYTE_ARRAY_ID,
     String(String) = STRING_ID,
     List(Vec<NBTTag>) = LIST_ID,
     Compound(NBTCompound) = COMPOUND_ID,
@@ -50,25 +50,27 @@ impl NBTTag {
         // See https://doc.rust-lang.org/reference/items/enumerations.html#pointer-casting
         unsafe { *(self as *const Self as *const u8) }
     }
-    pub fn read_tag(stream: &mut dyn Read, id: NBTId) -> Result<NBTTag, SpiderEyeError> {
+    pub fn read_tag(stream: &mut dyn Buf, id: NBTId) -> Result<NBTTag, SpiderEyeError> {
         match id {
             NBTId::EndId => Ok(NBTTag::End),
-            NBTId::ByteId => Ok(NBTTag::Byte(stream.read_i8()?)),
-            NBTId::ShortId => Ok(NBTTag::Short(stream.read_i16::<BigEndian>()?)),
-            NBTId::IntId => Ok(NBTTag::Int(stream.read_i32::<BigEndian>()?)),
-            NBTId::LongId => Ok(NBTTag::Long(stream.read_i64::<BigEndian>()?)),
-            NBTId::FloatId => Ok(NBTTag::Float(stream.read_f32::<BigEndian>()?)),
-            NBTId::DoubleId => Ok(NBTTag::Double(stream.read_f64::<BigEndian>()?)),
+            NBTId::ByteId => Ok(NBTTag::Byte(stream.get_i8())),
+            NBTId::ShortId => Ok(NBTTag::Short(stream.get_i16())),
+            NBTId::IntId => Ok(NBTTag::Int(stream.get_i32())),
+            NBTId::LongId => Ok(NBTTag::Long(stream.get_i64())),
+            NBTId::FloatId => Ok(NBTTag::Float(stream.get_f32())),
+            NBTId::DoubleId => Ok(NBTTag::Double(stream.get_f64())),
             NBTId::ByteArrayId => {
-                let len = stream.read_i32::<BigEndian>()?;
-                let mut data = vec![0u8; len as usize];
-                stream.read_exact(&mut data[..])?;
-                Ok(NBTTag::ByteArray(data.into()))
+                let len = stream.get_i32() as usize;
+                let mut data = Vec::with_capacity(len);
+                for _ in 0..len {
+                    data.push(stream.get_i8());
+                }
+                Ok(NBTTag::ByteArray(data))
             }
             NBTId::StringId => Ok(NBTTag::String(get_nbt_string(stream)?)),
             NBTId::ListId => {
-                let tag_id = NBTId::try_from_primitive(stream.read_u8()?)?;
-                let len = stream.read_i32::<BigEndian>()?;
+                let tag_id = NBTId::try_from_primitive(stream.get_u8())?;
+                let len = stream.get_i32();
                 let mut list = Vec::with_capacity(len as usize);
                 for _ in 0..len {
                     let tag = Self::read_tag(stream, tag_id)?;
@@ -82,18 +84,18 @@ impl NBTTag {
             }
             NBTId::CompoundId => Ok(NBTTag::Compound(NBTCompound::from_borrowed_stream(stream)?)),
             NBTId::IntArrayId => {
-                let len = stream.read_i32::<BigEndian>()?;
-                let mut array = Vec::with_capacity(len as usize);
+                let len = stream.get_i32() as usize;
+                let mut array = Vec::with_capacity(len);
                 for _ in 0..len {
-                    array.push(stream.read_i32::<BigEndian>()?);
+                    array.push(stream.get_i32());
                 }
                 Ok(NBTTag::IntArray(array))
             }
             NBTId::LongArrayId => {
-                let len = stream.read_i32::<BigEndian>()?;
-                let mut array = Vec::with_capacity(len as usize);
+                let len = stream.get_i32() as usize;
+                let mut array = Vec::with_capacity(len);
                 for _ in 0..len {
-                    array.push(stream.read_i64::<BigEndian>()?);
+                    array.push(stream.get_i64());
                 }
                 Ok(NBTTag::LongArray(array))
             }
@@ -124,10 +126,12 @@ impl Debug for NBTTag {
         }
     }
 }
-pub fn get_nbt_string(stream: &mut dyn Read) -> Result<String, SpiderEyeError> {
-    let len = stream.read_u16::<BigEndian>()? as usize;
-    let mut string_bytes = vec![0u8; len];
-    stream.read_exact(&mut string_bytes[..])?;
+pub fn get_nbt_string(stream: &mut dyn Buf) -> Result<String, SpiderEyeError> {
+    let len = stream.get_i16() as usize;
+    let mut string_bytes = Vec::with_capacity(len);
+    for _ in 0..len {
+        string_bytes.push(stream.get_u8());
+    }
     let string = from_java_cesu8(&string_bytes[..])?;
     Ok(string.to_string())
 }
