@@ -1,7 +1,10 @@
-use byteorder::{BigEndian, ReadBytesExt};
-use num_enum::{TryFromPrimitive, TryFromPrimitiveError};
+use std::io::{self, Write};
 
-use crate::{nbt_ids::NBTId, spider_eye_error::SpiderEyeError};
+use byteorder::{BigEndian, ReadBytesExt};
+use bytes::{buf, Buf, Bytes};
+use num_enum::TryFromPrimitive;
+
+use crate::spider_eye_error::SpiderEyeError;
 
 #[derive(Debug, TryFromPrimitive)]
 #[repr(u8)]
@@ -29,5 +32,34 @@ impl CompressionData {
         };
 
         Ok(compression_data)
+    }
+}
+
+pub fn decompress_bytes(
+    data: &mut dyn Buf,
+    compression_data: CompressionData,
+) -> Result<Bytes, SpiderEyeError> {
+    let mut take = data.take(compression_data.compressed_len as usize);
+
+    match compression_data.scheme {
+        CompressionScheme::Gzip => {
+            let mut compressed_data = vec![0u8; compression_data.compressed_len as usize];
+            let mut writer = flate2::write::GzDecoder::new(vec![]);
+            Buf::copy_to_slice(&mut take, &mut compressed_data);
+            writer.write_all(&compressed_data[..])?;
+            Ok(writer.finish()?.into())
+        }
+        CompressionScheme::Zlib => {
+            let mut compressed_data = vec![0u8; compression_data.compressed_len as usize];
+            let mut writer = flate2::write::ZlibDecoder::new(vec![]);
+            Buf::copy_to_slice(&mut take, &mut compressed_data);
+            writer.write_all(&compressed_data[..])?;
+            Ok(writer.finish()?.into())
+        }
+        CompressionScheme::Uncompressed => {
+            let mut writer = vec![0u8; compression_data.compressed_len as usize];
+            Buf::copy_to_slice(&mut take, &mut writer);
+            Ok(writer.into())
+        }
     }
 }

@@ -1,12 +1,8 @@
-use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use num_enum::{TryFromPrimitive, TryFromPrimitiveError};
-use std::io::{self, Cursor, Error, Read, Seek, Write};
-use std::time::SystemTime;
+use std::io::{self, Cursor, Read, Seek};
 use std::{usize, vec};
 
 use crate::chunk::Chunk;
 use crate::compression::{CompressionData, CompressionScheme};
-use crate::nbt_ids::NBTId;
 use crate::spider_eye_error::SpiderEyeError;
 
 //offsets are for 4KiB Sectors
@@ -118,7 +114,6 @@ where
                 Ok(writer.finish()?)
             }
             CompressionScheme::Zlib => {
-                let a = 0;
                 let mut writer = flate2::write::ZlibDecoder::new(vec![]);
                 io::copy(&mut take, &mut writer)?;
                 Ok(writer.finish()?)

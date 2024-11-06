@@ -1,5 +1,3 @@
-use std::io::{Cursor, Read};
-
 use bytes::Buf;
 
 use crate::{nbt_compound::NBTCompound, spider_eye_error::SpiderEyeError};
@@ -23,4 +21,23 @@ pub struct ChunkData {
     zpos: i32,
     ypos: i32,
     status: String,
+    last_update: i64,
+    sections: [ChunkSection; 25],
 }
+
+pub struct ChunkSection {
+    ypos: i8,
+    block_palette: BlockPalette,
+    block_data: Vec<i64>,
+}
+
+pub struct BlockPalette {
+    block_states: Vec<BlockState>,
+}
+
+pub struct BlockState {
+    block_name: String,
+    properties: Vec<(String, String)>,
+}
+
+pub struct BiomePalette {}

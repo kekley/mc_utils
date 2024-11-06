@@ -4,6 +4,7 @@ use num_enum::TryFromPrimitive;
 use std::{fmt::Debug, io::Read, u16};
 
 use crate::{
+    compression::{self, CompressionData, CompressionScheme},
     nbt_ids::NBTId,
     nbt_tag::{get_nbt_string, NBTTag, NamedTag},
     spider_eye_error::SpiderEyeError,
@@ -49,6 +50,10 @@ impl NBTCompound {
     pub fn add_tag(&mut self, name: String, tag: NBTTag) {
         self.children.push((name, tag).into());
     }
+    pub fn get_tag(&self, tag_name: &str) -> Option<NBTTag> {
+        todo!()
+    }
+
     pub fn from_borrowed_stream(stream: &mut dyn Buf) -> Result<Self, SpiderEyeError> {
         let mut tmp = Self { children: vec![] };
 
@@ -65,5 +70,13 @@ impl NBTCompound {
             }
         }
         Ok(tmp)
+    }
+
+    pub fn from_compressed_stream(
+        stream: &mut dyn Buf,
+        compression_data: CompressionData,
+    ) -> Result<Self, SpiderEyeError> {
+        let mut decompressed = compression::decompress_bytes(stream, compression_data)?;
+        Ok(Self::from_borrowed_stream(&mut decompressed)?)
     }
 }
