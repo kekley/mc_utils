@@ -4,7 +4,9 @@ use std::io::{self, Error, Read, Seek, Write};
 use std::time::SystemTime;
 use std::{usize, vec};
 
+use crate::compression::{CompressionData, CompressionScheme};
 use crate::nbt_ids::NBTId;
+use crate::spider_eye_error::SpiderEyeError;
 
 //offsets are for 4KiB Sectors
 pub(crate) const CHUNKS_PER_FILE: usize = 1024;
@@ -15,79 +17,6 @@ pub(crate) const REGION_HEADER_SIZE: usize = 2 * SECTOR_SIZE;
 
 // The size of the header for a chunk which immediate proceeds the compressed chunk data
 pub(crate) const CHUNK_HEADER_SIZE: usize = 5;
-
-#[derive(Debug)]
-pub enum RegionError {
-    DEFAULT,
-    IO(std::io::Error),
-    InvalidOffset(isize, isize),
-    UnknownCompression(u8),
-    TryFromPrimitiveError(TryFromPrimitiveError<NBTId>),
-    ListError(i32),
-    UTF8Error(std::string::FromUtf8Error),
-    JavaStringDecodingError(cesu8::Cesu8DecodingError),
-}
-
-#[derive(Debug, TryFromPrimitive)]
-#[repr(u8)]
-pub enum CompressionScheme {
-    Gzip = 1,
-    Zlib = 2,
-    Uncompressed = 3,
-}
-
-impl From<std::io::Error> for RegionError {
-    fn from(value: std::io::Error) -> Self {
-        RegionError::IO(value)
-    }
-}
-
-impl From<num_enum::TryFromPrimitiveError<NBTId>> for RegionError {
-    fn from(value: num_enum::TryFromPrimitiveError<NBTId>) -> Self {
-        RegionError::TryFromPrimitiveError(value)
-    }
-}
-
-impl From<std::string::FromUtf8Error> for RegionError {
-    fn from(value: std::string::FromUtf8Error) -> Self {
-        RegionError::UTF8Error(value)
-    }
-}
-
-impl From<cesu8::Cesu8DecodingError> for RegionError {
-    fn from(value: cesu8::Cesu8DecodingError) -> Self {
-        RegionError::JavaStringDecodingError(value)
-    }
-}
-
-impl std::fmt::Display for RegionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RegionError::DEFAULT => todo!(),
-            RegionError::IO(error) => f.write_fmt(format_args!("IO Error: {error:?}")),
-            RegionError::InvalidOffset(x, z) => {
-                f.write_fmt(format_args!("Invalid Offset: x: {x}, z: {z}"))
-            }
-            RegionError::UnknownCompression(val) => {
-                f.write_fmt(format_args!("Unknown Compresssion sceme: {val}"))
-            }
-            RegionError::TryFromPrimitiveError(try_from_primitive_error) => f.write_fmt(
-                format_args!("Failed Primitive Conversion: {try_from_primitive_error:?}"),
-            ),
-            RegionError::UTF8Error(utf_8_error) => f.write_fmt(format_args!(
-                "Error creating string from bytes: {utf_8_error:?}"
-            )),
-            RegionError::JavaStringDecodingError(cesu8_decoding_error) => f.write_fmt(
-                format_args!("Error parsing a java string: {cesu8_decoding_error:?}"),
-            ),
-            RegionError::ListError(len) => {
-                f.write_fmt(format_args!("Error parsing list of len {len}"))
-            }
-        }
-    }
-}
-
-impl std::error::Error for RegionError {}
 
 #[derive(Debug, Default)]
 pub struct Region<S> {
@@ -107,44 +36,6 @@ impl FileSegment {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Chunk {
-    world_location: (u64, u64),
-    timestamp: SystemTime,
-    chunk_data: ChunkData,
-}
-
-pub struct CompressionData {
-    pub scheme: CompressionScheme,
-    pub compressed_len: u32,
-}
-
-impl CompressionData {
-    pub fn new(mut data: &[u8]) -> Result<Self, RegionError> {
-        println!("{:?}", &data[..]);
-
-        let len = data.read_u32::<BigEndian>()?;
-        let scheme = data.read_u8()?;
-        let compression_data = Self {
-            scheme: CompressionScheme::try_from(scheme)
-                .map_err(|_| RegionError::UnknownCompression(scheme))?,
-            compressed_len: len - 1,
-        };
-
-        Ok(compression_data)
-    }
-}
-
-impl Default for Chunk {
-    fn default() -> Self {
-        Self {
-            world_location: Default::default(),
-            timestamp: SystemTime::UNIX_EPOCH,
-            chunk_data: Default::default(),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct ChunkData {}
 
@@ -152,7 +43,7 @@ impl<S> Region<S>
 where
     S: Read + Seek,
 {
-    pub fn from_stream(mut stream: S) -> Result<Self, RegionError> {
+    pub fn from_stream(mut stream: S) -> Result<Self, SpiderEyeError> {
         let mut region = Self {
             stream,
             chunk_segments: vec![],
@@ -180,7 +71,7 @@ where
         &mut self,
         x: usize,
         z: usize,
-    ) -> Result<Option<FileSegment>, RegionError> {
+    ) -> Result<Option<FileSegment>, SpiderEyeError> {
         self.stream.seek(std::io::SeekFrom::Start(
             Self::get_header_pos_in_stream(x, z).try_into().unwrap(),
         ))?;
@@ -199,7 +90,7 @@ where
     pub fn read_chunk_from_segment(
         &mut self,
         segment: FileSegment,
-    ) -> Result<Vec<u8>, RegionError> {
+    ) -> Result<Vec<u8>, SpiderEyeError> {
         let compression_data = self.get_compression_data(segment)?;
 
         let mut take = (&mut self.stream).take(compression_data.compressed_len as u64);
@@ -227,7 +118,7 @@ where
     pub fn get_compression_data(
         &mut self,
         segment: FileSegment,
-    ) -> Result<CompressionData, RegionError> {
+    ) -> Result<CompressionData, SpiderEyeError> {
         self.stream.seek(std::io::SeekFrom::Start(
             segment.offset as u64 * SECTOR_SIZE as u64,
         ))?;

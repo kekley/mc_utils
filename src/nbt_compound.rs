@@ -1,19 +1,16 @@
-use byteorder::{BigEndian, ReadBytesExt};
-use bytes::{Buf, BufMut, Bytes, BytesMut};
-use cesu8::from_java_cesu8;
-use fastnbt::stream::Name;
+use byteorder::ReadBytesExt;
 use num_enum::TryFromPrimitive;
-use std::{
-    fmt::Debug,
-    io::{Error, Read},
-    u16,
-};
+use std::{fmt::Debug, io::Read, u16};
 
-use crate::{nbt_ids::NBTId, nbt_tag::NBTTag, region::RegionError};
+use crate::{
+    nbt_ids::NBTId,
+    nbt_tag::{get_nbt_string, NBTTag, NamedTag},
+    spider_eye_error::SpiderEyeError,
+};
 
 #[derive(Clone)]
 pub struct NBTCompound {
-    pub children: Vec<(String, NBTTag)>,
+    pub children: Vec<NamedTag>,
 }
 impl Debug for NBTCompound {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -28,14 +25,14 @@ impl NBTCompound {
             for _ in 0..indentation + 1 {
                 res = res + "\t"
             }
-            res = res + &format!("Name: {}, ", child.0);
-            match &child.1 {
+            res = res + &format!("Name: {}, ", child.name);
+            match &child.tag {
                 NBTTag::Compound(compound) => {
                     let str = compound.as_indented_string(indentation + 1);
                     res = res + &str;
                 }
                 _ => {
-                    let str = format!("{:?}", child.1);
+                    let str = format!("{:?}", child.tag);
                     res = res + &str;
                 }
             }
@@ -46,9 +43,9 @@ impl NBTCompound {
 
 impl NBTCompound {
     pub fn add_tag(&mut self, name: String, tag: NBTTag) {
-        self.children.push((name, tag));
+        self.children.push((name, tag).into());
     }
-    pub fn from_borrowed_stream(stream: &mut dyn Read) -> Result<Self, RegionError> {
+    pub fn from_borrowed_stream(stream: &mut dyn Read) -> Result<Self, SpiderEyeError> {
         let mut tmp = Self { children: vec![] };
 
         loop {
@@ -67,71 +64,13 @@ impl NBTCompound {
             if tag_id == NBTId::EndId {
                 break;
             }
-            let name = Self::get_nbt_string(stream)?;
-            if let Ok(tag) = Self::read_tag(stream, tag_id) {
+            let name = get_nbt_string(stream)?;
+            if let Ok(tag) = NBTTag::read_tag(stream, tag_id) {
                 tmp.add_tag(name, tag);
             } else {
                 break;
             }
         }
         Ok(tmp)
-    }
-
-    pub fn read_tag(stream: &mut dyn Read, id: NBTId) -> Result<NBTTag, RegionError> {
-        match id {
-            NBTId::EndId => Ok(NBTTag::End),
-            NBTId::ByteId => Ok(NBTTag::Byte(stream.read_i8()?)),
-            NBTId::ShortId => Ok(NBTTag::Short(stream.read_i16::<BigEndian>()?)),
-            NBTId::IntId => Ok(NBTTag::Int(stream.read_i32::<BigEndian>()?)),
-            NBTId::LongId => Ok(NBTTag::Long(stream.read_i64::<BigEndian>()?)),
-            NBTId::FloatId => Ok(NBTTag::Float(stream.read_f32::<BigEndian>()?)),
-            NBTId::DoubleId => Ok(NBTTag::Double(stream.read_f64::<BigEndian>()?)),
-            NBTId::ByteArrayId => {
-                let len = stream.read_i32::<BigEndian>()?;
-                let mut data = vec![0u8; len as usize];
-                stream.read_exact(&mut data[..])?;
-                Ok(NBTTag::ByteArray(data.into()))
-            }
-            NBTId::StringId => Ok(NBTTag::String(Self::get_nbt_string(stream)?)),
-            NBTId::ListId => {
-                let tag_id = NBTId::try_from_primitive(stream.read_u8()?)?;
-                let len = stream.read_i32::<BigEndian>()?;
-                let mut list = Vec::with_capacity(len as usize);
-                for _ in 0..len {
-                    let tag = Self::read_tag(stream, tag_id)?;
-                    if tag.get_type_id() != tag_id as u8 {
-                        return Err(RegionError::ListError(len));
-                    } else {
-                        list.push(tag);
-                    }
-                }
-                Ok(NBTTag::List(list))
-            }
-            NBTId::CompoundId => Ok(NBTTag::Compound(NBTCompound::from_borrowed_stream(stream)?)),
-            NBTId::IntArrayId => {
-                let len = stream.read_i32::<BigEndian>()?;
-                let mut array = Vec::with_capacity(len as usize);
-                for _ in 0..len {
-                    array.push(stream.read_i32::<BigEndian>()?);
-                }
-                Ok(NBTTag::IntArray(array))
-            }
-            NBTId::LongArrayId => {
-                let len = stream.read_i32::<BigEndian>()?;
-                let mut array = Vec::with_capacity(len as usize);
-                for _ in 0..len {
-                    array.push(stream.read_i64::<BigEndian>()?);
-                }
-                Ok(NBTTag::LongArray(array))
-            }
-        }
-    }
-
-    pub fn get_nbt_string(stream: &mut dyn Read) -> Result<String, RegionError> {
-        let len = stream.read_u16::<BigEndian>()? as usize;
-        let mut string_bytes = vec![0u8; len];
-        stream.read_exact(&mut string_bytes[..])?;
-        let string = from_java_cesu8(&string_bytes[..])?;
-        Ok(string.to_string())
     }
 }
