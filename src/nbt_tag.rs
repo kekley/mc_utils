@@ -1,10 +1,5 @@
-use std::{
-    fmt::Debug,
-    io::{Read, Write},
-    str,
-};
+use std::{any::Any, fmt::Debug, ops::Deref};
 
-use byteorder::{BigEndian, ReadBytesExt};
 use bytes::{Buf, Bytes};
 use cesu8::from_java_cesu8;
 use num_enum::TryFromPrimitive;
@@ -99,6 +94,105 @@ impl NBTTag {
                 }
                 Ok(NBTTag::LongArray(array))
             }
+        }
+    }
+}
+
+impl NBTTag {
+    #[inline]
+    pub fn get_byte(&self) -> i8 {
+        if let NBTTag::Byte(value) = self {
+            *value
+        } else {
+            panic!("Tried to read a byte from a {:?}", self);
+        }
+    }
+    #[inline]
+    pub fn get_short(&self) -> i16 {
+        if let NBTTag::Short(value) = self {
+            *value
+        } else {
+            panic!("Tried to read a short from a {:?}", self);
+        }
+    }
+    #[inline]
+    pub fn get_int(&self) -> i32 {
+        if let NBTTag::Int(value) = self {
+            *value
+        } else {
+            panic!("Tried to read an int from a {:?}", self);
+        }
+    }
+    #[inline]
+    pub fn get_long(&self) -> i64 {
+        if let NBTTag::Long(value) = self {
+            *value
+        } else {
+            panic!("Tried to read a long from a {:?}", self);
+        }
+    }
+    #[inline]
+    pub fn get_float(&self) -> f32 {
+        if let NBTTag::Float(value) = self {
+            *value
+        } else {
+            panic!("Tried to read a float from a {:?}", self);
+        }
+    }
+    #[inline]
+    pub fn get_double(&self) -> f64 {
+        if let NBTTag::Double(value) = self {
+            *value
+        } else {
+            panic!("Tried to read a double from a {:?}", self);
+        }
+    }
+    #[inline]
+    pub fn get_byte_array(&self) -> &Vec<i8> {
+        if let NBTTag::ByteArray(value) = self {
+            value
+        } else {
+            panic!("Tried to read a byte array from a {:?}", self);
+        }
+    }
+    #[inline]
+    pub fn get_string(&self) -> &String {
+        if let NBTTag::String(value) = self {
+            value
+        } else {
+            panic!("Tried to read a string from a {:?}", self);
+        }
+    }
+    #[inline]
+    pub fn get_list(&self) -> &Vec<NBTTag> {
+        if let NBTTag::List(value) = self {
+            value
+        } else {
+            panic!("Tried to read a list from a {:?}", self);
+        }
+    }
+    #[inline]
+    pub fn get_compound(&self) -> &NBTCompound {
+        if let NBTTag::Compound(value) = self {
+            value
+        } else {
+            panic!("Tried to read a compound from a {:?}", self);
+        }
+    }
+    #[inline]
+    pub fn get_int_array(&self) -> &Vec<i32> {
+        if let NBTTag::IntArray(value) = self {
+            value
+        } else {
+            panic!("Tried to read an int array from a {:?}", self);
+        }
+    }
+    #[inline]
+    pub fn get_long_array(&self) -> &Vec<i64> {
+        if let NBTTag::LongArray(value) = self {
+            value
+        } else {
+            panic!("Tried to read a long array from a {:?}", self);
         }
     }
 }

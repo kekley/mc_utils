@@ -1,10 +1,9 @@
-use byteorder::ReadBytesExt;
 use bytes::Buf;
 use num_enum::TryFromPrimitive;
-use std::{fmt::Debug, io::Read, u16};
+use std::{fmt::Debug, u16};
 
 use crate::{
-    compression::{self, CompressionData, CompressionScheme},
+    compression::{self, CompressionData},
     nbt_ids::NBTId,
     nbt_tag::{get_nbt_string, NBTTag, NamedTag},
     spider_eye_error::SpiderEyeError,
@@ -50,8 +49,12 @@ impl NBTCompound {
     pub fn add_tag(&mut self, name: String, tag: NBTTag) {
         self.children.push((name, tag).into());
     }
-    pub fn get_tag(&self, tag_name: &str) -> Option<NBTTag> {
-        todo!()
+    pub fn get_tag(&self, tag_name: &str) -> NBTTag {
+        self.children
+            .iter()
+            .find(|named_tag| named_tag.name == tag_name)
+            .map(|tag| tag.tag.clone())
+            .expect(&format!("Tag {:} does not exist", tag_name))
     }
 
     pub fn from_borrowed_stream(stream: &mut dyn Buf) -> Result<Self, SpiderEyeError> {

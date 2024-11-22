@@ -3,18 +3,10 @@ use std::{
     io::{Cursor, Read},
 };
 
-use compression::CompressionData;
-use nbt_compound::NBTCompound;
-use region::Region;
-use spider_eye_error::SpiderEyeError;
+use spider_eye::{CompressionData, CompressionScheme, NBTCompound, Region, SpiderEyeError};
 
-mod chunk;
-mod compression;
-mod nbt_compound;
-mod nbt_ids;
-mod nbt_tag;
-mod region;
-mod spider_eye_error;
+extern crate spider_eye;
+
 fn main() -> Result<(), SpiderEyeError> {
     let mut file = fs::File::open("./r.0.0.mca")?;
     let mut byte_stream = Vec::<u8>::with_capacity(file.metadata().unwrap().len() as usize);
@@ -32,7 +24,7 @@ fn main() -> Result<(), SpiderEyeError> {
     let player = NBTCompound::from_compressed_stream(
         &mut cursor,
         CompressionData {
-            scheme: compression::CompressionScheme::Gzip,
+            scheme: CompressionScheme::Gzip,
             compressed_len: player_file.metadata().unwrap().len() as u32,
         },
     )?;
