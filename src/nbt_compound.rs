@@ -1,5 +1,6 @@
 use bytes::Buf;
 use num_enum::TryFromPrimitive;
+use smol_str::SmolStr;
 use std::{fmt::Debug, u16};
 
 use crate::{
@@ -46,15 +47,14 @@ impl NBTCompound {
 }
 
 impl NBTCompound {
-    pub fn add_tag(&mut self, name: String, tag: NBTTag) {
+    pub fn add_tag(&mut self, name: SmolStr, tag: NBTTag) {
         self.children.push((name, tag).into());
     }
-    pub fn get_tag(&self, tag_name: &str) -> NBTTag {
+    pub fn get_tag(&self, tag_name: &str) -> Option<NBTTag> {
         self.children
             .iter()
             .find(|named_tag| named_tag.name == tag_name)
             .map(|tag| tag.tag.clone())
-            .expect(&format!("Tag {:} does not exist", tag_name))
     }
 
     pub fn from_borrowed_stream(stream: &mut dyn Buf) -> Result<Self, SpiderEyeError> {

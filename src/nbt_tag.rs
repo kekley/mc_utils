@@ -3,17 +3,18 @@ use std::{any::Any, fmt::Debug, ops::Deref};
 use bytes::{Buf, Bytes};
 use cesu8::from_java_cesu8;
 use num_enum::TryFromPrimitive;
+use smol_str::SmolStr;
 
 use crate::{nbt_compound::NBTCompound, nbt_ids::*, spider_eye_error::SpiderEyeError};
 
 #[derive(Debug, Clone)]
 pub struct NamedTag {
-    pub name: String,
+    pub name: SmolStr,
     pub tag: NBTTag,
 }
 
-impl From<(String, NBTTag)> for NamedTag {
-    fn from(value: (String, NBTTag)) -> Self {
+impl From<(SmolStr, NBTTag)> for NamedTag {
+    fn from(value: (SmolStr, NBTTag)) -> Self {
         Self {
             name: value.0,
             tag: value.1,
@@ -32,7 +33,7 @@ pub enum NBTTag {
     Float(f32) = FLOAT_ID,
     Double(f64) = DOUBLE_ID,
     ByteArray(Vec<i8>) = BYTE_ARRAY_ID,
-    String(String) = STRING_ID,
+    String(SmolStr) = STRING_ID,
     List(Vec<NBTTag>) = LIST_ID,
     Compound(NBTCompound) = COMPOUND_ID,
     IntArray(Vec<i32>) = INT_ARRAY_ID,
@@ -156,7 +157,7 @@ impl NBTTag {
         }
     }
     #[inline]
-    pub fn get_string(&self) -> &String {
+    pub fn get_string(&self) -> &SmolStr {
         if let NBTTag::String(value) = self {
             value
         } else {
@@ -220,12 +221,12 @@ impl Debug for NBTTag {
         }
     }
 }
-pub fn get_nbt_string(stream: &mut dyn Buf) -> Result<String, SpiderEyeError> {
+pub fn get_nbt_string(stream: &mut dyn Buf) -> Result<SmolStr, SpiderEyeError> {
     let len = stream.get_i16() as usize;
     let mut string_bytes = Vec::with_capacity(len);
     for _ in 0..len {
         string_bytes.push(stream.get_u8());
     }
     let string = from_java_cesu8(&string_bytes[..])?;
-    Ok(string.to_string())
+    Ok(SmolStr::from(string))
 }
