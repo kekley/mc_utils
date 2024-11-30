@@ -21,7 +21,6 @@ pub struct CompressionData {
 
 impl CompressionData {
     pub fn new(mut data: &[u8]) -> Result<Self, SpiderEyeError> {
-        println!("{:?}", &data[..]);
 
         let len = data.read_u32::<BigEndian>()?;
         let scheme = data.read_u8()?;

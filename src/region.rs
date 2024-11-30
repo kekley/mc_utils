@@ -4,6 +4,7 @@ use std::{usize, vec};
 use crate::chunk::Chunk;
 use crate::compression::{CompressionData, CompressionScheme};
 use crate::spider_eye_error::SpiderEyeError;
+use crate::ChunkData;
 
 //offsets are for 4KiB Sectors
 pub(crate) const CHUNKS_PER_FILE: usize = 1024;
@@ -17,6 +18,8 @@ pub(crate) const CHUNK_HEADER_SIZE: usize = 5;
 
 #[derive(Debug)]
 pub struct Region<S> {
+    pub x: i32,
+    pub z: i32,
     pub stream: S,
     pub chunk_segments: [Option<FileSegment>; CHUNKS_PER_FILE],
 }
@@ -26,6 +29,8 @@ impl<S: Default> Default for Region<S> {
         Self {
             stream: Default::default(),
             chunk_segments: [None; 1024],
+            x: 0,
+            z: 0,
         }
     }
 }
@@ -50,6 +55,8 @@ where
         let mut region: Region<S> = Self {
             stream: stream,
             chunk_segments: [None; 1024],
+            x: 0,
+            z: 0,
         };
         for x in 0..32 {
             for z in 0..32 {
@@ -57,6 +64,19 @@ where
                 region.chunk_segments[x * 32 + z] = segment;
             }
         }
+
+        region.chunk_segments.into_iter().any(|f| {
+            if let Some(_segment) = f {
+                let bytes = region.read_chunk_from_segment(_segment).unwrap();
+                let chunk = Chunk::from_data(&mut Cursor::new(bytes));
+                let data = ChunkData::from_compound(chunk.unwrap().data);
+                region.x = data.xpos >> 4;
+                region.z = data.zpos >> 4;
+                true
+            } else {
+                false
+            }
+        });
 
         Ok(region)
     }
@@ -66,13 +86,16 @@ where
         x: usize,
         z: usize,
     ) -> Result<Option<FileSegment>, SpiderEyeError> {
+        let pos = Self::get_header_pos_in_stream(x, z);
+        println!("pos: {}", pos);
         self.stream.seek(std::io::SeekFrom::Start(
-            Self::get_header_pos_in_stream(x, z).try_into().unwrap(),
+            Self::get_header_pos_in_stream(x, z) as u64,
         ))?;
         let mut buf: [u8; 4] = [0; 4];
-        self.stream.read_exact(&mut buf)?;
+        self.stream.read_exact(&mut buf[..])?;
         let offset: u32 = ((buf[0] as u32) << 16) | ((buf[1] as u32) << 8) | (buf[2] as u32);
         let sectors: u8 = buf[3];
+        println!("offest: {}, sectors: {}", offset, sectors);
 
         if offset == 0 || sectors == 0 {
             Ok(None)
@@ -81,9 +104,10 @@ where
         }
     }
 
-    pub fn get_chunk_segment(&mut self, x: usize, z: usize) -> Option<FileSegment> {
+    pub fn get_chunk_segment(&self, x: usize, z: usize) -> Option<FileSegment> {
         self.chunk_segments[x * 32 + z]
     }
+
     pub fn get_chunk(&mut self, x: usize, z: usize) -> Option<Chunk> {
         if x > 32 || z > 32 {
             return None;
@@ -143,6 +167,6 @@ where
     }
 
     fn get_header_pos_in_stream(x: usize, z: usize) -> usize {
-        4 * ((x & 32) + (z & 32) * 32)
+        4 * ((x & 31) + ((z & 31) << 5))
     }
 }

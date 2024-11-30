@@ -20,15 +20,33 @@ impl Chunk {
 
 pub struct ChunkData {
     data_version: i32,
-    xpos: i32,
-    zpos: i32,
-    ypos: i32,
+    pub xpos: i32,
+    pub zpos: i32,
+    pub ypos: i32,
     status: SmolStr,
     last_update: i64,
-    pub sections: [ChunkSection; 25],
+    pub sections: [ChunkSection; 24],
 }
 
 impl ChunkData {
+    pub fn get_block(&self, x: i16, y: i16, z: i16) -> &(SmolStr, Vec<(SmolStr, SmolStr)>) {
+        // Calculate the local y coordinate within the section
+        let local_y = match y < 0 {
+            true => 15 - (y.abs() % 16),
+            false => y % 16,
+        };
+        let section_y = (y as f32 / 16f32).floor();
+        // Retrieve the section
+        let section = &self
+            .sections
+            .iter()
+            .find(|f| f.ypos == section_y as i8)
+            .unwrap();
+        // Get the block from the section's block states
+        section
+            .block_states
+            .get_block(x as u16, local_y as u16, z as u16)
+    }
     pub fn from_compound(chunk: NBTCompound) -> Self {
         let binding = chunk.get_tag("").unwrap();
         let chunk = binding.get_compound();
@@ -43,26 +61,14 @@ impl ChunkData {
         let sections_tag = chunk.get_tag("sections").unwrap();
 
         let list = sections_tag.get_list();
-        print!("{:?}", list);
-        let sections: Vec<ChunkSection> = list
-            .iter()
-            .map(|section| {
-                let compound = section.get_compound();
-                if compound.get_tag("Y").unwrap().get_byte() == -5 {
-                    return ChunkSection {
-                        ypos: -5,
-                        block_states: BlockStates {
-                            palette: vec![(SmolStr::new("minecraft:air"), vec![])],
-                            bits_per_block: 4,
-                            data: vec![],
-                        },
-                        block_light: vec![],
-                        sky_light: vec![],
-                    };
-                }
-                ChunkSection::from_compound(compound)
-            })
-            .collect();
+        let mut sections: Vec<ChunkSection> = vec![];
+        list.iter().for_each(|section| {
+            let compound = section.get_compound();
+            if compound.get_tag("Y").unwrap().get_byte() == -5 {
+            } else {
+                sections.push(ChunkSection::from_compound(compound));
+            }
+        });
 
         Self {
             data_version,
@@ -87,7 +93,6 @@ pub struct ChunkSection {
 impl ChunkSection {
     pub fn from_compound(compound: &NBTCompound) -> Self {
         let y = compound.get_tag("Y").unwrap().get_byte();
-        println!("{:?}", compound);
         let binding = compound.get_tag("block_states").unwrap();
         let block_states_compound = binding.get_compound();
         let block_states = BlockStates::from_compound(block_states_compound.clone());
