@@ -1,4 +1,4 @@
-use std::{any::Any, fmt::Debug, ops::Deref};
+use std::{any::Any, borrow::Cow, fmt::Debug, ops::Deref};
 
 use bytes::{buf, Buf, Bytes};
 use cesu8::from_java_cesu8;
@@ -221,10 +221,15 @@ impl Debug for NBTTag {
         }
     }
 }
-pub fn get_nbt_string(stream: &mut dyn Buf) -> Result<SmolStr, SpiderEyeError> {
+pub fn get_nbt_string(stream: &mut dyn Buf) -> Result<Cow<'_, str>, SpiderEyeError> {
     let len = stream.get_i16() as usize;
-    let a = stream.copy_to_bytes(len);
+    let mut buf: heapless::Vec<u8, 256> = heapless::Vec::new();
 
-    let string = from_java_cesu8(&a)?;
-    Ok(SmolStr::from(string))
+    for _ in 0..len {
+        unsafe { buf.push_unchecked(stream.get_u8()) };
+    }
+    stream.copy_to_bytes(dst);
+
+    let string = from_java_cesu8(&buf[..])?;
+    Ok(string)
 }
