@@ -40,7 +40,7 @@ impl World {
         self.get_region(x >> 5, z >> 5)
     }
 
-    pub fn get_region_containing_block(&self, x: i64, z: i64) -> Option<&Region>  {
+    pub fn get_region_containing_block(&self, x: i64, z: i64) -> Option<&Region> {
         self.get_region_containing_chunk((x >> 4) as i32, (z >> 4) as i32)
     }
 }

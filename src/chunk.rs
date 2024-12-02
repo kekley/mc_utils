@@ -1,6 +1,7 @@
+use core::str;
 use std::{borrow::Borrow, collections::HashSet, io::Cursor};
 
-use bytes::Buf;
+use bytes::{Buf, Bytes};
 use smol_str::SmolStr;
 
 use crate::{nbt_compound::NBTCompound, spider_eye_error::SpiderEyeError, NBTTag};
@@ -17,9 +18,8 @@ pub struct Chunk {
 }
 
 impl Chunk {
-    pub fn from_slice(data: &[u8]) -> Result<Self, SpiderEyeError> {
-        let mut cursor: Cursor<&[u8]> = Cursor::new(data);
-        let compound = NBTCompound::from_borrowed_stream(&mut cursor)?;
+    pub fn from_slice(mut data: Bytes) -> Result<Self, SpiderEyeError> {
+        let compound = NBTCompound::from_borrowed_stream(&mut data)?;
         let binding = compound.get_tag("").unwrap();
         let chunk = binding.get_compound();
         let data_version = chunk.get_tag("DataVersion").unwrap().get_int();
@@ -27,7 +27,8 @@ impl Chunk {
         let zpos = chunk.get_tag("zPos").unwrap().get_int();
         let ypos = chunk.get_tag("yPos").unwrap().get_int();
 
-        let status = chunk.get_tag("Status").unwrap().get_string().clone();
+        let status =
+            SmolStr::from(str::from_utf8(chunk.get_tag("Status").unwrap().get_string()).unwrap());
         let last_update = chunk.get_tag("LastUpdate").unwrap().get_long();
 
         Ok(Self {
@@ -59,7 +60,7 @@ impl Default for ChunkData<'_> {
 }
 
 impl<'a> ChunkData<'a> {
-    pub fn get_block(&self, x: i16, y: i16, z: i16) -> &(&'a str, Vec<(&'a str, &'a str)>) {
+    pub fn get_block(&self, x: i16, y: i16, z: i16) -> &(&'a Bytes, Vec<(&'a str, &'a Bytes)>) {
         // Calculate the local y coordinate within the section
         let local_y = match y < 0 {
             true => 15 - (y.abs() % 16),
@@ -136,7 +137,7 @@ impl<'a> ChunkSection<'a> {
 
 #[derive(Debug, Clone, Default)]
 pub struct BlockStates<'a> {
-    palette: Vec<(&'a str, Vec<(&'a str, &'a str)>)>, //(Resource Location, List of Properties)
+    palette: Vec<(&'a Bytes, Vec<(&'a str, &'a Bytes)>)>, //(Resource Location, List of Properties)
     bits_per_block: u8,
     data: Vec<i64>,
 }
@@ -145,22 +146,22 @@ impl<'a> BlockStates<'a> {
     pub fn from_compound(compound: &'a NBTCompound) -> Self {
         let block_state_list = compound.get_tag("palette").unwrap().get_list();
 
-        let palette: Vec<(&str, Vec<(&str, &str)>)> = block_state_list
+        let palette: Vec<(&Bytes, Vec<(&str, &Bytes)>)> = block_state_list
             .iter()
             .map(|tag| {
                 let compound = tag.get_compound();
                 let resource = compound
                     .get_tag("Name")
-                    .and_then(|name_tag| Some(name_tag.get_string().as_str()))
+                    .and_then(|name_tag| Some(name_tag.get_string()))
                     .unwrap();
-                let properties: Vec<(&str, &str)> = compound
+                let properties: Vec<(&str, &Bytes)> = compound
                     .get_tag("Properties")
                     .and_then(|prop_tag| {
                         prop_tag
                             .get_compound()
                             .children
                             .iter()
-                            .map(|f| (f.name.as_str(), f.tag.get_string().as_str()))
+                            .map(|f| (f.0.as_str(), f.1.get_string()))
                             .collect::<Vec<_>>()
                             .into()
                     })
@@ -204,7 +205,12 @@ impl<'a> BlockStates<'a> {
         ((packed_array[element_index] >> bit_position) & mask) as usize
     }
 
-    pub fn get_block(&self, x: u16, y: u16, z: u16) -> &(&'a str, Vec<(&'a str, &'a str)>) {
+    pub fn get_block(
+        &self,
+        x: u16,
+        y: u16,
+        z: u16,
+    ) -> &(&'a bytes::Bytes, Vec<(&'a str, &'a bytes::Bytes)>) {
         if self.palette.len() == 1 {
             unsafe { &self.palette.get_unchecked(0) }
         } else {

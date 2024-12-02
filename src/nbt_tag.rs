@@ -1,3 +1,4 @@
+use core::str;
 use std::{any::Any, borrow::Cow, fmt::Debug, ops::Deref};
 
 use bytes::{buf, Buf, Bytes};
@@ -6,21 +7,6 @@ use num_enum::TryFromPrimitive;
 use smol_str::SmolStr;
 
 use crate::{nbt_compound::NBTCompound, nbt_ids::*, spider_eye_error::SpiderEyeError};
-
-#[derive(Debug, Clone)]
-pub struct NamedTag {
-    pub name: SmolStr,
-    pub tag: NBTTag,
-}
-
-impl From<(SmolStr, NBTTag)> for NamedTag {
-    fn from(value: (SmolStr, NBTTag)) -> Self {
-        Self {
-            name: value.0,
-            tag: value.1,
-        }
-    }
-}
 
 #[repr(u8)]
 #[derive(Clone)]
@@ -33,7 +19,7 @@ pub enum NBTTag {
     Float(f32) = FLOAT_ID,
     Double(f64) = DOUBLE_ID,
     ByteArray(Vec<i8>) = BYTE_ARRAY_ID,
-    String(SmolStr) = STRING_ID,
+    String(Bytes) = STRING_ID,
     List(Vec<NBTTag>) = LIST_ID,
     Compound(NBTCompound) = COMPOUND_ID,
     IntArray(Vec<i32>) = INT_ARRAY_ID,
@@ -46,7 +32,7 @@ impl NBTTag {
         // See https://doc.rust-lang.org/reference/items/enumerations.html#pointer-casting
         unsafe { *(self as *const Self as *const u8) }
     }
-    pub fn read_tag(stream: &mut dyn Buf, id: NBTId) -> Result<NBTTag, SpiderEyeError> {
+    pub fn read_tag(stream: &mut Bytes, id: NBTId) -> Result<NBTTag, SpiderEyeError> {
         match id {
             NBTId::EndId => Ok(NBTTag::End),
             NBTId::ByteId => Ok(NBTTag::Byte(stream.get_i8())),
@@ -157,7 +143,7 @@ impl NBTTag {
         }
     }
     #[inline]
-    pub fn get_string(&self) -> &SmolStr {
+    pub fn get_string(&self) -> &Bytes {
         if let NBTTag::String(value) = self {
             value
         } else {
@@ -213,7 +199,7 @@ impl Debug for NBTTag {
                 .entry(&"\nByte Array: ")
                 .entries(arg0)
                 .finish(),
-            Self::String(arg0) => write!(f, "\n String: {arg0}\n"),
+            Self::String(arg0) => write!(f, "\n String: {}\n", str::from_utf8(arg0).unwrap()),
             Self::List(arg0) => write!(f, "\nList: {arg0:?}\n"),
             Self::Compound(arg0) => write!(f, "{:?}", arg0),
             Self::IntArray(arg0) => write!(f, "\nIntArray: {arg0:?}\n"),
@@ -221,15 +207,9 @@ impl Debug for NBTTag {
         }
     }
 }
-pub fn get_nbt_string(stream: &mut dyn Buf) -> Result<Cow<'_, str>, SpiderEyeError> {
+#[inline]
+pub fn get_nbt_string(stream: &mut Bytes) -> Result<Bytes, SpiderEyeError> {
     let len = stream.get_i16() as usize;
-    let mut buf: heapless::Vec<u8, 256> = heapless::Vec::new();
-
-    for _ in 0..len {
-        unsafe { buf.push_unchecked(stream.get_u8()) };
-    }
-    stream.copy_to_bytes(dst);
-
-    let string = from_java_cesu8(&buf[..])?;
-    Ok(string)
+    let bytes = stream.copy_to_bytes(len);
+    Ok(bytes)
 }

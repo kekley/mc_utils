@@ -1,6 +1,9 @@
 use std::cell::RefCell;
 use std::io::{self, Cursor, Read, Seek};
+use std::sync::Arc;
 use std::{usize, vec};
+
+use bytes::Bytes;
 
 use crate::chunk::Chunk;
 use crate::compression::{CompressionData, CompressionScheme};
@@ -21,7 +24,7 @@ pub(crate) const CHUNK_HEADER_SIZE: usize = 5;
 pub struct Region {
     pub x: i32,
     pub z: i32,
-    pub data: RefCell<Cursor<Vec<u8>>>,
+    pub data: Arc<RefCell<Cursor<Vec<u8>>>>,
     pub chunk_segments: [Option<FileSegment>; CHUNKS_PER_FILE],
 }
 
@@ -51,7 +54,7 @@ impl FileSegment {
 impl Region {
     pub fn from_stream(stream: Cursor<Vec<u8>>) -> Result<Self, SpiderEyeError> {
         let mut region: Region = Self {
-            data: RefCell::new(stream),
+            data: Arc::new(RefCell::new(stream)),
             chunk_segments: [None; 1024],
             x: 0,
             z: 0,
@@ -66,7 +69,7 @@ impl Region {
         region.chunk_segments.into_iter().any(|f| {
             if let Some(_segment) = f {
                 let bytes = region.read_chunk_from_segment(_segment);
-                let chunk = Chunk::from_slice(&bytes).unwrap();
+                let chunk = Chunk::from_slice(bytes).unwrap();
                 region.x = chunk.xpos >> 4;
                 region.z = chunk.zpos >> 4;
                 true
@@ -109,20 +112,19 @@ impl Region {
         }
         if let Some(segment) = self.get_chunk_segment(x, z) {
             let data = self.read_chunk_from_segment(segment);
-            Some(Chunk::from_slice(&data).expect("Failed to parse chunk data"))
+            Some(Chunk::from_slice(data).expect("Failed to parse chunk data"))
         } else {
             None
         }
     }
 
-    pub fn read_chunk_from_segment(&self, segment: FileSegment) -> Vec<u8> {
+    pub fn read_chunk_from_segment(&self, segment: FileSegment) -> Bytes {
         let compression_data = self.get_compression_data(segment).unwrap();
 
         let mut buf = vec![0u8; compression_data.compressed_len as usize];
         self.data.borrow_mut().read_exact(&mut buf[..]).unwrap();
         let mut cursor = Cursor::new(buf);
-
-        match compression_data.scheme {
+        let res = match compression_data.scheme {
             CompressionScheme::Gzip => {
                 let mut writer = flate2::write::GzDecoder::new(Vec::with_capacity(1000));
                 io::copy(&mut cursor, &mut writer).unwrap();
@@ -138,7 +140,9 @@ impl Region {
                 io::copy(&mut cursor, &mut writer).unwrap();
                 writer
             }
-        }
+        };
+
+        Bytes::from(res)
     }
 
     pub fn get_compression_data(

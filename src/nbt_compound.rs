@@ -1,18 +1,19 @@
-use bytes::Buf;
+use bytes::{Buf, Bytes};
+use core::str;
 use num_enum::TryFromPrimitive;
 use smol_str::SmolStr;
-use std::{fmt::Debug, u16};
+use std::{collections::HashMap, fmt::Debug, u16};
 
 use crate::{
     compression::{self, CompressionData},
     nbt_ids::NBTId,
-    nbt_tag::{get_nbt_string, NBTTag, NamedTag},
+    nbt_tag::{get_nbt_string, NBTTag},
     spider_eye_error::SpiderEyeError,
 };
 
 #[derive(Clone)]
 pub struct NBTCompound {
-    pub children: Vec<NamedTag>,
+    pub children: HashMap<SmolStr, NBTTag>,
 }
 impl Debug for NBTCompound {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -27,8 +28,8 @@ impl NBTCompound {
             for _ in 0..indentation + 1 {
                 res = res + "\t"
             }
-            res = res + &format!("Name: {}, ", child.name);
-            match &child.tag {
+            res = res + &format!("Name: {}, ", child.0);
+            match &child.1 {
                 NBTTag::Compound(compound) => {
                     let str = compound.as_indented_string(indentation + 1);
                     res = res + &str;
@@ -37,7 +38,7 @@ impl NBTCompound {
                     for _ in 0..indentation + 1 {
                         res = res + "\t"
                     }
-                    let str = format!("{:?}", child.tag);
+                    let str = format!("{:?}", child.1);
                     res = res + &str;
                 }
             }
@@ -48,19 +49,16 @@ impl NBTCompound {
 
 impl NBTCompound {
     pub fn add_tag(&mut self, name: SmolStr, tag: NBTTag) {
-        self.children.push((name, tag).into());
+        self.children.insert(name, tag);
     }
     pub fn get_tag(&self, tag_name: &str) -> Option<&NBTTag> {
-        for child in &self.children {
-            if child.name == tag_name {
-                return Some(&child.tag);
-            }
-        }
-        None
+        self.children.get(tag_name)
     }
 
-    pub fn from_borrowed_stream(stream: &mut dyn Buf) -> Result<Self, SpiderEyeError> {
-        let mut tmp = Self { children: vec![] };
+    pub fn from_borrowed_stream(stream: &mut Bytes) -> Result<Self, SpiderEyeError> {
+        let mut tmp = Self {
+            children: HashMap::with_capacity(5),
+        };
 
         while stream.has_remaining() {
             let tag_id = NBTId::try_from_primitive(stream.get_u8())?;
@@ -68,6 +66,8 @@ impl NBTCompound {
                 break;
             }
             let name = get_nbt_string(stream)?;
+            let name = SmolStr::from(str::from_utf8(&name).unwrap());
+
             if let Ok(tag) = NBTTag::read_tag(stream, tag_id) {
                 tmp.add_tag(name, tag);
             } else {
