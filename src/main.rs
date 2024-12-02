@@ -11,8 +11,8 @@ fn main() -> Result<(), SpiderEyeError> {
     let mut file = fs::File::open("./r.0.0.mca")?;
     let mut byte_stream = Vec::<u8>::with_capacity(file.metadata().unwrap().len() as usize);
     file.read_to_end(&mut byte_stream)?;
-    let mut cursor = Cursor::new(&mut byte_stream[..]);
-    let mut region = Region::from_stream(&mut cursor)?;
+    let cursor = Cursor::new(byte_stream);
+    let mut region = Region::from_stream(cursor)?;
 
     let chunk = region.get_chunk(0, 0).unwrap();
     let mut player_file = fs::File::open("./132f1ee7-c4a2-48bc-808d-136271e4093f.dat")?;

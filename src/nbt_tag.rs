@@ -1,6 +1,6 @@
 use std::{any::Any, fmt::Debug, ops::Deref};
 
-use bytes::{Buf, Bytes};
+use bytes::{buf, Buf, Bytes};
 use cesu8::from_java_cesu8;
 use num_enum::TryFromPrimitive;
 use smol_str::SmolStr;
@@ -223,10 +223,8 @@ impl Debug for NBTTag {
 }
 pub fn get_nbt_string(stream: &mut dyn Buf) -> Result<SmolStr, SpiderEyeError> {
     let len = stream.get_i16() as usize;
-    let mut string_bytes = Vec::with_capacity(len);
-    for _ in 0..len {
-        string_bytes.push(stream.get_u8());
-    }
-    let string = from_java_cesu8(&string_bytes[..])?;
+    let a = stream.copy_to_bytes(len);
+
+    let string = from_java_cesu8(&a)?;
     Ok(SmolStr::from(string))
 }

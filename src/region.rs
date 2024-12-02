@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::io::{self, Cursor, Read, Seek};
 use std::{usize, vec};
 
@@ -16,18 +17,18 @@ pub(crate) const REGION_HEADER_SIZE: usize = 2 * SECTOR_SIZE;
 // The size of the header for a chunk which immediate proceeds the compressed chunk data
 pub(crate) const CHUNK_HEADER_SIZE: usize = 5;
 
-#[derive(Debug)]
-pub struct Region<S> {
+#[derive(Debug, Clone)]
+pub struct Region {
     pub x: i32,
     pub z: i32,
-    pub stream: S,
+    pub data: RefCell<Cursor<Vec<u8>>>,
     pub chunk_segments: [Option<FileSegment>; CHUNKS_PER_FILE],
 }
 
-impl<S: Default> Default for Region<S> {
+impl Default for Region {
     fn default() -> Self {
         Self {
-            stream: Default::default(),
+            data: Default::default(),
             chunk_segments: [None; 1024],
             x: 0,
             z: 0,
@@ -47,13 +48,10 @@ impl FileSegment {
     }
 }
 
-impl<S> Region<S>
-where
-    S: Read + Seek,
-{
-    pub fn from_stream(mut stream: S) -> Result<Self, SpiderEyeError> {
-        let mut region: Region<S> = Self {
-            stream: stream,
+impl Region {
+    pub fn from_stream(stream: Cursor<Vec<u8>>) -> Result<Self, SpiderEyeError> {
+        let mut region: Region = Self {
+            data: RefCell::new(stream),
             chunk_segments: [None; 1024],
             x: 0,
             z: 0,
@@ -67,11 +65,10 @@ where
 
         region.chunk_segments.into_iter().any(|f| {
             if let Some(_segment) = f {
-                let bytes = region.read_chunk_from_segment(_segment).unwrap();
-                let chunk = Chunk::from_data(&mut Cursor::new(bytes));
-                let data = ChunkData::from_compound(chunk.unwrap().data);
-                region.x = data.xpos >> 4;
-                region.z = data.zpos >> 4;
+                let bytes = region.read_chunk_from_segment(_segment);
+                let chunk = Chunk::from_slice(&bytes).unwrap();
+                region.x = chunk.xpos >> 4;
+                region.z = chunk.zpos >> 4;
                 true
             } else {
                 false
@@ -87,15 +84,13 @@ where
         z: usize,
     ) -> Result<Option<FileSegment>, SpiderEyeError> {
         let pos = Self::get_header_pos_in_stream(x, z);
-        println!("pos: {}", pos);
-        self.stream.seek(std::io::SeekFrom::Start(
+        self.data.borrow_mut().seek(std::io::SeekFrom::Start(
             Self::get_header_pos_in_stream(x, z) as u64,
         ))?;
         let mut buf: [u8; 4] = [0; 4];
-        self.stream.read_exact(&mut buf[..])?;
+        self.data.borrow_mut().read_exact(&mut buf[..])?;
         let offset: u32 = ((buf[0] as u32) << 16) | ((buf[1] as u32) << 8) | (buf[2] as u32);
         let sectors: u8 = buf[3];
-        println!("offest: {}, sectors: {}", offset, sectors);
 
         if offset == 0 || sectors == 0 {
             Ok(None)
@@ -113,53 +108,49 @@ where
             return None;
         }
         if let Some(segment) = self.get_chunk_segment(x, z) {
-            let data = self
-                .read_chunk_from_segment(segment)
-                .expect("Failed to read chunk. Likely invalid file");
-            let mut cursor = Cursor::new(data);
-            Some(Chunk::from_data(&mut cursor).expect("Failed to parse chunk data"))
+            let data = self.read_chunk_from_segment(segment);
+            Some(Chunk::from_slice(&data).expect("Failed to parse chunk data"))
         } else {
             None
         }
     }
 
-    pub fn read_chunk_from_segment(
-        &mut self,
-        segment: FileSegment,
-    ) -> Result<Vec<u8>, SpiderEyeError> {
-        let compression_data = self.get_compression_data(segment)?;
+    pub fn read_chunk_from_segment(&self, segment: FileSegment) -> Vec<u8> {
+        let compression_data = self.get_compression_data(segment).unwrap();
 
-        let mut take = (&mut self.stream).take(compression_data.compressed_len as u64);
+        let mut buf = vec![0u8; compression_data.compressed_len as usize];
+        self.data.borrow_mut().read_exact(&mut buf[..]).unwrap();
+        let mut cursor = Cursor::new(buf);
 
         match compression_data.scheme {
             CompressionScheme::Gzip => {
-                let mut writer = flate2::write::GzDecoder::new(vec![]);
-                io::copy(&mut take, &mut writer)?;
-                Ok(writer.finish()?)
+                let mut writer = flate2::write::GzDecoder::new(Vec::with_capacity(1000));
+                io::copy(&mut cursor, &mut writer).unwrap();
+                writer.finish().unwrap()
             }
             CompressionScheme::Zlib => {
-                let mut writer = flate2::write::ZlibDecoder::new(vec![]);
-                io::copy(&mut take, &mut writer)?;
-                Ok(writer.finish()?)
+                let mut writer = flate2::write::ZlibDecoder::new(Vec::with_capacity(1000));
+                io::copy(&mut cursor, &mut writer).unwrap();
+                writer.finish().unwrap()
             }
             CompressionScheme::Uncompressed => {
-                let mut writer = vec![];
-                io::copy(&mut take, &mut writer)?;
-                Ok(writer)
+                let mut writer = Vec::with_capacity(1000);
+                io::copy(&mut cursor, &mut writer).unwrap();
+                writer
             }
         }
     }
 
     pub fn get_compression_data(
-        &mut self,
+        &self,
         segment: FileSegment,
     ) -> Result<CompressionData, SpiderEyeError> {
-        self.stream.seek(std::io::SeekFrom::Start(
+        self.data.borrow_mut().seek(std::io::SeekFrom::Start(
             segment.offset as u64 * SECTOR_SIZE as u64,
         ))?;
 
         let mut buff: [u8; 5] = [0; 5];
-        self.stream.read_exact(&mut buff)?;
+        self.data.borrow_mut().read_exact(&mut buff)?;
 
         let compression_data = CompressionData::new(&buff)?;
 

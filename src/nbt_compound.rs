@@ -50,11 +50,13 @@ impl NBTCompound {
     pub fn add_tag(&mut self, name: SmolStr, tag: NBTTag) {
         self.children.push((name, tag).into());
     }
-    pub fn get_tag(&self, tag_name: &str) -> Option<NBTTag> {
-        self.children
-            .iter()
-            .find(|named_tag| named_tag.name == tag_name)
-            .map(|tag| tag.tag.clone())
+    pub fn get_tag(&self, tag_name: &str) -> Option<&NBTTag> {
+        for child in &self.children {
+            if child.name == tag_name {
+                return Some(&child.tag);
+            }
+        }
+        None
     }
 
     pub fn from_borrowed_stream(stream: &mut dyn Buf) -> Result<Self, SpiderEyeError> {
