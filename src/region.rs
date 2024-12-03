@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::fs::File;
 use std::io::{self, Cursor, Read, Seek};
 use std::sync::Arc;
 use std::{usize, vec};
@@ -24,19 +25,8 @@ pub(crate) const CHUNK_HEADER_SIZE: usize = 5;
 pub struct Region {
     pub x: i32,
     pub z: i32,
-    pub data: Arc<RefCell<Cursor<Vec<u8>>>>,
-    pub chunk_segments: [Option<FileSegment>; CHUNKS_PER_FILE],
-}
-
-impl Default for Region {
-    fn default() -> Self {
-        Self {
-            data: Default::default(),
-            chunk_segments: [None; 1024],
-            x: 0,
-            z: 0,
-        }
-    }
+    pub data: Bytes,
+    pub compresssed_chunks: [Option<Bytes>; CHUNKS_PER_FILE],
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -52,21 +42,25 @@ impl FileSegment {
 }
 
 impl Region {
-    pub fn from_stream(stream: Cursor<Vec<u8>>) -> Result<Self, SpiderEyeError> {
+    pub fn from_stream(stream: Vec<u8>) -> Result<Self, SpiderEyeError> {
+        let bytes = Bytes::from(stream);
+        const ARRAY_REPEAT_VALUE: Option<bytes::Bytes> = None;
         let mut region: Region = Self {
-            data: Arc::new(RefCell::new(stream)),
-            chunk_segments: [None; 1024],
+            data: bytes,
+            compresssed_chunks: [ARRAY_REPEAT_VALUE; 1024],
             x: 0,
             z: 0,
         };
+
+        let mut segments: [Option<FileSegment>; CHUNKS_PER_FILE] = [None; CHUNKS_PER_FILE];
         for x in 0..32 {
             for z in 0..32 {
                 let segment = region.read_chunk_segment(x, z)?;
-                region.chunk_segments[x * 32 + z] = segment;
+                segments[x * 32 + z] = segment;
             }
         }
 
-        region.chunk_segments.into_iter().any(|f| {
+        segments.into_iter().any(|f| {
             if let Some(_segment) = f {
                 let bytes = region.read_chunk_from_segment(_segment);
                 let chunk = Chunk::from_slice(bytes).unwrap();
@@ -103,7 +97,7 @@ impl Region {
     }
 
     pub fn get_chunk_segment(&self, x: usize, z: usize) -> Option<FileSegment> {
-        self.chunk_segments[x * 32 + z]
+        self.compresssed_chunks[x * 32 + z]
     }
 
     pub fn get_chunk(&mut self, x: usize, z: usize) -> Option<Chunk> {
