@@ -20,9 +20,12 @@ impl World {
         for dir in read_dir {
             let entry = dir.unwrap();
             let path = entry.path();
-            if path.is_file() && path.extension().unwrap() == "mca" {
+            if path.is_file()
+                && path.extension().unwrap() == "mca"
+                && path.metadata().unwrap().len() > 0
+            {
                 let file = fs::read(path).unwrap();
-                let region: Region = Region::from_stream(file).expect("error reading region file");
+                let region: Region = Region::from_bytes(file).expect("error reading region file");
                 temp.regions.insert((region.x, region.z), region);
             }
         }

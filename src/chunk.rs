@@ -18,7 +18,7 @@ pub struct Chunk {
 }
 
 impl Chunk {
-    pub fn from_slice(mut data: Bytes) -> Result<Self, SpiderEyeError> {
+    pub fn from_bytes(mut data: Bytes) -> Result<Self, SpiderEyeError> {
         let compound = NBTCompound::from_borrowed_stream(&mut data)?;
         let binding = compound.get_tag("").unwrap();
         let chunk = binding.get_compound();
@@ -101,8 +101,8 @@ impl<'a> ChunkData<'a> {
 pub struct ChunkSection<'a> {
     pub ypos: i8,
     pub block_states: BlockStates<'a>,
-    pub block_light: Vec<i8>,
-    pub sky_light: Vec<i8>,
+    pub block_light: Bytes,
+    pub sky_light: Bytes,
 }
 
 impl<'a> ChunkSection<'a> {
@@ -117,12 +117,12 @@ impl<'a> ChunkSection<'a> {
         let biomes = compound.get_tag("biomes").unwrap().get_compound();
 
         let block_light = block_light
-            .unwrap_or(&NBTTag::ByteArray(vec![]))
+            .unwrap_or(&NBTTag::ByteArray(Bytes::new()))
             .get_byte_array()
             .to_owned();
 
         let sky_light = sky_light
-            .unwrap_or(&NBTTag::ByteArray(vec![]))
+            .unwrap_or(&NBTTag::ByteArray(Bytes::new()))
             .get_byte_array()
             .to_owned();
 

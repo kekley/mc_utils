@@ -2,7 +2,11 @@ use bytes::{Buf, Bytes};
 use core::str;
 use num_enum::TryFromPrimitive;
 use smol_str::SmolStr;
-use std::{collections::HashMap, fmt::Debug, u16};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Debug,
+    u16,
+};
 
 use crate::{
     compression::{self, CompressionData},
@@ -13,6 +17,8 @@ use crate::{
 
 #[derive(Clone)]
 pub struct NBTCompound {
+    pub seen_strings: HashSet<SmolStr>,
+    pub string_tags: Vec<SmolStr>,
     pub children: HashMap<SmolStr, NBTTag>,
 }
 impl Debug for NBTCompound {
@@ -57,7 +63,9 @@ impl NBTCompound {
 
     pub fn from_borrowed_stream(stream: &mut Bytes) -> Result<Self, SpiderEyeError> {
         let mut tmp = Self {
-            children: HashMap::with_capacity(5),
+            children: HashMap::new(),
+            seen_strings: HashSet::new(),
+            string_tags: vec![],
         };
 
         while stream.has_remaining() {

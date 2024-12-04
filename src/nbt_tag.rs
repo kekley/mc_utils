@@ -18,7 +18,7 @@ pub enum NBTTag {
     Long(i64) = LONG_ID,
     Float(f32) = FLOAT_ID,
     Double(f64) = DOUBLE_ID,
-    ByteArray(Vec<i8>) = BYTE_ARRAY_ID,
+    ByteArray(Bytes) = BYTE_ARRAY_ID,
     String(Bytes) = STRING_ID,
     List(Vec<NBTTag>) = LIST_ID,
     Compound(NBTCompound) = COMPOUND_ID,
@@ -43,10 +43,8 @@ impl NBTTag {
             NBTId::DoubleId => Ok(NBTTag::Double(stream.get_f64())),
             NBTId::ByteArrayId => {
                 let len = stream.get_i32() as usize;
-                let mut data = Vec::with_capacity(len);
-                for _ in 0..len {
-                    data.push(stream.get_i8());
-                }
+                let data = stream.slice(0..len);
+                stream.advance(len);
                 Ok(NBTTag::ByteArray(data))
             }
             NBTId::StringId => Ok(NBTTag::String(get_nbt_string(stream)?)),
@@ -135,7 +133,7 @@ impl NBTTag {
         }
     }
     #[inline]
-    pub fn get_byte_array(&self) -> &Vec<i8> {
+    pub fn get_byte_array(&self) -> &Bytes {
         if let NBTTag::ByteArray(value) = self {
             value
         } else {
@@ -210,6 +208,7 @@ impl Debug for NBTTag {
 #[inline]
 pub fn get_nbt_string(stream: &mut Bytes) -> Result<Bytes, SpiderEyeError> {
     let len = stream.get_i16() as usize;
-    let bytes = stream.copy_to_bytes(len);
+    let bytes = stream.slice(0..len);
+    stream.advance(len);
     Ok(bytes)
 }

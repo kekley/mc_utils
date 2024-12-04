@@ -6,6 +6,7 @@ use crate::nbt_ids::NBTId;
 pub enum SpiderEyeError {
     DEFAULT,
     IO(std::io::Error),
+    InvalidFile(),
     InvalidOffset(isize, isize),
     UnknownCompression(u8),
     TryFromPrimitiveError(TryFromPrimitiveError<NBTId>),
@@ -61,6 +62,7 @@ impl std::fmt::Display for SpiderEyeError {
             SpiderEyeError::ListError(len) => {
                 f.write_fmt(format_args!("Error parsing list of len {len}"))
             }
+            SpiderEyeError::InvalidFile() => f.write_fmt(format_args!("invalid file maybeh")),
         }
     }
 }
