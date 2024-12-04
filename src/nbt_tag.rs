@@ -62,7 +62,7 @@ impl NBTTag {
                 }
                 Ok(NBTTag::List(list))
             }
-            NBTId::CompoundId => Ok(NBTTag::Compound(NBTCompound::from_borrowed_stream(stream)?)),
+            NBTId::CompoundId => Ok(NBTTag::Compound(NBTCompound::from_bytes(stream)?)),
             NBTId::IntArrayId => {
                 let len = stream.get_i32() as usize;
                 let mut array = Vec::with_capacity(len);

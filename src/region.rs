@@ -1,10 +1,13 @@
 use std::cell::RefCell;
 use std::fs::File;
 use std::io::{self, BufReader, Cursor, Read, Seek};
-use std::sync::Arc;
+use std::path::Path;
+use std::sync::{Arc, RwLock};
 use std::{usize, vec};
 
+use byteorder::ReadBytesExt;
 use bytes::{Buf, Bytes};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::chunk::Chunk;
 use crate::compression::{CompressionData, CompressionScheme};
@@ -20,12 +23,11 @@ pub(crate) const REGION_HEADER_SIZE: usize = 2 * SECTOR_SIZE;
 
 // The size of the header for a chunk which immediate proceeds the compressed chunk data
 pub(crate) const CHUNK_HEADER_SIZE: usize = 5;
-
-pub struct Region<'a> {
+#[derive(Debug)]
+pub struct Region {
     pub x: i32,
     pub z: i32,
-    pub data: BufReader<&'a mut dyn Read>,
-    pub compresssed_chunks: [Option<Bytes>; CHUNKS_PER_FILE],
+    pub file_path: String,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -43,88 +45,79 @@ impl FileSegment {
     }
 }
 
-impl<'a> Region<'a> {
-    pub fn from_stream(stream: &'a mut (dyn Read + Seek)) -> Result<Self, SpiderEyeError> {
-        let reader = BufReader::new(stream);
-        const ARRAY_REPEAT_VALUE: Option<bytes::Bytes> = None;
-        let data = Bytes::from(bytes);
+impl Region {
+    pub fn from_file(path: &str) -> Result<Self, SpiderEyeError> {
         let mut region: Region = Self {
-            data: reader,
-            compresssed_chunks: [ARRAY_REPEAT_VALUE; 1024],
+            file_path: path.to_string(),
             x: 0,
             z: 0,
         };
 
-        let segments: [Option<FileSegment>; CHUNKS_PER_FILE] = region.read_chunk_segments()?;
-
-        let compressed_chunks = segments
-            .iter()
-            .map(|opt| {
-                if let Some(segment) = opt {
-                    let compressed_chunk = region.get_compressed_chunk(segment);
-                    Some(compressed_chunk)
+        let a = (0..32).any(|z| {
+            (0..32).any(|x| {
+                if let Some(chunk) = region.get_chunk(x, z) {
+                    region.x = chunk.xpos >> 5;
+                    region.z = chunk.zpos >> 5;
+                    true
                 } else {
-                    None
+                    false
                 }
             })
-            .collect::<Vec<_>>();
-
-        region.compresssed_chunks = compressed_chunks
-            .try_into()
-            .expect("compressed chunks array of wrong size");
-        Ok(region)
-    }
-
-    fn get_compressed_chunk(&self, segment: &FileSegment) -> Bytes {
-        let offset = segment.sector_offset as usize * SECTOR_SIZE;
-
-        let len = segment.sectors as usize * SECTOR_SIZE;
-        let compressed_bytes = self.data.slice(offset..offset + len);
-
-        compressed_bytes
-    }
-
-    fn read_chunk_segments(&mut self) -> Result<[Option<FileSegment>; 1024], SpiderEyeError> {
-        let mut vec: Vec<Option<FileSegment>> = Vec::with_capacity(1024);
-
-        (0..32).for_each(|x| {
-            (0..32).for_each(|z| {
-                let offset = Self::get_segment_pos(x, z);
-                let segment_bytes = self
-                    .data
-                    .get((offset..offset + 4))
-                    .expect("ran out of bytes reading chunk segments???");
-                let offset: u32 = ((segment_bytes[0] as u32) << 16)
-                    | ((segment_bytes[1] as u32) << 8)
-                    | (segment_bytes[2] as u32);
-
-                let sectors: u8 = segment_bytes[3];
-
-                if offset == 0 || sectors == 0 {
-                    vec.push(None);
-                } else {
-                    vec.push(Some(FileSegment::new(offset, sectors)));
-                }
-            });
         });
 
-        vec.try_into().map_err(|_| SpiderEyeError::InvalidFile())
+        if a {
+            Ok(region)
+        } else {
+            Err(SpiderEyeError::InvalidFile())
+        }
     }
 
-    pub fn get_chunk(&self, x: usize, z: usize) -> Option<Chunk> {
+    pub fn get_compressed_chunk(&self, segment: &FileSegment) -> Vec<u8> {
+        let mut reader =
+            BufReader::new(File::open(&self.file_path).expect("not a valid file path"));
+        let offset = segment.sector_offset * SECTOR_SIZE as u32;
+        let len = segment.sectors as usize * SECTOR_SIZE;
+        let mut buf = vec![0u8; len];
+        let _ = reader.seek(io::SeekFrom::Start((offset).into()));
+        let _ = reader.read(&mut buf);
+
+        buf
+    }
+
+    fn read_chunk_segment(&self, x: u32, z: u32, reader: &mut BufReader<File>) -> FileSegment {
+        let offset = Self::get_segment_pos(x, z);
+        let _ = reader.seek(io::SeekFrom::Start(offset as u64));
+
+        let mut buf = [0u8; 4];
+        let _ = reader.read_exact(&mut buf);
+
+        let offset: u32 = ((buf[0] as u32) << 16) | ((buf[1] as u32) << 8) | (buf[2] as u32);
+
+        let sectors: u8 = buf[3];
+
+        FileSegment::new(offset, sectors)
+    }
+
+    pub fn get_chunk(&self, x: u32, z: u32) -> Option<Chunk> {
         if x > 32 || z > 32 {
             return None;
         }
-        if let Some(chunk_data) = &self.compresssed_chunks[x * 32 + z] {
-            let decompressed = Self::decompress_chunk(chunk_data);
-            let chunk = Chunk::from_bytes(decompressed).expect("Invalid chunk data");
-            Some(chunk)
-        } else {
-            None
+        let mut reader =
+            BufReader::new(File::open(&self.file_path).expect("not a valid file path"));
+
+        let segment = self.read_chunk_segment(x, z, &mut reader);
+
+        if segment.sector_offset == 0 || segment.sectors == 0 {
+            return None;
         }
+        let compressed_chunk = self.get_compressed_chunk(&segment);
+
+        let decompressed_chunk = Self::decompress_chunk(&compressed_chunk);
+
+        Some(Chunk::from_bytes(decompressed_chunk))
     }
 
-    pub fn decompress_chunk(data: &Bytes) -> Bytes {
+    fn decompress_chunk(data: &Vec<u8>) -> Vec<u8> {
         let compression_data = Self::get_compression_data(data).unwrap();
         let compressed_data = data
             .get(5..5 + compression_data.compressed_len as usize)
@@ -148,10 +141,10 @@ impl<'a> Region<'a> {
             }
         };
 
-        Bytes::from(res)
+        res
     }
 
-    fn get_compression_data(data: &Bytes) -> Result<CompressionData, SpiderEyeError> {
+    fn get_compression_data(data: &Vec<u8>) -> Result<CompressionData, SpiderEyeError> {
         let chunk_header = data
             .get((0..5))
             .expect("ran out of bytes getting compression data");
@@ -161,7 +154,7 @@ impl<'a> Region<'a> {
         Ok(compression_data)
     }
 
-    fn get_segment_pos(x: usize, z: usize) -> usize {
+    fn get_segment_pos(x: u32, z: u32) -> u32 {
         4 * ((x & 31) + ((z & 31) << 5))
     }
 }

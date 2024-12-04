@@ -7,15 +7,15 @@ use std::{
 
 use smol_str::SmolStr;
 
-use crate::{ChunkData, Region};
+use crate::{Chunk, ChunkData, Region};
 
-pub struct World<'a> {
-    pub regions: HashMap<(i32, i32), Region<'a>>,
+pub struct World {
+    pub regions: HashMap<(i32, i32), Region>,
     pub loaded_chunks: HashMap<(i32, i32), ChunkData>,
     pub global_palette: Vec<SmolStr>,
 }
 
-impl<'a> World<'a> {
+impl World {
     pub fn new(folder_path: &str) -> Self {
         let mut temp = Self {
             regions: HashMap::new(),
@@ -27,25 +27,38 @@ impl<'a> World<'a> {
             let entry = dir.unwrap();
             let path = entry.path();
             if path.is_file() && path.extension().unwrap() == "mca" {
-                let mut file = fs::File::open(path).unwrap();
-                let region: Region =
-                    Region::from_stream(&mut file).expect("error reading region file");
-                temp.regions.insert((region.x, region.z), region);
+                if let Ok(region) = Region::from_file(path.to_str().unwrap()) {
+                    temp.regions.insert((region.x, region.z), region);
+                }
             }
         }
 
         temp
     }
 
-    fn get_region(&'a self, x: i32, z: i32) -> Option<&Region> {
+    pub fn get_region(&self, x: i32, z: i32) -> Option<&Region> {
         self.regions.get(&(x, z))
     }
 
-    fn get_region_containing_chunk(&'a self, x: i32, z: i32) -> Option<&Region> {
+    pub fn get_chunk(&self, x: i32, z: i32) -> Option<Chunk> {
+        let opt = self.get_region_containing_chunk(x, z);
+        let local_x = (x.abs() % 32) as u32;
+        let local_z = (z.abs() % 32) as u32;
+        if let Some(region) = opt {
+            region.get_chunk(local_x, local_z)
+        } else {
+            None
+        }
+    }
+
+    fn get_region_containing_chunk(&self, x: i32, z: i32) -> Option<&Region> {
         self.get_region(x >> 5, z >> 5)
     }
 
-    fn get_region_containing_block(&'a self, x: i64, z: i64) -> Option<&Region> {
+    fn get_compressed_chunk(&self, x: i32, z: i32) -> Vec<u8> {
+        todo!()
+    }
+    fn get_region_containing_block(&self, x: i64, z: i64) -> Option<&Region> {
         self.get_region_containing_chunk((x >> 4) as i32, (z >> 4) as i32)
     }
 }

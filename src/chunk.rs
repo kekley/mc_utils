@@ -4,7 +4,7 @@ use std::{borrow::Borrow, collections::HashSet, io::Cursor};
 use bytes::{Buf, Bytes};
 use smol_str::SmolStr;
 
-use crate::{nbt_compound::NBTCompound, spider_eye_error::SpiderEyeError, NBTTag};
+use crate::{nbt_compound::NBTCompound, NBTTag};
 
 #[derive(Debug)]
 pub struct Chunk {
@@ -18,20 +18,24 @@ pub struct Chunk {
 }
 
 impl Chunk {
-    pub fn from_bytes(mut data: Bytes) -> Result<Self, SpiderEyeError> {
-        let compound = NBTCompound::from_borrowed_stream(&mut data)?;
-        let binding = compound.get_tag("").unwrap();
+    pub fn from_bytes(data: Vec<u8>) -> Self {
+        let mut bytes = Bytes::from(data);
+        let compound = NBTCompound::from_bytes(&mut bytes).expect("Invalid NBT ");
+        let binding = compound.get_tag("").expect("Not a Chunk NBT");
         let chunk = binding.get_compound();
-        let data_version = chunk.get_tag("DataVersion").unwrap().get_int();
-        let xpos = chunk.get_tag("xPos").unwrap().get_int();
-        let zpos = chunk.get_tag("zPos").unwrap().get_int();
-        let ypos = chunk.get_tag("yPos").unwrap().get_int();
+        let data_version = chunk
+            .get_tag("DataVersion")
+            .expect("Not a Chunk NBT")
+            .get_int();
+        let xpos = chunk.get_tag("xPos").expect("Not a Chunk NBT").get_int();
+        let zpos = chunk.get_tag("zPos").expect("Not a Chunk NBT").get_int();
+        let ypos = chunk.get_tag("yPos").expect("Not a Chunk NBT").get_int();
 
         let status =
             SmolStr::from(str::from_utf8(chunk.get_tag("Status").unwrap().get_string()).unwrap());
         let last_update = chunk.get_tag("LastUpdate").unwrap().get_long();
 
-        Ok(Self {
+        Self {
             nbt: compound,
             data_version,
             xpos,
@@ -39,7 +43,7 @@ impl Chunk {
             ypos,
             status: status,
             last_update,
-        })
+        }
     }
     pub fn get_data(&self) -> ChunkData {
         ChunkData::from_compound(&self.nbt)
@@ -74,7 +78,8 @@ impl ChunkData {
             .find(|f| f.ypos == section_y as i8)
             .unwrap();
         // Get the block from the section's block states
-        section.data.get_block(x as u16, local_y as u16, z as u16)
+        //        section.data.get_block(x as u16, local_y as u16, z as u16)
+        todo!()
     }
     pub fn from_compound(chunk: &NBTCompound) -> Self {
         let sections_tag = chunk.get_tag("sections").unwrap();
@@ -134,12 +139,7 @@ impl ChunkSection {
             .get_byte_array()
             .to_owned();
 
-        ChunkSection {
-            ypos: y,
-            block_states: block_states,
-            block_light: block_light,
-            sky_light: sky_light,
-        }
+        todo!()
     }
 
     #[inline]
@@ -160,12 +160,17 @@ impl ChunkSection {
     }
 
     pub fn get_block(&self, x: u16, y: u16, z: u16) -> u32 {
+        todo!()
+    }
+
+    fn pp(data: &[i64], x: u16, y: u16, z: u16) -> u32 {
+        let bits_per_block = 4;
         let idx = Self::extract_index(
-            self.data.as_slice(),
+            data,
             (256 * y + 16 * z + x) as usize,
-            self.bits_per_block as usize,
+            bits_per_block as usize,
         );
 
-        self.data[idx];
+        data[idx].try_into().unwrap()
     }
 }

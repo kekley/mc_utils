@@ -61,7 +61,7 @@ impl NBTCompound {
         self.children.get(tag_name)
     }
 
-    pub fn from_borrowed_stream(stream: &mut Bytes) -> Result<Self, SpiderEyeError> {
+    pub fn from_bytes(stream: &mut Bytes) -> Result<Self, SpiderEyeError> {
         let mut tmp = Self {
             children: HashMap::new(),
             seen_strings: HashSet::new(),
@@ -83,13 +83,5 @@ impl NBTCompound {
             }
         }
         Ok(tmp)
-    }
-
-    pub fn from_compressed_stream(
-        stream: &mut dyn Buf,
-        compression_data: CompressionData,
-    ) -> Result<Self, SpiderEyeError> {
-        let mut decompressed = compression::decompress_bytes(stream, compression_data)?;
-        Ok(Self::from_borrowed_stream(&mut decompressed)?)
     }
 }
