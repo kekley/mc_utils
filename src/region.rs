@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 use std::fs::File;
-use std::io::{self, Cursor, Read, Seek};
+use std::io::{self, BufReader, Cursor, Read, Seek};
 use std::sync::Arc;
 use std::{usize, vec};
 
@@ -21,11 +21,10 @@ pub(crate) const REGION_HEADER_SIZE: usize = 2 * SECTOR_SIZE;
 // The size of the header for a chunk which immediate proceeds the compressed chunk data
 pub(crate) const CHUNK_HEADER_SIZE: usize = 5;
 
-#[derive(Debug, Clone)]
-pub struct Region {
+pub struct Region<'a> {
     pub x: i32,
     pub z: i32,
-    pub data: Bytes,
+    pub data: BufReader<&'a mut dyn Read>,
     pub compresssed_chunks: [Option<Bytes>; CHUNKS_PER_FILE],
 }
 
@@ -44,12 +43,13 @@ impl FileSegment {
     }
 }
 
-impl Region {
-    pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, SpiderEyeError> {
+impl<'a> Region<'a> {
+    pub fn from_stream(stream: &'a mut (dyn Read + Seek)) -> Result<Self, SpiderEyeError> {
+        let reader = BufReader::new(stream);
         const ARRAY_REPEAT_VALUE: Option<bytes::Bytes> = None;
         let data = Bytes::from(bytes);
         let mut region: Region = Self {
-            data: data,
+            data: reader,
             compresssed_chunks: [ARRAY_REPEAT_VALUE; 1024],
             x: 0,
             z: 0,
