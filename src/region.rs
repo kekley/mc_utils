@@ -1,18 +1,14 @@
-use std::cell::RefCell;
 use std::fs::File;
 use std::io::{self, BufReader, Cursor, Read, Seek};
-use std::path::Path;
 use std::sync::{Arc, RwLock};
 use std::{usize, vec};
 
-use byteorder::ReadBytesExt;
-use bytes::{Buf, Bytes};
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use indexmap::{IndexMap, IndexSet};
 
 use crate::chunk::Chunk;
 use crate::compression::{CompressionData, CompressionScheme};
 use crate::spider_eye_error::SpiderEyeError;
-use crate::ChunkData;
+use crate::RegionCoords;
 
 //offsets are for 4KiB Sectors
 pub(crate) const CHUNKS_PER_FILE: usize = 1024;
@@ -23,10 +19,10 @@ pub(crate) const REGION_HEADER_SIZE: usize = 2 * SECTOR_SIZE;
 
 // The size of the header for a chunk which immediate proceeds the compressed chunk data
 pub(crate) const CHUNK_HEADER_SIZE: usize = 5;
+
 #[derive(Debug)]
 pub struct Region {
-    pub x: i32,
-    pub z: i32,
+    pub coords: RegionCoords,
     pub file_path: String,
 }
 
@@ -46,28 +42,35 @@ impl FileSegment {
 }
 
 impl Region {
-    pub fn from_file(path: &str) -> Result<Self, SpiderEyeError> {
+    pub fn from_file(
+        path: String,
+        palette: Arc<RwLock<IndexMap<String, ()>>>,
+    ) -> Result<Self, SpiderEyeError> {
         let mut region: Region = Self {
             file_path: path.to_string(),
-            x: 0,
-            z: 0,
+            coords: RegionCoords::default(),
         };
 
-        let a = (0..32).any(|z| {
-            (0..32).any(|x| {
-                if let Some(chunk) = region.get_chunk(x, z) {
-                    region.x = chunk.xpos >> 5;
-                    region.z = chunk.zpos >> 5;
-                    true
-                } else {
-                    false
+        let mut found = false;
+        for z in 0..32 {
+            for x in 0..32 {
+                //println!("Checking chunk at x: {}, z: {}", x, z);
+                if let Some(chunk) = region.get_chunk(x, z, palette.clone()) {
+                    region.coords = chunk.coords.into();
+                    found = true;
+                    break;
                 }
-            })
-        });
+            }
+            if found {
+                break;
+            }
+        }
 
-        if a {
+        if found {
+            //println!("Region found: x = {}, z = {}", region.x, region.z);
             Ok(region)
         } else {
+            //println!("Region not found, returning error");
             Err(SpiderEyeError::InvalidFile())
         }
     }
@@ -98,7 +101,12 @@ impl Region {
         FileSegment::new(offset, sectors)
     }
 
-    pub fn get_chunk(&self, x: u32, z: u32) -> Option<Chunk> {
+    pub fn get_chunk(
+        &self,
+        x: u32,
+        z: u32,
+        palette: Arc<RwLock<IndexMap<String, ()>>>,
+    ) -> Option<Chunk> {
         if x > 32 || z > 32 {
             return None;
         }
@@ -114,7 +122,7 @@ impl Region {
 
         let decompressed_chunk = Self::decompress_chunk(&compressed_chunk);
 
-        Some(Chunk::from_bytes(decompressed_chunk))
+        Some(Chunk::from_bytes(decompressed_chunk, palette))
     }
 
     fn decompress_chunk(data: &Vec<u8>) -> Vec<u8> {

@@ -1,64 +1,140 @@
 use std::{
     collections::HashMap,
     fs,
-    io::{Cursor, Read, Seek},
-    path::Path,
+    sync::{Arc, RwLock},
 };
 
-use smol_str::SmolStr;
+use indexmap::IndexMap;
 
-use crate::{Chunk, ChunkData, Region};
+use crate::{Chunk, Region};
+#[derive(Debug, Default, Hash, PartialEq, Eq, Clone, Copy)]
+pub struct WorldCoords {
+    pub x: i64,
+    pub y: i64,
+    pub z: i64,
+}
+#[derive(Debug, Default, Hash, PartialEq, Eq, Clone, Copy)]
 
+pub struct ChunkCoords {
+    pub x: i64,
+    pub z: i64,
+}
+
+impl ChunkCoords {
+    pub fn new(x: i64, z: i64) -> Self {
+        Self { x: x, z: z }
+    }
+}
+#[derive(Debug, Default, Hash, PartialEq, Eq, Clone, Copy)]
+
+pub struct RegionCoords {
+    pub x: i64,
+    pub z: i64,
+}
+
+impl From<ChunkCoords> for RegionCoords {
+    fn from(value: ChunkCoords) -> Self {
+        Self {
+            x: value.x >> 5,
+            z: value.z >> 5,
+        }
+    }
+}
+
+impl From<WorldCoords> for RegionCoords {
+    fn from(value: WorldCoords) -> Self {
+        Self {
+            x: value.x >> 9,
+            z: value.z >> 9,
+        }
+    }
+}
+
+impl From<WorldCoords> for ChunkCoords {
+    fn from(value: WorldCoords) -> Self {
+        Self {
+            x: value.x >> 4,
+            z: value.z >> 4,
+        }
+    }
+}
+
+impl From<ChunkCoords> for WorldCoords {
+    fn from(value: ChunkCoords) -> Self {
+        Self {
+            x: 16 * value.x,
+            y: 0,
+            z: 16 * value.z,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct World {
-    pub regions: HashMap<(i32, i32), Region>,
-    pub loaded_chunks: HashMap<(i32, i32), ChunkData>,
-    pub global_palette: Vec<SmolStr>,
+    pub regions: HashMap<RegionCoords, Region>,
+    pub loaded_chunks: HashMap<ChunkCoords, Chunk>,
+    pub global_palette: Arc<RwLock<IndexMap<String, ()>>>,
 }
 
 impl World {
     pub fn new(folder_path: &str) -> Self {
+        let mut palette = IndexMap::with_capacity(1);
+        palette.insert_full("minecraft_air".to_string(), ());
         let mut temp = Self {
             regions: HashMap::new(),
             loaded_chunks: HashMap::new(),
-            global_palette: vec![],
+            global_palette: Arc::new(RwLock::new(palette)),
         };
         let read_dir = fs::read_dir(folder_path).expect("could not find folder");
         for dir in read_dir {
             let entry = dir.unwrap();
+
             let path = entry.path();
             if path.is_file() && path.extension().unwrap() == "mca" {
-                if let Ok(region) = Region::from_file(path.to_str().unwrap()) {
-                    temp.regions.insert((region.x, region.z), region);
+                if let Ok(region) = Region::from_file(
+                    path.to_str().unwrap().to_owned(),
+                    temp.global_palette.clone(),
+                ) {
+                    temp.regions.insert(region.coords, region);
                 }
             }
         }
-
         temp
     }
 
-    pub fn get_region(&self, x: i32, z: i32) -> Option<&Region> {
-        self.regions.get(&(x, z))
+    pub fn get_region(&self, region_coords: RegionCoords) -> Option<&Region> {
+        self.regions.get(&region_coords)
     }
 
-    pub fn get_chunk(&self, x: i32, z: i32) -> Option<Chunk> {
-        let opt = self.get_region_containing_chunk(x, z);
-        let local_x = (x.abs() % 32) as u32;
-        let local_z = (z.abs() % 32) as u32;
+    pub fn get_chunk(&self, chunk_coords: ChunkCoords) -> Option<Chunk> {
+        let opt = self.get_region(chunk_coords.into());
+        let local_x = (chunk_coords.x.abs() % 32) as u32;
+        let local_z = (chunk_coords.z.abs() % 32) as u32;
+
         if let Some(region) = opt {
-            region.get_chunk(local_x, local_z)
+            region.get_chunk(local_x, local_z, self.global_palette.clone())
         } else {
             None
         }
     }
 
-    fn get_region_containing_chunk(&self, x: i32, z: i32) -> Option<&Region> {
-        self.get_region(x >> 5, z >> 5)
-    }
-
     fn get_compressed_chunk(&self, x: i32, z: i32) -> Vec<u8> {
         todo!()
     }
-    fn get_region_containing_block(&self, x: i64, z: i64) -> Option<&Region> {
-        self.get_region_containing_chunk((x >> 4) as i32, (z >> 4) as i32)
+
+    pub fn get_block(&self, world_coords: WorldCoords) -> u32 {
+        match self.get_chunk(world_coords.into()) {
+            Some(chunk) => {
+                let local_block_x: i16 = (world_coords.x.abs() % 16) as i16;
+                let local_block_z: i16 = (world_coords.z.abs() % 16) as i16;
+                let block = chunk.get_block(
+                    local_block_x.into(),
+                    world_coords.y as i16,
+                    local_block_z.into(),
+                );
+                block
+            }
+            None => 0,
+        }
     }
 }

@@ -1,24 +1,25 @@
 use core::str;
-use std::{borrow::Borrow, collections::HashSet, io::Cursor};
+use std::{
+    sync::{Arc, RwLock},
+    u32,
+};
 
-use bytes::{Buf, Bytes};
+use bytes::Bytes;
+use indexmap::IndexMap;
 use smol_str::SmolStr;
 
-use crate::{nbt_compound::NBTCompound, NBTTag};
+use crate::{nbt_compound::NBTCompound, ChunkCoords, NBTTag};
 
 #[derive(Debug)]
 pub struct Chunk {
     data_version: i32,
-    pub xpos: i32,
-    pub zpos: i32,
-    pub ypos: i32,
-    status: SmolStr,
-    last_update: i64,
-    nbt: NBTCompound,
+    pub coords: ChunkCoords,
+    pub status: SmolStr,
+    pub sections: Vec<ChunkSection>,
 }
 
 impl Chunk {
-    pub fn from_bytes(data: Vec<u8>) -> Self {
+    pub fn from_bytes(data: Vec<u8>, palette: Arc<RwLock<IndexMap<String, ()>>>) -> Self {
         let mut bytes = Bytes::from(data);
         let compound = NBTCompound::from_bytes(&mut bytes).expect("Invalid NBT ");
         let binding = compound.get_tag("").expect("Not a Chunk NBT");
@@ -29,74 +30,52 @@ impl Chunk {
             .get_int();
         let xpos = chunk.get_tag("xPos").expect("Not a Chunk NBT").get_int();
         let zpos = chunk.get_tag("zPos").expect("Not a Chunk NBT").get_int();
-        let ypos = chunk.get_tag("yPos").expect("Not a Chunk NBT").get_int();
 
         let status =
             SmolStr::from(str::from_utf8(chunk.get_tag("Status").unwrap().get_string()).unwrap());
-        let last_update = chunk.get_tag("LastUpdate").unwrap().get_long();
+
+        let sections = chunk.get_tag("sections").unwrap().get_list();
+
+        let section_array: Vec<ChunkSection> = sections
+            .iter()
+            .filter_map(|section| {
+                let section_compound = section.get_compound();
+                let section = ChunkSection::from_compound(&section_compound, palette.clone());
+                if section.ypos >= -4 {
+                    Some(section)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        //        section_array.iter().for_each(|f| println!("{}", f.ypos));
+        let coords = ChunkCoords::new(xpos.into(), zpos.into());
 
         Self {
-            nbt: compound,
+            coords,
             data_version,
-            xpos,
-            zpos,
-            ypos,
             status: status,
-            last_update,
+            sections: section_array,
         }
     }
-    pub fn get_data(&self) -> ChunkData {
-        ChunkData::from_compound(&self.nbt)
-    }
-}
-
-#[derive(Debug)]
-pub struct ChunkData {
-    pub sections: [ChunkSection; 24],
-}
-
-impl Default for ChunkData {
-    fn default() -> Self {
-        Self {
-            sections: Default::default(),
-        }
-    }
-}
-
-impl ChunkData {
     pub fn get_block(&self, x: i16, y: i16, z: i16) -> u32 {
-        // Calculate the local y coordinate within the section
         let local_y = match y < 0 {
             true => 15 - (y.abs() % 16),
             false => y % 16,
         };
-        let section_y = (y as f32 / 16f32).floor();
-        // Retrieve the section
-        let section = &self
-            .sections
-            .iter()
-            .find(|f| f.ypos == section_y as i8)
-            .unwrap();
-        // Get the block from the section's block states
-        //        section.data.get_block(x as u16, local_y as u16, z as u16)
-        todo!()
+        let section_index = (y as f32 / 16f32).floor() as i16 + 4;
+
+        self.sections
+            .get(section_index as usize)
+            .unwrap()
+            .get_block(x, local_y, z)
     }
-    pub fn from_compound(chunk: &NBTCompound) -> Self {
-        let sections_tag = chunk.get_tag("sections").unwrap();
+}
 
-        let list = sections_tag.get_list();
-        let mut sections: Vec<ChunkSection> = vec![];
-        list.iter().for_each(|section| {
-            let compound = section.get_compound();
-            if compound.get_tag("Y").unwrap().get_byte() == -5 {
-            } else {
-                sections.push(ChunkSection::from_compound(&compound));
-            }
-        });
-
-        Self {
-            sections: sections.try_into().unwrap(),
-        }
+impl ChunkSection {
+    pub fn get_block(&self, x: i16, y: i16, z: i16) -> u32 {
+        *self.data.get((256 * y + 16 * z + x) as usize).unwrap()
     }
 }
 
@@ -104,8 +83,6 @@ impl ChunkData {
 pub struct ChunkSection {
     pub ypos: i8,
     pub data: [u32; 4096],
-    pub block_light: [i8; 4096],
-    pub sky_light: [i8; 4096],
 }
 
 impl Default for ChunkSection {
@@ -113,17 +90,23 @@ impl Default for ChunkSection {
         Self {
             ypos: 0,
             data: [0u32; 4096],
-            block_light: [0i8; 4096],
-            sky_light: [0i8; 4096],
         }
     }
 }
 
 impl ChunkSection {
-    pub fn from_compound(compound: &NBTCompound) -> Self {
+    pub fn from_compound(
+        compound: &NBTCompound,
+        palette: Arc<RwLock<IndexMap<String, ()>>>,
+    ) -> Self {
         let y = compound.get_tag("Y").unwrap().get_byte();
-        let binding = compound.get_tag("block_states").unwrap();
-        let block_states_compound = binding.get_compound();
+        if y < -4 || y > 19 {
+            return Self {
+                ypos: y,
+                data: [0u32; 4096],
+            };
+        }
+        let block_states_compound = compound.get_tag("block_states").unwrap().get_compound();
         let block_light = compound.get_tag("BlockLight");
         let sky_light = compound.get_tag("SkyLight");
 
@@ -139,11 +122,68 @@ impl ChunkSection {
             .get_byte_array()
             .to_owned();
 
-        todo!()
+        let strings: Vec<&Bytes> = block_states_compound
+            .get_tag("palette")
+            .unwrap()
+            .get_list()
+            .iter()
+            .map(|f| {
+                let block = f.get_compound();
+
+                block.get_tag("Name").unwrap().get_string()
+            })
+            .collect();
+
+        let read = palette.read().unwrap();
+        let mut missing_strs: Vec<String> = Vec::new();
+        strings.iter().for_each(|f| {
+            if !read.contains_key(str::from_utf8(f).unwrap()) {
+                missing_strs.push(str::from_utf8(f).unwrap().to_string());
+            }
+        });
+        drop(read);
+
+        if missing_strs.len() > 0 {
+            let mut write = palette.write().unwrap();
+            for str in missing_strs {
+                write.insert_full(str, ());
+            }
+            drop(write);
+        }
+
+        let data = if strings.len() == 1 {
+            &vec![]
+        } else {
+            block_states_compound
+                .get_tag("data")
+                .unwrap()
+                .get_long_array()
+        };
+
+        let bit_size = (f32::log2(strings.len() as f32 - 1.0)).floor() + 1.0;
+        //println!("bit size: {}", bit_size);
+        let mut temp: [u32; 4096] = std::array::from_fn(|i| {
+            let ind = Self::extract_index(&data[..], i as u32, bit_size as u32);
+            ind
+        });
+        let read = palette.read().unwrap();
+        temp.iter_mut().for_each(|i| {
+            *i = read
+                .get_index_of(str::from_utf8(strings[*i as usize]).unwrap())
+                .unwrap() as u32;
+        });
+        drop(read);
+        Self {
+            ypos: y,
+            data: temp,
+        }
     }
 
     #[inline]
-    fn extract_index(packed_array: &[i64], index: usize, bit_size: usize) -> usize {
+    fn extract_index(packed_array: &[i64], index: u32, bit_size: u32) -> u32 {
+        if packed_array.len() == 0 {
+            return 0;
+        }
         let bits_per_index = std::cmp::max(bit_size, 4); // Minimum size of 4 bits
         let indices_per_element = 64 / bits_per_index; // How many indices fit into one 64-bit integer
 
@@ -156,21 +196,13 @@ impl ChunkSection {
 
         // Extract the relevant bits
         let mask = (1 << bits_per_index) - 1;
-        ((packed_array[element_index] >> bit_position) & mask) as usize
-    }
-
-    pub fn get_block(&self, x: u16, y: u16, z: u16) -> u32 {
-        todo!()
+        ((packed_array[element_index as usize] >> bit_position) & mask) as u32
     }
 
     fn pp(data: &[i64], x: u16, y: u16, z: u16) -> u32 {
         let bits_per_block = 4;
-        let idx = Self::extract_index(
-            data,
-            (256 * y + 16 * z + x) as usize,
-            bits_per_block as usize,
-        );
+        let idx = Self::extract_index(data, (256 * y + 16 * z + x).into(), bits_per_block);
 
-        data[idx].try_into().unwrap()
+        data[idx as usize].try_into().unwrap()
     }
 }
