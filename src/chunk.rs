@@ -35,7 +35,10 @@ impl Chunk {
             SmolStr::from(str::from_utf8(chunk.get_tag("Status").unwrap().get_string()).unwrap());
 
         let sections = chunk.get_tag("sections").unwrap().get_list();
-
+        println!("x:{} z:{}", xpos, zpos);
+        if xpos == -51 && zpos == 31 {
+            println!("loool");
+        }
         let section_array: Vec<ChunkSection> = sections
             .iter()
             .filter_map(|section| {
@@ -64,10 +67,12 @@ impl Chunk {
             true => 15 - (y.abs() % 16),
             false => y % 16,
         };
-        let section_index = (y as f32 / 16f32).floor() as i16 + 4;
+
+        let section_index = (y as f32 / 16f32).floor() as i16;
 
         self.sections
-            .get(section_index as usize)
+            .iter()
+            .find(|f| f.ypos == section_index.try_into().unwrap())
             .unwrap()
             .get_block(x, local_y, z)
     }
@@ -75,7 +80,9 @@ impl Chunk {
 
 impl ChunkSection {
     pub fn get_block(&self, x: i16, y: i16, z: i16) -> u32 {
-        *self.data.get((256 * y + 16 * z + x) as usize).unwrap()
+        let num = *self.data.get((256 * y + 16 * z + x) as usize).unwrap();
+
+        num
     }
 }
 

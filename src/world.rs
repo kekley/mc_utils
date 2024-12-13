@@ -79,7 +79,7 @@ pub struct World {
 impl World {
     pub fn new(folder_path: &str) -> Self {
         let mut palette = IndexMap::with_capacity(1);
-        palette.insert_full("minecraft_air".to_string(), ());
+        palette.insert_full("minecraft:air".to_string(), ());
         let mut temp = Self {
             regions: HashMap::new(),
             loaded_chunks: HashMap::new(),
@@ -105,31 +105,44 @@ impl World {
     pub fn get_region(&self, region_coords: RegionCoords) -> Option<&Region> {
         self.regions.get(&region_coords)
     }
-
-    pub fn get_chunk(&self, chunk_coords: ChunkCoords) -> Option<Chunk> {
-        let opt = self.get_region(chunk_coords.into());
-        let local_x = (chunk_coords.x.abs() % 32) as u32;
-        let local_z = (chunk_coords.z.abs() % 32) as u32;
-
-        if let Some(region) = opt {
-            region.get_chunk(local_x, local_z, self.global_palette.clone())
+    fn modulo(a: i64, b: i64) -> i64 {
+        let r = a % b;
+        if r < 0 {
+            r + b
         } else {
-            None
+            r
         }
+    }
+
+    pub fn get_chunk(&mut self, chunk_coords: ChunkCoords) -> Option<&Chunk> {
+        if !self.loaded_chunks.contains_key(&chunk_coords) {
+            let opt = self.get_region(chunk_coords.into());
+            let local_x = Self::modulo(chunk_coords.x, 32).abs() as u32;
+            let local_z = Self::modulo(chunk_coords.z, 32).abs() as u32;
+
+            if let Some(region) = opt {
+                let chunk = region.get_chunk(local_x, local_z, self.global_palette.clone());
+
+                if let Some(chunk) = chunk {
+                    self.loaded_chunks.insert(chunk_coords, chunk);
+                }
+            }
+        }
+        return self.loaded_chunks.get(&chunk_coords);
     }
 
     fn get_compressed_chunk(&self, x: i32, z: i32) -> Vec<u8> {
         todo!()
     }
 
-    pub fn get_block(&self, world_coords: WorldCoords) -> u32 {
+    pub fn get_block(&mut self, world_coords: WorldCoords) -> u32 {
         match self.get_chunk(world_coords.into()) {
             Some(chunk) => {
-                let local_block_x: i16 = (world_coords.x.abs() % 16) as i16;
-                let local_block_z: i16 = (world_coords.z.abs() % 16) as i16;
+                let local_block_x: i16 = Self::modulo(world_coords.x, 16) as i16;
+                let local_block_z: i16 = Self::modulo(world_coords.z, 16) as i16;
                 let block = chunk.get_block(
                     local_block_x.into(),
-                    world_coords.y as i16,
+                    world_coords.y.try_into().unwrap(),
                     local_block_z.into(),
                 );
                 block

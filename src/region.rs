@@ -110,6 +110,7 @@ impl Region {
         if x > 32 || z > 32 {
             return None;
         }
+        
         let mut reader =
             BufReader::new(File::open(&self.file_path).expect("not a valid file path"));
 
