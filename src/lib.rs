@@ -1,3 +1,4 @@
+mod block_models;
 mod chunk;
 mod compression;
 mod nbt_compound;

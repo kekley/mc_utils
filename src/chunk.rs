@@ -35,10 +35,7 @@ impl Chunk {
             SmolStr::from(str::from_utf8(chunk.get_tag("Status").unwrap().get_string()).unwrap());
 
         let sections = chunk.get_tag("sections").unwrap().get_list();
-        println!("x:{} z:{}", xpos, zpos);
-        if xpos == -51 && zpos == 31 {
-            println!("loool");
-        }
+
         let section_array: Vec<ChunkSection> = sections
             .iter()
             .filter_map(|section| {
