@@ -65,11 +65,11 @@ impl Chunk {
             false => y % 16,
         };
 
-        let section_index = (y as f32 / 16f32).floor() as i16;
+        let section_y = (y as f32 / 16f32).floor() as i16;
 
         self.sections
             .iter()
-            .find(|f| f.ypos == section_index.try_into().unwrap())
+            .find(|f| f.ypos == section_y as i8)
             .unwrap()
             .get_block(x, local_y, z)
     }
