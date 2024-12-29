@@ -2,9 +2,16 @@ use std::fs;
 
 use serde_json::Value;
 
-pub struct BlockModel {
-    pp: f32,
+enum Faces {
+    Up,
+    Down,
+    North,
+    South,
+    East,
+    West,
 }
+
+pub struct BlockModel {}
 
 impl BlockModel {
     pub fn from_json(path: &str) -> Self {
