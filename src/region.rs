@@ -110,7 +110,7 @@ impl Region {
         if x > 32 || z > 32 {
             return None;
         }
-        
+
         let mut reader =
             BufReader::new(File::open(&self.file_path).expect("not a valid file path"));
 
@@ -151,6 +151,19 @@ impl Region {
         };
 
         res
+    }
+
+    pub fn get_all_chunks(&self, palette: Arc<RwLock<IndexMap<String, ()>>>) -> Vec<Chunk> {
+        let mut chunks = vec![];
+        (0..32).for_each(|z| {
+            (0..32).for_each(|x| {
+                let opt = self.get_chunk(x, z, palette.clone());
+                if opt.is_some() {
+                    chunks.push(opt.unwrap());
+                }
+            });
+        });
+        chunks
     }
 
     fn get_compression_data(data: &Vec<u8>) -> Result<CompressionData, SpiderEyeError> {

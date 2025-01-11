@@ -4,9 +4,10 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use concurrent_lru::sharded::LruCache;
 use indexmap::IndexMap;
 
-use crate::{Chunk, Region};
+use crate::{chunk, Chunk, Region};
 #[derive(Debug, Default, Hash, PartialEq, Eq, Clone, Copy)]
 pub struct WorldCoords {
     pub x: i64,
@@ -72,17 +73,18 @@ impl From<ChunkCoords> for WorldCoords {
 #[derive(Debug)]
 pub struct World {
     pub regions: HashMap<RegionCoords, Region>,
-    pub loaded_chunks: HashMap<ChunkCoords, Chunk>,
+    pub cached_chunks: LruCache<ChunkCoords, Arc<Chunk>>,
     pub global_palette: Arc<RwLock<IndexMap<String, ()>>>,
 }
 
 impl World {
     pub fn new(folder_path: &str) -> Self {
         let mut palette = IndexMap::with_capacity(1);
+
         palette.insert_full("minecraft:air".to_string(), ());
         let mut temp = Self {
             regions: HashMap::new(),
-            loaded_chunks: HashMap::new(),
+            cached_chunks: LruCache::new(16.try_into().unwrap()).into(),
             global_palette: Arc::new(RwLock::new(palette)),
         };
         let read_dir = fs::read_dir(folder_path).expect("could not find folder");
@@ -114,40 +116,40 @@ impl World {
         }
     }
 
-    pub fn get_chunk(&mut self, chunk_coords: ChunkCoords) -> Option<&Chunk> {
-        if !self.loaded_chunks.contains_key(&chunk_coords) {
+    pub fn get_chunk_cached(&self, chunk_coords: ChunkCoords) -> Option<Arc<Chunk>> {
+        if self.cached_chunks.get(chunk_coords).is_some() {
+            let handle = self.cached_chunks.get(chunk_coords).unwrap();
+            return Some(handle.value().clone());
+        } else {
             let opt = self.get_region(chunk_coords.into());
             let local_x = Self::modulo(chunk_coords.x, 32).abs() as u32;
             let local_z = Self::modulo(chunk_coords.z, 32).abs() as u32;
-
             if let Some(region) = opt {
                 let chunk = region.get_chunk(local_x, local_z, self.global_palette.clone());
-
-                if let Some(chunk) = chunk {
-                    self.loaded_chunks.insert(chunk_coords, chunk);
+                if chunk.is_none() {
+                    return None;
+                } else {
+                    let arc = Arc::new(chunk.unwrap());
+                    self.cached_chunks.get_or_init(chunk_coords, 1, |_| arc);
                 }
             }
         }
-        return self.loaded_chunks.get(&chunk_coords);
+        None
     }
 
-    fn get_compressed_chunk(&self, x: i32, z: i32) -> Vec<u8> {
-        todo!()
-    }
-
-    pub fn get_block(&mut self, world_coords: WorldCoords) -> u32 {
-        match self.get_chunk(world_coords.into()) {
+    pub fn get_block(&self, world_coords: WorldCoords) -> Option<u32> {
+        match self.get_chunk_cached(world_coords.into()) {
             Some(chunk) => {
                 let local_block_x: i16 = Self::modulo(world_coords.x, 16) as i16;
                 let local_block_z: i16 = Self::modulo(world_coords.z, 16) as i16;
                 let block = chunk.get_block(
-                    local_block_x.into(),
+                    local_block_x.try_into().unwrap(),
                     world_coords.y.try_into().unwrap(),
-                    local_block_z.into(),
+                    local_block_z.try_into().unwrap(),
                 );
                 block
             }
-            None => 0,
+            None => None,
         }
     }
 }

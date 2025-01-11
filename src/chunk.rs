@@ -10,14 +10,46 @@ use smol_str::SmolStr;
 
 use crate::{nbt_compound::NBTCompound, ChunkCoords, NBTTag};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Chunk {
     data_version: i32,
     pub coords: ChunkCoords,
     pub status: SmolStr,
-    pub sections: Vec<ChunkSection>,
+    pub sections: SectionTower,
 }
 
+#[derive(Debug, Clone)]
+pub struct SectionTower {
+    sections: Vec<ChunkSection>,
+    map: Vec<Option<usize>>,
+    y_min: isize,
+    y_max: isize,
+}
+const fn y_to_index(y: isize, y_min: isize) -> u8 {
+    ((y - y_min) >> 4) as u8
+}
+
+impl SectionTower {
+    pub fn get_section_for_y(&self, y: isize) -> Option<&ChunkSection> {
+        if y >= self.y_max || y < self.y_min {
+            // TODO: This occurs a lot in hermitcraft season 7. Probably some
+            // form of bug?
+            return None;
+        }
+
+        let lookup_index = y_to_index(y, self.y_min);
+
+        let section_index = *self.map.get(lookup_index as usize)?;
+        self.sections.get(section_index?)
+    }
+    pub fn y_min(&self) -> isize {
+        self.y_min
+    }
+
+    pub fn y_max(&self) -> isize {
+        self.y_max
+    }
+}
 impl Chunk {
     pub fn from_bytes(data: Vec<u8>, palette: Arc<RwLock<IndexMap<String, ()>>>) -> Self {
         let mut bytes = Bytes::from(data);
@@ -49,6 +81,32 @@ impl Chunk {
             })
             .collect::<Vec<_>>();
 
+        let lowest_section = section_array
+            .iter()
+            .min_by_key(|s| s.ypos)
+            .expect("empty section array");
+
+        let min = lowest_section.ypos as isize;
+        let max = section_array
+            .iter()
+            .max_by_key(|s| s.ypos)
+            .map(|s| s.ypos)
+            .unwrap() as isize;
+        let mut sparse_sections = vec![None; (1 + max - min) as usize];
+
+        for (i, sec) in section_array.iter().enumerate() {
+            let sec_index = (sec.ypos as isize - min) as usize;
+
+            sparse_sections[sec_index] = Some(i);
+        }
+
+        let sec_tower = SectionTower {
+            sections: section_array,
+            map: sparse_sections,
+            y_min: 16 * min,
+            y_max: 16 * (max + 1),
+        };
+
         //        section_array.iter().for_each(|f| println!("{}", f.ypos));
         let coords = ChunkCoords::new(xpos.into(), zpos.into());
 
@@ -56,30 +114,22 @@ impl Chunk {
             coords,
             data_version,
             status: status,
-            sections: section_array,
+            sections: sec_tower,
         }
     }
-    pub fn get_block(&self, x: i16, y: i16, z: i16) -> u32 {
-        let local_y = match y < 0 {
-            true => 15 - (y.abs() % 16),
-            false => y % 16,
-        };
+    pub fn get_block(&self, x: usize, y: isize, z: usize) -> Option<u32> {
+        let sections = &self.sections;
 
-        let section_y = (y as f32 / 16f32).floor() as i16;
-
-        self.sections
-            .iter()
-            .find(|f| f.ypos == section_y as i8)
-            .unwrap()
-            .get_block(x, local_y, z)
+        let sec = sections.get_section_for_y(y as isize)?;
+        let sec_y = (y - sec.ypos as isize * 16) as usize;
+        sec.get_block(x, sec_y, z)
     }
 }
 
 impl ChunkSection {
-    pub fn get_block(&self, x: i16, y: i16, z: i16) -> u32 {
-        let num = *self.data.get((256 * y + 16 * z + x) as usize).unwrap();
-
-        num
+    pub fn get_block(&self, x: usize, sec_y: usize, z: usize) -> Option<u32> {
+        let num = self.data.get((sec_y * 16 * 16 + z * 16 + x) as usize);
+        num.cloned()
     }
 }
 
