@@ -8,7 +8,7 @@ use bytes::Bytes;
 use indexmap::IndexMap;
 use smol_str::SmolStr;
 
-use crate::{nbt_compound::NBTCompound, ChunkCoords, NBTTag};
+use crate::{nbt_compound::NBTCompound, ChunkCoords, NBTTag, World, WorldCoords};
 
 #[derive(Debug, Clone)]
 pub struct Chunk {
@@ -117,12 +117,22 @@ impl Chunk {
             sections: sec_tower,
         }
     }
-    pub fn get_block(&self, x: usize, y: isize, z: usize) -> Option<u32> {
+    pub fn get_local_block(&self, x: usize, y: isize, z: usize) -> Option<u32> {
         let sections = &self.sections;
 
         let sec = sections.get_section_for_y(y as isize)?;
         let sec_y = (y - sec.ypos as isize * 16) as usize;
         sec.get_block(x, sec_y, z)
+    }
+    pub fn get_world_block(&self, world_coords: WorldCoords) -> Option<u32> {
+        let local_block_x: i16 = World::modulo(world_coords.x, 16) as i16;
+        let local_block_z: i16 = World::modulo(world_coords.z, 16) as i16;
+        let block = self.get_local_block(
+            local_block_x.try_into().unwrap(),
+            world_coords.y.try_into().unwrap(),
+            local_block_z.try_into().unwrap(),
+        );
+        block
     }
 }
 

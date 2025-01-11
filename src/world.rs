@@ -84,7 +84,7 @@ impl World {
         palette.insert_full("minecraft:air".to_string(), ());
         let mut temp = Self {
             regions: HashMap::new(),
-            cached_chunks: LruCache::new(16.try_into().unwrap()).into(),
+            cached_chunks: LruCache::new(32.try_into().unwrap()).into(),
             global_palette: Arc::new(RwLock::new(palette)),
         };
         let read_dir = fs::read_dir(folder_path).expect("could not find folder");
@@ -107,7 +107,7 @@ impl World {
     pub fn get_region(&self, region_coords: RegionCoords) -> Option<&Region> {
         self.regions.get(&region_coords)
     }
-    fn modulo(a: i64, b: i64) -> i64 {
+    pub fn modulo(a: i64, b: i64) -> i64 {
         let r = a % b;
         if r < 0 {
             r + b
@@ -117,23 +117,26 @@ impl World {
     }
 
     pub fn get_chunk_cached(&self, chunk_coords: ChunkCoords) -> Option<Arc<Chunk>> {
-        if self.cached_chunks.get(chunk_coords).is_some() {
-            let handle = self.cached_chunks.get(chunk_coords).unwrap();
-            return Some(handle.value().clone());
-        } else {
-            let opt = self.get_region(chunk_coords.into());
-            let local_x = Self::modulo(chunk_coords.x, 32).abs() as u32;
-            let local_z = Self::modulo(chunk_coords.z, 32).abs() as u32;
-            if let Some(region) = opt {
-                let chunk = region.get_chunk(local_x, local_z, self.global_palette.clone());
-                if chunk.is_none() {
-                    return None;
-                } else {
-                    let arc = Arc::new(chunk.unwrap());
-                    self.cached_chunks.get_or_init(chunk_coords, 1, |_| arc);
-                }
+        let lock = self.cached_chunks.get(chunk_coords);
+        if lock.is_some() {
+            let chunk = lock.unwrap().value().clone();
+            return Some(chunk);
+        }
+        let opt = self.get_region(chunk_coords.into());
+        let local_x = Self::modulo(chunk_coords.x, 32).abs() as u32;
+        let local_z = Self::modulo(chunk_coords.z, 32).abs() as u32;
+        if let Some(region) = opt {
+            let chunk = region.get_chunk(local_x, local_z, self.global_palette.clone());
+            if chunk.is_none() {
+                return None;
+            } else {
+                let arc = Arc::new(chunk.unwrap());
+                self.cached_chunks
+                    .get_or_init(chunk_coords, 1, |_| arc.clone());
+                return Some(arc);
             }
         }
+
         None
     }
 
@@ -142,7 +145,7 @@ impl World {
             Some(chunk) => {
                 let local_block_x: i16 = Self::modulo(world_coords.x, 16) as i16;
                 let local_block_z: i16 = Self::modulo(world_coords.z, 16) as i16;
-                let block = chunk.get_block(
+                let block = chunk.get_local_block(
                     local_block_x.try_into().unwrap(),
                     world_coords.y.try_into().unwrap(),
                     local_block_z.try_into().unwrap(),
