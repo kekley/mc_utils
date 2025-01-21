@@ -1,21 +1,32 @@
 use core::str;
 use std::{
+    fmt::Debug,
     sync::{Arc, RwLock},
     u32,
 };
 
 use bytes::Bytes;
+use fxhash::{FxBuildHasher, FxHasher, FxHasher64};
 use indexmap::IndexMap;
 use smol_str::SmolStr;
 
 use crate::{nbt_compound::NBTCompound, ChunkCoords, NBTTag, World, WorldCoords};
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Chunk {
     data_version: i32,
     pub coords: ChunkCoords,
     pub status: SmolStr,
     pub sections: SectionTower,
+}
+impl Debug for Chunk {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Chunk")
+            .field("data_version", &self.data_version)
+            .field("coords", &self.coords)
+            .field("status", &self.status)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -51,7 +62,10 @@ impl SectionTower {
     }
 }
 impl Chunk {
-    pub fn from_bytes(data: Vec<u8>, palette: Arc<RwLock<IndexMap<String, ()>>>) -> Self {
+    pub fn from_bytes(
+        data: Vec<u8>,
+        palette: Arc<RwLock<IndexMap<String, (), FxBuildHasher>>>,
+    ) -> Self {
         let mut bytes = Bytes::from(data);
         let compound = NBTCompound::from_bytes(&mut bytes).expect("Invalid NBT ");
         let binding = compound.get_tag("").expect("Not a Chunk NBT");
@@ -118,8 +132,12 @@ impl Chunk {
         }
     }
     pub fn get_local_block(&self, x: usize, y: isize, z: usize) -> Option<u32> {
+        //println!("x:{x},y:{y},z:{z}");
         let sections = &self.sections;
 
+        if y > self.sections.y_max() || y < self.sections.y_min() {
+            return None;
+        }
         let sec = sections.get_section_for_y(y as isize)?;
         let sec_y = (y - sec.ypos as isize * 16) as usize;
         sec.get_block(x, sec_y, z)
@@ -132,6 +150,8 @@ impl Chunk {
             world_coords.y.try_into().unwrap(),
             local_block_z.try_into().unwrap(),
         );
+        //println!("block: {:?}", block);
+
         block
     }
 }
@@ -161,7 +181,7 @@ impl Default for ChunkSection {
 impl ChunkSection {
     pub fn from_compound(
         compound: &NBTCompound,
-        palette: Arc<RwLock<IndexMap<String, ()>>>,
+        palette: Arc<RwLock<IndexMap<String, (), FxBuildHasher>>>,
     ) -> Self {
         let y = compound.get_tag("Y").unwrap().get_byte();
         if y < -4 || y > 19 {

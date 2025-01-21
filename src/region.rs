@@ -3,6 +3,7 @@ use std::io::{self, BufReader, Cursor, Read, Seek};
 use std::sync::{Arc, RwLock};
 use std::{usize, vec};
 
+use fxhash::{FxBuildHasher, FxHasher};
 use indexmap::{IndexMap, IndexSet};
 
 use crate::chunk::Chunk;
@@ -44,7 +45,7 @@ impl FileSegment {
 impl Region {
     pub fn from_file(
         path: String,
-        palette: Arc<RwLock<IndexMap<String, ()>>>,
+        palette: Arc<RwLock<IndexMap<String, (), FxBuildHasher>>>,
     ) -> Result<Self, SpiderEyeError> {
         let mut region: Region = Self {
             file_path: path.to_string(),
@@ -105,7 +106,7 @@ impl Region {
         &self,
         x: u32,
         z: u32,
-        palette: Arc<RwLock<IndexMap<String, ()>>>,
+        palette: Arc<RwLock<IndexMap<String, (), FxBuildHasher>>>,
     ) -> Option<Chunk> {
         if x > 32 || z > 32 {
             return None;
@@ -153,7 +154,10 @@ impl Region {
         res
     }
 
-    pub fn get_all_chunks(&self, palette: Arc<RwLock<IndexMap<String, ()>>>) -> Vec<Chunk> {
+    pub fn get_all_chunks(
+        &self,
+        palette: Arc<RwLock<IndexMap<String, (), FxBuildHasher>>>,
+    ) -> Vec<Chunk> {
         let mut chunks = vec![];
         (0..32).for_each(|z| {
             (0..32).for_each(|x| {

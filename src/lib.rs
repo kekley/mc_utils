@@ -9,6 +9,6 @@ mod spider_eye_error;
 mod world;
 
 pub use {
-    block_models::BlockModel, chunk::*, compression::*, nbt_compound::*, nbt_ids::*, nbt_tag::*,
-    region::*, spider_eye_error::*, world::*,
+    block_models::*, chunk::*, compression::*, nbt_compound::*, nbt_ids::*, nbt_tag::*, region::*,
+    spider_eye_error::*, world::*,
 };
