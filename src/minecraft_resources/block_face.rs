@@ -1,0 +1,86 @@
+use serde_json::Value;
+
+use super::{
+    block_models::BlockRotation,
+    block_texture::{TextureVariable, Uv},
+    utils::parse_vec4,
+};
+
+#[derive(Debug)]
+pub struct Face {
+    name: FaceName,
+    uv: Option<Uv>,
+    texture: TextureVariable,
+    cullface: Option<FaceName>,
+    texture_rotation: Option<BlockRotation>,
+    tint_index: Option<i64>,
+}
+
+impl Face {
+    pub fn parse_faces(value: &Value) -> [Option<Face>; 6] {
+        const NONE_VALUE: Option<Face> = None;
+        let mut face_array = [NONE_VALUE; 6];
+        value
+            .as_object()
+            .expect("faces was not object")
+            .iter()
+            .enumerate()
+            .for_each(|(i, (name, value))| {
+                face_array[i] = Some(Face::from((name.as_str(), value)))
+            });
+
+        face_array
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum FaceName {
+    Down,
+    Up,
+    North,
+    South,
+    West,
+    East,
+}
+impl From<&str> for FaceName {
+    fn from(value: &str) -> Self {
+        match value {
+            "down" => FaceName::Down,
+            "up" => FaceName::Up,
+            "north" => FaceName::North,
+            "south" => FaceName::South,
+            "west" => FaceName::West,
+            "east" => FaceName::East,
+            _ => panic!("invalid value for facename"),
+        }
+    }
+}
+
+impl From<(&str, &Value)> for Face {
+    fn from(value: (&str, &Value)) -> Face {
+        let name = FaceName::from(value.0);
+        let value = value.1;
+        let uv = value
+            .get("uv")
+            .map(|value| Uv::from(parse_vec4(value).to_array()));
+        let texture = TextureVariable::from(value.get("texture").expect("no texture for face"));
+        let cullface = value
+            .get("cullface")
+            .map(|value| FaceName::from(value.as_str().expect("cullface was not str")));
+        let rotation = value
+            .get("rotation")
+            .map(|value| BlockRotation::from(value));
+        let tint = value
+            .get("tint")
+            .map(|value| value.as_i64().expect("tint was not integer"));
+
+        Face {
+            name,
+            uv,
+            texture,
+            cullface,
+            texture_rotation: rotation,
+            tint_index: tint,
+        }
+    }
+}

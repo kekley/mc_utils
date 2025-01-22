@@ -6,12 +6,14 @@ use std::{
 
 use indexmap::IndexMap;
 use spider_eye::{
-    BlockModel, CompressionData, CompressionScheme, NBTCompound, Region, SpiderEyeError,
+    block_models::BlockModel, CompressionData, CompressionScheme, NBTCompound, Region,
+    SpiderEyeError,
 };
 
 extern crate spider_eye;
 
 fn main() -> Result<(), SpiderEyeError> {
-    BlockModel::from_json("./cube.json");
+    let cube = BlockModel::from_json("./cube.json");
+    dbg!(cube);
     Ok(())
 }
