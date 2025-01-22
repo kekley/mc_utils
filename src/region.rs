@@ -55,7 +55,6 @@ impl Region {
         let mut found = false;
         for z in 0..32 {
             for x in 0..32 {
-                //println!("Checking chunk at x: {}, z: {}", x, z);
                 if let Some(chunk) = region.get_chunk(x, z, palette.clone()) {
                     region.coords = chunk.coords.into();
                     found = true;
@@ -68,10 +67,8 @@ impl Region {
         }
 
         if found {
-            //println!("Region found: x = {}, z = {}", region.x, region.z);
             Ok(region)
         } else {
-            //println!("Region not found, returning error");
             Err(SpiderEyeError::InvalidFile())
         }
     }

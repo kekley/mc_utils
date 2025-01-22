@@ -121,7 +121,6 @@ impl Chunk {
             y_max: 16 * (max + 1),
         };
 
-        //        section_array.iter().for_each(|f| println!("{}", f.ypos));
         let coords = ChunkCoords::new(xpos.into(), zpos.into());
 
         Self {
@@ -132,7 +131,6 @@ impl Chunk {
         }
     }
     pub fn get_local_block(&self, x: usize, y: isize, z: usize) -> Option<u32> {
-        //println!("x:{x},y:{y},z:{z}");
         let sections = &self.sections;
 
         if y > self.sections.y_max() || y < self.sections.y_min() {
@@ -150,7 +148,6 @@ impl Chunk {
             world_coords.y.try_into().unwrap(),
             local_block_z.try_into().unwrap(),
         );
-        //println!("block: {:?}", block);
 
         block
     }
@@ -245,7 +242,6 @@ impl ChunkSection {
         };
 
         let bit_size = (f32::log2(strings.len() as f32 - 1.0)).floor() + 1.0;
-        //println!("bit size: {}", bit_size);
         let mut temp: [u32; 4096] = std::array::from_fn(|i| {
             let ind = Self::extract_index(&data[..], i as u32, bit_size as u32);
             ind

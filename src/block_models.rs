@@ -3,7 +3,7 @@ use std::{fs, rc::Rc};
 use anyhow::{anyhow, Context, Ok};
 use glam::{IVec3, Vec3};
 use rayon::vec;
-use serde_json::Value;
+use serde_json::{value, Value};
 
 pub enum BlockRotation {
     Zero,
@@ -194,4 +194,29 @@ fn parse_display(value: &Value) -> Vec<BlockDisplay> {
     } else {
         return vec![];
     }
+}
+
+fn parse_elements(value: &Value) -> Vec<BlockElement> {
+    let elements = value.get("elements");
+    if let Some(elements) = elements {
+        todo!()
+    } else {
+        return vec![];
+    }
+}
+
+fn parse_faces(value: &Value) -> [Option<Face>; 6] {
+    const NONE_VALUE: Option<Face> = None;
+    let faces = value.get("faces");
+    if let Some(faces) = faces {
+        let obj = faces.as_object().expect("faces obj not valid");
+        
+        todo!()
+    } else {
+        return [NONE_VALUE; 6];
+    }
+}
+
+fn parse_i8vec3(value: &Value) -> [i8; 3] {
+    todo!()
 }

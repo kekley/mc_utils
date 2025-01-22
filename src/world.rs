@@ -128,9 +128,6 @@ impl World {
         }
         drop(lock);
 
-        //println!("cache miss");
-        //println!("{:?}", chunk_coords);
-
         let opt = self.get_region(chunk_coords.into());
         let local_x = Self::modulo(chunk_coords.x, 32).abs() as u32;
         let local_z = Self::modulo(chunk_coords.z, 32).abs() as u32;
