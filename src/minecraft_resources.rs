@@ -4,4 +4,6 @@ pub mod block_face;
 pub mod block_models;
 pub mod block_states;
 pub mod block_texture;
+pub mod multipart;
 pub mod utils;
+pub mod variant;

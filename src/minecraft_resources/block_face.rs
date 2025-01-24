@@ -5,15 +5,16 @@ use super::{
     block_texture::{TextureVariable, Uv},
     utils::parse_vec4,
 };
+pub type TintIndex = i64;
 
 #[derive(Debug)]
 pub struct Face {
-    name: FaceName,
-    uv: Option<Uv>,
-    texture: TextureVariable,
+    pub name: FaceName,
+    pub uv: Option<Uv>,
+    pub texture: TextureVariable,
     cullface: Option<FaceName>,
-    texture_rotation: Option<BlockRotation>,
-    tint_index: Option<i64>,
+    pub texture_rotation: Option<BlockRotation>,
+    pub tint_index: Option<TintIndex>,
 }
 
 impl Face {
@@ -34,13 +35,13 @@ impl Face {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum FaceName {
-    Down,
-    Up,
-    North,
-    South,
-    West,
-    East,
+pub enum FaceName {
+    Down = 2,
+    Up = 3,
+    North = 4,
+    South = 5,
+    West = 0,
+    East = 1,
 }
 impl From<&str> for FaceName {
     fn from(value: &str) -> Self {

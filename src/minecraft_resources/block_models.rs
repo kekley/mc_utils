@@ -1,14 +1,10 @@
 use std::fs;
 
-use anyhow::{anyhow, Context, Error, Ok};
-use fxhash::FxHashMap;
-use glam::{IVec3, Vec3, Vec4};
-use rayon::vec;
-use serde_json::{value, Value};
+use serde_json::Value;
+use smol_str::SmolStr;
 
 use super::{
     block_display::BlockDisplay, block_element::BlockElement, block_texture::BlockTextures,
-    utils::parse_vec3,
 };
 #[derive(Debug)]
 pub enum BlockRotation {
@@ -28,24 +24,99 @@ impl From<&Value> for BlockRotation {
         }
     }
 }
-
+pub type AmbientOcclusion = bool;
 #[derive(Debug)]
-pub struct BlockModel {
-    parent: Option<String>,
-    ambient_occlusion: Option<bool>,
+pub struct IntermediateBlockModel {
+    parent: Option<SmolStr>,
+    ambient_occlusion: Option<AmbientOcclusion>,
     displays: Option<Vec<BlockDisplay>>,
     textures: Option<BlockTextures>,
     elements: Option<Vec<BlockElement>>,
 }
 
-const ASSET_PATH: &str = "./assets/default_resource_pack/assets/";
+#[derive(Debug)]
+pub struct BlockModel {
+    pub ambient_occlusion: AmbientOcclusion,
+    pub displays: Vec<BlockDisplay>,
+    pub textures: BlockTextures,
+    pub elements: Vec<BlockElement>,
+}
 impl BlockModel {
-    pub fn from_json(path: &str) -> BlockModel {
-        let json = fs::read_to_string(path).expect("failed to read json file");
+    pub fn load(path: &str) -> BlockModel {
+        let tmp = IntermediateBlockModel::from_json(path);
+        let res = IntermediateBlockModel::collapse_parents(tmp);
+        res
+    }
+}
+
+impl From<IntermediateBlockModel> for BlockModel {
+    fn from(value: IntermediateBlockModel) -> Self {
+        let IntermediateBlockModel {
+            parent: _,
+            ambient_occlusion,
+            displays,
+            textures,
+            elements,
+        } = value;
+
+        Self {
+            ambient_occlusion: ambient_occlusion.unwrap_or(false),
+            displays: displays.unwrap_or(vec![]),
+            textures: textures.unwrap(),
+            elements: elements.unwrap_or(vec![]),
+        }
+    }
+}
+
+pub const ASSET_PATH: SmolStr = SmolStr::new_static("./test_assets/assets/");
+
+impl IntermediateBlockModel {
+    fn parent_to_path(parent: &SmolStr) -> SmolStr {
+        let (namespace, remaining_str) = parent.split_once(":").unwrap_or(("", parent.as_str()));
+
+        let (model_type, remaining_str) = remaining_str
+            .split_once("/")
+            .expect("invalid path for parent");
+        SmolStr::from(
+            ASSET_PATH.to_string()
+                + namespace
+                + "/"
+                + "models/"
+                + model_type
+                + "/"
+                + remaining_str
+                + ".json",
+        )
+    }
+    fn collapse_parents(model: IntermediateBlockModel) -> BlockModel {
+        if model.parent.is_some() {
+            let parent = model.parent.as_ref().unwrap();
+
+            let mut parent = IntermediateBlockModel::from_json(
+                IntermediateBlockModel::parent_to_path(parent).as_str(),
+            );
+            if model.elements.is_some() {
+                parent.elements = model.elements;
+            }
+            if model.textures.is_some() {
+                parent.textures = model.textures;
+            }
+            if model.displays.is_some() {
+                parent.displays = model.displays;
+            }
+            return parent.into();
+        } else {
+            return model.into();
+        }
+    }
+
+    fn from_json(path: &str) -> IntermediateBlockModel {
+        let json =
+            fs::read_to_string(path).expect(format!("failed to read json file: {}", path).as_str());
         let value: Value = serde_json::from_str(&json).expect("failed to parse json");
         let parent = value
             .get("parent")
-            .map(|value| value.as_str().expect("parent was not str").to_string());
+            .map(|value| SmolStr::new(value.as_str().expect("parent was not str")));
 
         let ambient_occlusion = value
             .get("ambientocclusion")
@@ -62,7 +133,7 @@ impl BlockModel {
         let elements = value
             .get("elements")
             .map(|value| BlockElement::parse_elements(value));
-        let result = BlockModel {
+        let result = IntermediateBlockModel {
             parent,
             ambient_occlusion: ambient_occlusion,
             displays,
@@ -71,6 +142,4 @@ impl BlockModel {
         };
         result
     }
-
-    
 }

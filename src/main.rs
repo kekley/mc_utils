@@ -13,7 +13,7 @@ use spider_eye::{
 extern crate spider_eye;
 
 fn main() -> Result<(), SpiderEyeError> {
-    let cube = BlockModel::from_json("./cube.json");
-    dbg!(cube);
+    let button = BlockModel::load("./test_assets/assets/minecraft/models/block/acacia_button.json");
+    dbg!(&button);
     Ok(())
 }

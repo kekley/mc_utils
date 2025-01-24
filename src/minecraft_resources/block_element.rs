@@ -2,17 +2,26 @@ use glam::Vec3;
 use serde_json::Value;
 
 use super::{block_face::Face, utils::parse_vec3};
-
+pub type Shade = bool;
 #[derive(Debug)]
 pub struct BlockElement {
-    from: Vec3,
-    to: Vec3,
-    rotation: Option<ElementRotation>,
-    shade: Option<bool>,
-    faces: [Option<Face>; 6],
+    pub from: Vec3,
+    pub to: Vec3,
+    pub rotation: Option<ElementRotation>,
+    shade: Option<Shade>,
+    pub faces: [Option<Face>; 6],
 }
 
 impl BlockElement {
+    pub fn is_cube(&self) -> bool {
+        !self.faces.iter().any(|f| f.is_none())
+    }
+    pub fn is_axis_aligned(&self) -> bool {
+        match &self.rotation {
+            Some(rotation) => rotation.angle == 0.0,
+            None => true,
+        }
+    }
     pub fn parse_elements(value: &Value) -> Vec<BlockElement> {
         value
             .as_array()
@@ -21,7 +30,6 @@ impl BlockElement {
             .map(|value| BlockElement::from(value))
             .collect::<Vec<_>>()
     }
-    
 }
 
 impl From<&Value> for ElementAxis {
@@ -89,10 +97,12 @@ enum ElementAxis {
     Y,
     Z,
 }
+pub type Angle = f32;
+pub type Rescale = bool;
 #[derive(Debug)]
 pub struct ElementRotation {
     origin: Vec3,
     axis: ElementAxis,
-    angle: f32,
-    rescale: Option<bool>,
+    angle: Angle,
+    rescale: Option<Rescale>,
 }

@@ -1,8 +1,8 @@
 use fxhash::FxHashMap;
 use serde_json::Value;
+use smol_str::SmolStr;
 
-use super::utils::parse_vec4;
-
+use super::{block_models::ASSET_PATH, utils::parse_vec4};
 
 #[derive(Debug)]
 pub struct Uv {
@@ -29,42 +29,65 @@ impl From<[f32; 4]> for Uv {
 }
 #[derive(Debug, Hash, PartialEq, Eq)]
 pub enum TextureVariable {
-    Variable(String),
-    ResourcePath(String),
+    Variable(SmolStr),
+    ResourcePath(SmolStr),
 }
 #[derive(Debug)]
 pub struct BlockTextures {
-    textures: FxHashMap<TextureVariable, TextureVariable>,
+    pub textures: FxHashMap<SmolStr, TextureVariable>,
 }
 
 impl BlockTextures {
+    fn path_inner(resource_path: &str) -> SmolStr {
+        let (namespace, remaining_str) =
+            resource_path.split_once(":").unwrap_or(("", resource_path));
+
+        let (texture_type, remaining_str) = remaining_str
+            .split_once("/")
+            .expect("invalid path for texture");
+        SmolStr::new(
+            ASSET_PATH.to_string()
+                + namespace
+                + "/"
+                + "textures/"
+                + texture_type
+                + "/"
+                + remaining_str
+                + ".png",
+        )
+    }
+    pub fn to_path(resource: &TextureVariable) -> SmolStr {
+        match resource {
+            TextureVariable::Variable(_) => {
+                panic!()
+            }
+            TextureVariable::ResourcePath(path) => Self::path_inner(&path),
+        }
+    }
     pub fn parse_textures(value: &Value) -> Self {
         let obj = value.as_object().expect("textures was not object");
         let textures = obj
             .iter()
             .map(|(var1, var2)| {
-                let name = TextureVariable::from(var1.as_str());
+                let name = SmolStr::new(var1);
                 let texture = TextureVariable::from(var2);
                 (name, texture)
             })
-            .collect::<FxHashMap<TextureVariable, TextureVariable>>();
-        todo!()
+            .collect::<FxHashMap<SmolStr, TextureVariable>>();
+        BlockTextures { textures }
     }
 }
 impl From<&Value> for TextureVariable {
     fn from(value: &Value) -> Self {
-        let string_val = value.as_str().expect("texture value was not string");
-        let first_char = string_val
-            .chars()
-            .nth(0)
-            .expect("texture string had length of 0");
-        if string_val.len() == 1 {
+        let val = value.as_str().expect("texture value was not SmolStr");
+        let first_char = val.chars().nth(0).expect("texture SmolStr had length of 0");
+        if val.len() == 1 {
             panic!("invalid texture variable length")
         }
         if first_char == '#' {
-            return TextureVariable::Variable(string_val.to_string());
+            return TextureVariable::Variable(SmolStr::new(val));
         } else {
-            return TextureVariable::ResourcePath(string_val.to_string());
+            return TextureVariable::ResourcePath(SmolStr::new(val));
         }
     }
 }
@@ -74,14 +97,14 @@ impl From<&str> for TextureVariable {
         let first_char = value
             .chars()
             .nth(0)
-            .expect("texture string had length of 0");
+            .expect("texture SmolStr had length of 0");
         if value.len() == 1 {
             panic!("invalid texture variable length")
         }
         if first_char == '#' {
-            return TextureVariable::Variable(value.to_string());
+            return TextureVariable::Variable(SmolStr::new(value));
         } else {
-            return TextureVariable::ResourcePath(value.to_string());
+            return TextureVariable::ResourcePath(SmolStr::new(value));
         }
     }
 }
