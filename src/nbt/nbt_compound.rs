@@ -60,7 +60,7 @@ impl NBTCompound {
         self.children.get(&spur)
     }
 
-    pub fn from_bytes(
+    pub(super) fn from_bytes(
         stream: &mut Bytes,
         rodeo: Arc<ThreadedRodeo>,
     ) -> Result<Self, SpiderEyeError> {

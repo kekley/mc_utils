@@ -126,7 +126,9 @@ impl Region {
         let decompressed_chunk = Self::decompress_chunk(&compressed_chunk);
 
         let mut bytes = Bytes::from(decompressed_chunk);
-        let nbt = NBTCompound::from_bytes(&mut bytes, self.nbt_loader.rodeo.clone())
+        let nbt = self
+            .nbt_loader
+            .nbt_from_bytes(&mut bytes)
             .expect("invalid nbt");
         Some(Chunk::from_nbt(nbt, palette))
     }
