@@ -4,7 +4,6 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use indexmap::IndexMap;
 use spider_eye::{
     block_models::BlockModel, CompressionData, CompressionScheme, NBTCompound, Region,
     SpiderEyeError,

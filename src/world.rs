@@ -1,14 +1,15 @@
 use std::{
-    collections::HashMap,
     fs,
     hash::{BuildHasher, Hash},
     sync::{Arc, RwLock},
 };
 
+use dashmap::DashMap;
 use fxhash::{FxBuildHasher, FxHasher};
-use indexmap::IndexMap;
+use hashbrown::HashMap;
+use smol_str::SmolStr;
 
-use crate::{Chunk, Region};
+use crate::{block_states::BlockState, palette::Palette, Chunk, Region};
 #[derive(Debug, Default, Hash, PartialEq, Eq, Clone, Copy)]
 pub struct WorldCoords {
     pub x: i64,
@@ -74,19 +75,22 @@ impl From<ChunkCoords> for WorldCoords {
 #[derive(Debug)]
 pub struct World {
     pub regions: HashMap<RegionCoords, Region, FxBuildHasher>,
-    pub cached_chunks: Arc<RwLock<HashMap<ChunkCoords, Option<Arc<Chunk>>, FxBuildHasher>>>,
-    pub global_palette: Arc<RwLock<IndexMap<String, (), FxBuildHasher>>>,
+    pub cached_chunks: DashMap<ChunkCoords, Option<Arc<Chunk>>, FxBuildHasher>,
+    pub global_palette: Palette<BlockState>,
 }
 
 impl World {
     pub fn new(folder_path: &str) -> Self {
-        let mut palette = IndexMap::with_hasher(FxBuildHasher::default());
-
-        palette.insert_full("minecraft:air".to_string(), ());
+        let mut palette = Palette::new();
+        let air = BlockState {
+            block: "minecraft:air".into(),
+            properties: None,
+        };
+        palette.insert(air);
         let mut temp = Self {
             regions: HashMap::with_hasher(FxBuildHasher::default()),
-            cached_chunks: Arc::new(RwLock::new(HashMap::with_hasher(FxBuildHasher::default()))),
-            global_palette: Arc::new(RwLock::new(palette)),
+            cached_chunks: DashMap::with_hasher(FxBuildHasher::default()),
+            global_palette: palette,
         };
         let read_dir = fs::read_dir(folder_path).expect("could not find folder");
         for dir in read_dir {
@@ -94,10 +98,9 @@ impl World {
 
             let path = entry.path();
             if path.is_file() && path.extension().unwrap() == "mca" {
-                if let Ok(region) = Region::from_file(
-                    path.to_str().unwrap().to_owned(),
-                    temp.global_palette.clone(),
-                ) {
+                if let Ok(region) =
+                    Region::from_file(path.to_str().unwrap().to_owned(), &temp.global_palette)
+                {
                     temp.regions.insert(region.coords, region);
                 }
             }
@@ -118,33 +121,23 @@ impl World {
     }
 
     pub fn get_chunk_cached(&self, chunk_coords: ChunkCoords) -> Option<Arc<Chunk>> {
-        let lock = self.cached_chunks.write().unwrap();
-
-        let res = lock.get(&chunk_coords);
+        let res = self.cached_chunks.get(&chunk_coords);
         if res.is_some() {
-            let chunk = res?.as_ref()?.clone();
-            drop(lock);
-            return Some(chunk);
+            let chunk = res.unwrap();
+            return chunk.clone();
         }
-        drop(lock);
 
         let opt = self.get_region(chunk_coords.into());
         let local_x = Self::modulo(chunk_coords.x, 32).abs() as u32;
         let local_z = Self::modulo(chunk_coords.z, 32).abs() as u32;
         if let Some(region) = opt {
-            let chunk = region.get_chunk(local_x, local_z, self.global_palette.clone());
+            let chunk = region.get_chunk(local_x, local_z, &self.global_palette);
             if chunk.is_none() {
-                self.cached_chunks
-                    .write()
-                    .unwrap()
-                    .insert(chunk_coords, None);
+                self.cached_chunks.insert(chunk_coords, None);
                 return None;
             } else {
                 let arc = Arc::new(chunk.unwrap());
-                self.cached_chunks
-                    .write()
-                    .unwrap()
-                    .insert(chunk_coords, Some(arc.clone()));
+                self.cached_chunks.insert(chunk_coords, Some(arc.clone()));
                 return Some(arc);
             }
         }

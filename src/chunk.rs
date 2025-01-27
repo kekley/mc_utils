@@ -6,11 +6,14 @@ use std::{
 };
 
 use bytes::Bytes;
-use fxhash::{FxBuildHasher, FxHasher, FxHasher64};
-use indexmap::IndexMap;
+use fxhash::FxBuildHasher;
+use hashbrown::HashMap;
 use smol_str::SmolStr;
 
-use crate::{nbt_compound::NBTCompound, ChunkCoords, NBTTag, World, WorldCoords};
+use crate::{
+    block_states::BlockState, nbt_compound::NBTCompound, palette::Palette, ChunkCoords, NBTTag,
+    World, WorldCoords,
+};
 
 #[derive(Clone)]
 pub struct Chunk {
@@ -62,10 +65,7 @@ impl SectionTower {
     }
 }
 impl Chunk {
-    pub fn from_bytes(
-        data: Vec<u8>,
-        palette: Arc<RwLock<IndexMap<String, (), FxBuildHasher>>>,
-    ) -> Self {
+    pub fn from_bytes(data: Vec<u8>, palette: &Palette<BlockState>) -> Self {
         let mut bytes = Bytes::from(data);
         let compound = NBTCompound::from_bytes(&mut bytes).expect("Invalid NBT ");
         let binding = compound.get_tag("").expect("Not a Chunk NBT");
@@ -176,10 +176,7 @@ impl Default for ChunkSection {
 }
 
 impl ChunkSection {
-    pub fn from_compound(
-        compound: &NBTCompound,
-        palette: Arc<RwLock<IndexMap<String, (), FxBuildHasher>>>,
-    ) -> Self {
+    pub fn from_compound(compound: &NBTCompound, palette: &Palette<BlockState>) -> Self {
         let y = compound.get_tag("Y").unwrap().get_byte();
         if y < -4 || y > 19 {
             return Self {
@@ -203,36 +200,43 @@ impl ChunkSection {
             .get_byte_array()
             .to_owned();
 
-        let strings: Vec<&Bytes> = block_states_compound
+        let block_states: Vec<BlockState> = block_states_compound
             .get_tag("palette")
             .unwrap()
             .get_list()
             .iter()
             .map(|f| {
                 let block = f.get_compound();
+                let properties: Option<HashMap<SmolStr, SmolStr>> =
+                    block.get_tag("properties").map(|properties| {
+                        properties
+                            .get_compound()
+                            .children
+                            .iter()
+                            .map(|f| {
+                                let state_name = f.0.clone();
+                                let state_value =
+                                    SmolStr::new(str::from_utf8(f.1.get_string()).unwrap());
+                                (state_name, state_value)
+                            })
+                            .collect()
+                    });
 
-                block.get_tag("Name").unwrap().get_string()
+                let block_name = block.get_tag("Name").unwrap().get_string();
+                BlockState {
+                    block: SmolStr::from(
+                        str::from_utf8(&block_name).expect("block name was not valid string"),
+                    ),
+                    properties: properties,
+                }
             })
             .collect();
 
-        let read = palette.read().unwrap();
-        let mut missing_strs: Vec<String> = Vec::new();
-        strings.iter().for_each(|f| {
-            if !read.contains_key(str::from_utf8(f).unwrap()) {
-                missing_strs.push(str::from_utf8(f).unwrap().to_string());
-            }
-        });
-        drop(read);
+        /*         block_states.into_iter().for_each(|state| {
+            palette.insert(state);
+        }); */
 
-        if missing_strs.len() > 0 {
-            let mut write = palette.write().unwrap();
-            for str in missing_strs {
-                write.insert_full(str, ());
-            }
-            drop(write);
-        }
-
-        let data = if strings.len() == 1 {
+        let data = if block_states.len() == 1 {
             &vec![]
         } else {
             block_states_compound
@@ -241,18 +245,15 @@ impl ChunkSection {
                 .get_long_array()
         };
 
-        let bit_size = (f32::log2(strings.len() as f32 - 1.0)).floor() + 1.0;
+        let bit_size = (f32::log2(block_states.len() as f32 - 1.0)).floor() + 1.0;
         let mut temp: [u32; 4096] = std::array::from_fn(|i| {
             let ind = Self::extract_index(&data[..], i as u32, bit_size as u32);
             ind
         });
-        let read = palette.read().unwrap();
+
         temp.iter_mut().for_each(|i| {
-            *i = read
-                .get_index_of(str::from_utf8(strings[*i as usize]).unwrap())
-                .unwrap() as u32;
+            *i = palette.insert(block_states[*i as usize].clone()) as u32;
         });
-        drop(read);
         Self {
             ypos: y,
             data: temp,

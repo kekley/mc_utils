@@ -3,13 +3,14 @@ use std::io::{self, BufReader, Cursor, Read, Seek};
 use std::sync::{Arc, RwLock};
 use std::{usize, vec};
 
-use fxhash::{FxBuildHasher, FxHasher};
-use indexmap::{IndexMap, IndexSet};
-
+use crate::block_states::BlockState;
 use crate::chunk::Chunk;
 use crate::compression::{CompressionData, CompressionScheme};
+use crate::palette::Palette;
 use crate::spider_eye_error::SpiderEyeError;
 use crate::RegionCoords;
+use fxhash::FxBuildHasher;
+use smol_str::SmolStr;
 
 //offsets are for 4KiB Sectors
 pub(crate) const CHUNKS_PER_FILE: usize = 1024;
@@ -21,7 +22,7 @@ pub(crate) const REGION_HEADER_SIZE: usize = 2 * SECTOR_SIZE;
 // The size of the header for a chunk which immediate proceeds the compressed chunk data
 pub(crate) const CHUNK_HEADER_SIZE: usize = 5;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Region {
     pub coords: RegionCoords,
     pub file_path: String,
@@ -43,10 +44,7 @@ impl FileSegment {
 }
 
 impl Region {
-    pub fn from_file(
-        path: String,
-        palette: Arc<RwLock<IndexMap<String, (), FxBuildHasher>>>,
-    ) -> Result<Self, SpiderEyeError> {
+    pub fn from_file(path: String, palette: &Palette<BlockState>) -> Result<Self, SpiderEyeError> {
         let mut region: Region = Self {
             file_path: path.to_string(),
             coords: RegionCoords::default(),
@@ -55,7 +53,7 @@ impl Region {
         let mut found = false;
         for z in 0..32 {
             for x in 0..32 {
-                if let Some(chunk) = region.get_chunk(x, z, palette.clone()) {
+                if let Some(chunk) = region.get_chunk(x, z, palette) {
                     region.coords = chunk.coords.into();
                     found = true;
                     break;
@@ -99,12 +97,7 @@ impl Region {
         FileSegment::new(offset, sectors)
     }
 
-    pub fn get_chunk(
-        &self,
-        x: u32,
-        z: u32,
-        palette: Arc<RwLock<IndexMap<String, (), FxBuildHasher>>>,
-    ) -> Option<Chunk> {
+    pub fn get_chunk(&self, x: u32, z: u32, palette: &Palette<BlockState>) -> Option<Chunk> {
         if x > 32 || z > 32 {
             return None;
         }
@@ -151,14 +144,11 @@ impl Region {
         res
     }
 
-    pub fn get_all_chunks(
-        &self,
-        palette: Arc<RwLock<IndexMap<String, (), FxBuildHasher>>>,
-    ) -> Vec<Chunk> {
+    pub fn get_all_chunks(&self, palette: &Palette<BlockState>) -> Vec<Chunk> {
         let mut chunks = vec![];
         (0..32).for_each(|z| {
             (0..32).for_each(|x| {
-                let opt = self.get_chunk(x, z, palette.clone());
+                let opt = self.get_chunk(x, z, &palette);
                 if opt.is_some() {
                     chunks.push(opt.unwrap());
                 }

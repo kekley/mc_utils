@@ -1,13 +1,10 @@
 use bytes::{Buf, Bytes};
 use core::str;
 use fxhash::FxBuildHasher;
+use hashbrown::{HashMap, HashSet};
 use num_enum::TryFromPrimitive;
 use smol_str::SmolStr;
-use std::{
-    collections::{HashMap, HashSet},
-    fmt::Debug,
-    u16,
-};
+use std::{fmt::Debug, u16};
 
 use crate::{
     compression::{self, CompressionData},
@@ -18,8 +15,6 @@ use crate::{
 
 #[derive(Clone)]
 pub struct NBTCompound {
-    pub seen_strings: HashSet<SmolStr, FxBuildHasher>,
-    pub string_tags: Vec<SmolStr>,
     pub children: HashMap<SmolStr, NBTTag, FxBuildHasher>,
 }
 impl Debug for NBTCompound {
@@ -65,8 +60,6 @@ impl NBTCompound {
     pub fn from_bytes(stream: &mut Bytes) -> Result<Self, SpiderEyeError> {
         let mut tmp = Self {
             children: HashMap::with_hasher(FxBuildHasher::default()),
-            seen_strings: HashSet::with_hasher(FxBuildHasher::default()),
-            string_tags: vec![],
         };
 
         while stream.has_remaining() {
