@@ -128,9 +128,9 @@ impl World {
     }
 
     pub fn get_chunk_cached(&self, chunk_coords: ChunkCoords) -> Option<Arc<Chunk>> {
-        let res = self.cached_chunks.get(&chunk_coords);
-        if res.is_some() {
-            let chunk = res.unwrap();
+        let res = self.cached_chunks.contains_key(&chunk_coords);
+        if res {
+            let chunk = self.cached_chunks.get(&chunk_coords).unwrap();
             return chunk.clone();
         }
 
