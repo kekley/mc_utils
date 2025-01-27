@@ -14,5 +14,5 @@ pub struct Apply {
 pub enum When {
     OrCase(),
     AndCase(),
-    SingleCase()
+    SingleCase(),
 }

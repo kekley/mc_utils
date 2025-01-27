@@ -8,12 +8,18 @@ use std::{
 use bytes::Bytes;
 use fxhash::FxBuildHasher;
 use hashbrown::HashMap;
+use lasso::Spur;
 use smol_str::SmolStr;
 
 use crate::{
-    block_states::BlockState, nbt_compound::NBTCompound, palette::Palette, ChunkCoords, NBTTag,
-    World, WorldCoords,
+    block_states::BlockState,
+    nbt::{nbt_compound::NBTCompound, nbt_tag::NBTTag},
+    nbt_compound,
+    nbt_loader::NBTLoader,
+    palette::Palette,
 };
+
+use super::loaded_world::{ChunkCoords, World, WorldCoords};
 
 #[derive(Clone)]
 pub struct Chunk {
@@ -65,10 +71,8 @@ impl SectionTower {
     }
 }
 impl Chunk {
-    pub fn from_bytes(data: Vec<u8>, palette: &Palette<BlockState>) -> Self {
-        let mut bytes = Bytes::from(data);
-        let compound = NBTCompound::from_bytes(&mut bytes).expect("Invalid NBT ");
-        let binding = compound.get_tag("").expect("Not a Chunk NBT");
+    pub fn from_nbt(nbt_compound: NBTCompound, palette: &Palette<BlockState>) -> Self {
+        let binding = nbt_compound.get_tag("").expect("Not a Chunk NBT");
         let chunk = binding.get_compound();
         let data_version = chunk
             .get_tag("DataVersion")
@@ -77,8 +81,11 @@ impl Chunk {
         let xpos = chunk.get_tag("xPos").expect("Not a Chunk NBT").get_int();
         let zpos = chunk.get_tag("zPos").expect("Not a Chunk NBT").get_int();
 
-        let status =
-            SmolStr::from(str::from_utf8(chunk.get_tag("Status").unwrap().get_string()).unwrap());
+        let status = SmolStr::from(
+            chunk
+                .rodeo
+                .resolve(chunk.get_tag("Status").unwrap().get_string()),
+        );
 
         let sections = chunk.get_tag("sections").unwrap().get_list();
 
@@ -86,7 +93,7 @@ impl Chunk {
             .iter()
             .filter_map(|section| {
                 let section_compound = section.get_compound();
-                let section = ChunkSection::from_compound(&section_compound, palette.clone());
+                let section = ChunkSection::from_compound(&section_compound, palette);
                 if section.ypos >= -4 {
                     Some(section)
                 } else {
@@ -207,7 +214,7 @@ impl ChunkSection {
             .iter()
             .map(|f| {
                 let block = f.get_compound();
-                let properties: Option<HashMap<SmolStr, SmolStr>> =
+                let properties: Option<HashMap<Spur, Spur>> =
                     block.get_tag("properties").map(|properties| {
                         properties
                             .get_compound()
@@ -215,19 +222,17 @@ impl ChunkSection {
                             .iter()
                             .map(|f| {
                                 let state_name = f.0.clone();
-                                let state_value =
-                                    SmolStr::new(str::from_utf8(f.1.get_string()).unwrap());
+                                let state_value = f.1.get_string().clone();
                                 (state_name, state_value)
                             })
                             .collect()
                     });
 
-                let block_name = block.get_tag("Name").unwrap().get_string();
+                let block_name = *block.get_tag("Name").unwrap().get_string();
                 BlockState {
-                    block: SmolStr::from(
-                        str::from_utf8(&block_name).expect("block name was not valid string"),
-                    ),
-                    properties: properties,
+                    rodeo: compound.rodeo.clone(),
+                    block: block_name,
+                    properties,
                 }
             })
             .collect();

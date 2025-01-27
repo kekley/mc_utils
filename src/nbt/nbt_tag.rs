@@ -1,12 +1,15 @@
 use core::str;
-use std::{any::Any, borrow::Cow, fmt::Debug, ops::Deref};
+use std::{any::Any, borrow::Cow, fmt::Debug, ops::Deref, sync::Arc};
 
 use bytes::{buf, Buf, Bytes};
 use cesu8::from_java_cesu8;
+use lasso::{Spur, ThreadedRodeo};
 use num_enum::TryFromPrimitive;
 use smol_str::SmolStr;
 
-use crate::{nbt_compound::NBTCompound, nbt_ids::*, spider_eye_error::SpiderEyeError};
+use crate::spider_eye_error::SpiderEyeError;
+
+use super::{nbt_compound::NBTCompound, nbt_ids::*};
 
 #[repr(u8)]
 #[derive(Clone)]
@@ -19,7 +22,7 @@ pub enum NBTTag {
     Float(f32) = FLOAT_ID,
     Double(f64) = DOUBLE_ID,
     ByteArray(Bytes) = BYTE_ARRAY_ID,
-    String(Bytes) = STRING_ID,
+    String(Spur) = STRING_ID,
     List(Vec<NBTTag>) = LIST_ID,
     Compound(NBTCompound) = COMPOUND_ID,
     IntArray(Vec<i32>) = INT_ARRAY_ID,
@@ -32,7 +35,11 @@ impl NBTTag {
         // See https://doc.rust-lang.org/reference/items/enumerations.html#pointer-casting
         unsafe { *(self as *const Self as *const u8) }
     }
-    pub fn read_tag(stream: &mut Bytes, id: NBTId) -> Result<NBTTag, SpiderEyeError> {
+    pub fn read_tag(
+        stream: &mut Bytes,
+        id: NBTId,
+        rodeo: Arc<ThreadedRodeo>,
+    ) -> Result<NBTTag, SpiderEyeError> {
         match id {
             NBTId::EndId => Ok(NBTTag::End),
             NBTId::ByteId => Ok(NBTTag::Byte(stream.get_i8())),
@@ -47,13 +54,13 @@ impl NBTTag {
                 stream.advance(len);
                 Ok(NBTTag::ByteArray(data))
             }
-            NBTId::StringId => Ok(NBTTag::String(get_nbt_string(stream)?)),
+            NBTId::StringId => Ok(NBTTag::String(get_nbt_string(stream, &rodeo)?)),
             NBTId::ListId => {
                 let tag_id = NBTId::try_from_primitive(stream.get_u8())?;
                 let len = stream.get_i32();
                 let mut list = Vec::with_capacity(len as usize);
                 for _ in 0..len {
-                    let tag = Self::read_tag(stream, tag_id)?;
+                    let tag = Self::read_tag(stream, tag_id, rodeo.clone())?;
                     if tag.get_type_id() != tag_id as u8 {
                         return Err(SpiderEyeError::ListError(len));
                     } else {
@@ -62,7 +69,10 @@ impl NBTTag {
                 }
                 Ok(NBTTag::List(list))
             }
-            NBTId::CompoundId => Ok(NBTTag::Compound(NBTCompound::from_bytes(stream)?)),
+            NBTId::CompoundId => Ok(NBTTag::Compound(NBTCompound::from_bytes(
+                stream,
+                rodeo.clone(),
+            )?)),
             NBTId::IntArrayId => {
                 let len = stream.get_i32() as usize;
                 let mut array = Vec::with_capacity(len);
@@ -141,7 +151,7 @@ impl NBTTag {
         }
     }
     #[inline]
-    pub fn get_string(&self) -> &Bytes {
+    pub fn get_string(&self) -> &Spur {
         if let NBTTag::String(value) = self {
             value
         } else {
@@ -197,7 +207,7 @@ impl Debug for NBTTag {
                 .entry(&"\nByte Array: ")
                 .entries(arg0)
                 .finish(),
-            Self::String(arg0) => write!(f, "\n String: {}\n", str::from_utf8(arg0).unwrap()),
+            Self::String(arg0) => write!(f, "\n string spur: {:?}\n", arg0),
             Self::List(arg0) => write!(f, "\nList: {arg0:?}\n"),
             Self::Compound(arg0) => write!(f, "{:?}", arg0),
             Self::IntArray(arg0) => write!(f, "\nIntArray: {arg0:?}\n"),
@@ -206,9 +216,9 @@ impl Debug for NBTTag {
     }
 }
 #[inline]
-pub fn get_nbt_string(stream: &mut Bytes) -> Result<Bytes, SpiderEyeError> {
+pub fn get_nbt_string(stream: &mut Bytes, rodeo: &ThreadedRodeo) -> Result<Spur, SpiderEyeError> {
     let len = stream.get_i16() as usize;
     let bytes = stream.slice(0..len);
     stream.advance(len);
-    Ok(bytes)
+    Ok(rodeo.get_or_intern(str::from_utf8(&bytes).expect("not valid string")))
 }

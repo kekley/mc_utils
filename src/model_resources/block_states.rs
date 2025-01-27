@@ -1,16 +1,18 @@
-use std::hash::Hash;
+use std::{hash::Hash, sync::Arc};
 
 use hashbrown::HashMap;
+use lasso::{Spur, ThreadedRodeo};
 use smol_str::SmolStr;
 
-pub type BlockResource = SmolStr;
-pub type StateName = SmolStr;
-pub type State = SmolStr;
+pub type BlockResource = Spur;
+pub type StateName = Spur;
+pub type State = Spur;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct BlockState {
-    pub block: BlockResource,
-    pub properties: Option<HashMap<StateName, State>>,
+    pub(crate) rodeo: Arc<ThreadedRodeo>,
+    pub(crate) block: BlockResource,
+    pub(crate) properties: Option<HashMap<StateName, State>>,
 }
 
 impl Hash for BlockState {
@@ -23,5 +25,11 @@ impl Hash for BlockState {
                 value.hash(state);
             }
         }
+    }
+}
+
+impl BlockState {
+    pub fn block_name(&self) -> &str {
+        self.rodeo.resolve(&self.block)
     }
 }

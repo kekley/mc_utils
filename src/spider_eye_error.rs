@@ -1,6 +1,6 @@
 use num_enum::TryFromPrimitiveError;
 
-use crate::nbt_ids::NBTId;
+use crate::nbt::nbt_ids::NBTId;
 
 #[derive(Debug)]
 pub enum SpiderEyeError {

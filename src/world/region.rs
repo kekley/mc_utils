@@ -5,12 +5,17 @@ use std::{usize, vec};
 
 use crate::block_states::BlockState;
 use crate::chunk::Chunk;
-use crate::compression::{CompressionData, CompressionScheme};
+
+use crate::nbt::compression::{CompressionData, CompressionScheme};
+use crate::nbt_compound::NBTCompound;
+use crate::nbt_loader::NBTLoader;
 use crate::palette::Palette;
 use crate::spider_eye_error::SpiderEyeError;
-use crate::RegionCoords;
+use bytes::Bytes;
 use fxhash::FxBuildHasher;
 use smol_str::SmolStr;
+
+use super::loaded_world::RegionCoords;
 
 //offsets are for 4KiB Sectors
 pub(crate) const CHUNKS_PER_FILE: usize = 1024;
@@ -24,6 +29,7 @@ pub(crate) const CHUNK_HEADER_SIZE: usize = 5;
 
 #[derive(Debug, Clone)]
 pub struct Region {
+    nbt_loader: NBTLoader,
     pub coords: RegionCoords,
     pub file_path: String,
 }
@@ -44,8 +50,13 @@ impl FileSegment {
 }
 
 impl Region {
-    pub fn from_file(path: String, palette: &Palette<BlockState>) -> Result<Self, SpiderEyeError> {
+    pub fn from_file(
+        path: String,
+        palette: &Palette<BlockState>,
+        nbt_loader: NBTLoader,
+    ) -> Result<Self, SpiderEyeError> {
         let mut region: Region = Self {
+            nbt_loader,
             file_path: path.to_string(),
             coords: RegionCoords::default(),
         };
@@ -114,7 +125,10 @@ impl Region {
 
         let decompressed_chunk = Self::decompress_chunk(&compressed_chunk);
 
-        Some(Chunk::from_bytes(decompressed_chunk, palette))
+        let mut bytes = Bytes::from(decompressed_chunk);
+        let nbt = NBTCompound::from_bytes(&mut bytes, self.nbt_loader.rodeo.clone())
+            .expect("invalid nbt");
+        Some(Chunk::from_nbt(nbt, palette))
     }
 
     fn decompress_chunk(data: &Vec<u8>) -> Vec<u8> {
@@ -159,7 +173,7 @@ impl Region {
 
     fn get_compression_data(data: &Vec<u8>) -> Result<CompressionData, SpiderEyeError> {
         let chunk_header = data
-            .get((0..5))
+            .get(0..5)
             .expect("ran out of bytes getting compression data");
 
         let compression_data = CompressionData::new(&chunk_header)?;
