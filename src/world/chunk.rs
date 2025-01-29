@@ -52,8 +52,6 @@ const fn y_to_index(y: isize, y_min: isize) -> u8 {
 impl SectionTower {
     pub fn get_section_for_y(&self, y: isize) -> Option<&ChunkSection> {
         if y >= self.y_max || y < self.y_min {
-            // TODO: This occurs a lot in hermitcraft season 7. Probably some
-            // form of bug?
             return None;
         }
 

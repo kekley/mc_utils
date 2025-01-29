@@ -1,4 +1,5 @@
 use fxhash::FxHashMap;
+use glam::Vec4;
 use hashbrown::HashMap;
 use serde_json::Value;
 use smol_str::SmolStr;
@@ -11,6 +12,16 @@ pub struct Uv {
     y1: f32,
     x2: f32,
     y2: f32,
+}
+
+impl Uv {
+    pub fn new(x1: f32, x2: f32, y1: f32, y2: f32) -> Self {
+        Self { x1, y1, x2, y2 }
+    }
+    pub fn to_vec4(&self) -> Vec4 {
+        let Uv { x1, y1, x2, y2 } = self;
+        Vec4::new(*x1, *y1, *x2, *y2)
+    }
 }
 
 impl From<&Value> for Uv {

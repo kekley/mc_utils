@@ -4,7 +4,7 @@ use lasso::{Spur, ThreadedRodeo};
 
 use super::block_models::BlockModel;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ResourceLoader {
     rodeo: Arc<ThreadedRodeo<Spur>>,
 }

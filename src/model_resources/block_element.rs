@@ -1,4 +1,4 @@
-use glam::Vec3;
+use glam::{Mat3A, Vec2, Vec3, Vec3A};
 use serde_json::Value;
 
 use super::{block_face::Face, utils::parse_vec3};
@@ -105,4 +105,21 @@ pub struct ElementRotation {
     axis: ElementAxis,
     angle: Angle,
     rescale: Option<Rescale>,
+}
+
+impl ElementRotation {
+    pub fn to_matrix(&self) -> Mat3A {
+        let radians = self.angle.to_radians();
+
+        let rotation = match self.axis {
+            ElementAxis::X => Mat3A::from_rotation_x(radians),
+            ElementAxis::Y => Mat3A::from_rotation_y(radians),
+            ElementAxis::Z => Mat3A::from_rotation_z(radians),
+        };
+
+        if self.rescale.unwrap_or(false) {
+            return Mat3A::from_scale(Vec2::splat(1.0)) * rotation;
+        }
+        rotation
+    }
 }
