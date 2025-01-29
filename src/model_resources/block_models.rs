@@ -1,5 +1,6 @@
 use std::{fs, sync::Arc};
 
+use hashbrown::HashMap;
 use lasso::{Spur, ThreadedRodeo};
 use serde_json::Value;
 use smol_str::SmolStr;
@@ -41,10 +42,21 @@ pub struct IntermediateBlockModel {
 pub struct BlockModel {
     pub ambient_occlusion: AmbientOcclusion,
     pub displays: Vec<BlockDisplay>,
-    pub textures: BlockTextures,
+    textures: BlockTextures,
     pub elements: Vec<BlockElement>,
 }
 impl BlockModel {
+    pub fn get_textures(&self) -> HashMap<SmolStr, SmolStr> {
+        self.textures.get_all()
+    }
+    pub fn is_axis_aligned(&self) -> bool {
+        self.elements
+            .iter()
+            .all(|element| element.is_axis_aligned())
+    }
+    pub fn is_cube(&self) -> bool {
+        self.elements.len() == 1 && self.elements[0].is_cube()
+    }
     pub(super) fn load(path: &str, rodeo: Arc<ThreadedRodeo>) -> BlockModel {
         let tmp = IntermediateBlockModel::from_json(path, rodeo);
         let res = IntermediateBlockModel::collapse_parents(tmp);

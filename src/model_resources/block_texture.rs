@@ -1,4 +1,5 @@
 use fxhash::FxHashMap;
+use hashbrown::HashMap;
 use serde_json::Value;
 use smol_str::SmolStr;
 
@@ -32,15 +33,38 @@ pub enum TextureVariable {
     Variable(SmolStr),
     ResourcePath(SmolStr),
 }
+
+impl TextureVariable {
+    pub fn get(&self) -> &SmolStr {
+        match self {
+            TextureVariable::Variable(smol_str) => smol_str,
+            TextureVariable::ResourcePath(smol_str) => smol_str,
+        }
+    }
+}
 #[derive(Debug)]
 pub struct BlockTextures {
     pub textures: FxHashMap<SmolStr, TextureVariable>,
 }
 
 impl BlockTextures {
-    fn path_inner(resource_path: &str) -> SmolStr {
-        let (namespace, remaining_str) =
-            resource_path.split_once(":").unwrap_or(("", resource_path));
+    pub fn get_all(&self) -> HashMap<SmolStr, SmolStr> {
+        self.textures
+            .iter()
+            .map(|entry| (entry.0.to_owned(), Self::path_inner(entry.1)))
+            .collect()
+    }
+    pub fn get_keys(&self) -> Vec<SmolStr> {
+        self.textures
+            .keys()
+            .into_iter()
+            .map(|key| key.clone())
+            .collect()
+    }
+
+    fn path_inner(variable: &TextureVariable) -> SmolStr {
+        let path_str = variable.get();
+        let (namespace, remaining_str) = path_str.split_once(":").unwrap_or(("", path_str));
 
         let (texture_type, remaining_str) = remaining_str
             .split_once("/")
@@ -56,14 +80,7 @@ impl BlockTextures {
                 + ".png",
         )
     }
-    pub fn to_path(resource: &TextureVariable) -> SmolStr {
-        match resource {
-            TextureVariable::Variable(_) => {
-                panic!()
-            }
-            TextureVariable::ResourcePath(path) => Self::path_inner(&path),
-        }
-    }
+
     pub fn parse_textures(value: &Value) -> Self {
         let obj = value.as_object().expect("textures was not object");
         let textures = obj
