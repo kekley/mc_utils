@@ -1,4 +1,4 @@
-use super::variant::Variant;
+use super::{block_states::BlockState, variant::Variant};
 
 pub struct MultiPart {}
 
@@ -12,7 +12,7 @@ pub struct Apply {
 }
 
 pub enum When {
-    OrCase(),
-    AndCase(),
-    SingleCase(),
+    OrCase(Vec<BlockState>),
+    AndCase(Vec<BlockState>),
+    SingleCase(Vec<BlockState>),
 }
