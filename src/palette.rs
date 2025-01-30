@@ -8,7 +8,6 @@ pub type EntryID = u32;
 pub struct Palette<T: Eq + PartialEq + Hash + Clone> {
     map: DashMap<T, EntryID, FxBuildHasher>,
     entries: RwLock<Vec<T>>,
-    ind: usize,
 }
 
 impl<T: Eq + Hash + Clone> Palette<T> {
@@ -18,7 +17,6 @@ impl<T: Eq + Hash + Clone> Palette<T> {
         Self {
             map,
             entries: entries,
-            ind: 0,
         }
     }
 

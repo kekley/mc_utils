@@ -3,6 +3,7 @@ use std::io::{self, BufReader, Cursor, Read, Seek};
 use std::sync::{Arc, RwLock};
 use std::{usize, vec};
 
+use crate::block::Block;
 use crate::block_states::BlockState;
 use crate::chunk::Chunk;
 
@@ -11,8 +12,10 @@ use crate::nbt_compound::NBTCompound;
 use crate::nbt_loader::NBTLoader;
 use crate::palette::Palette;
 use crate::spider_eye_error::SpiderEyeError;
+use crate::variant::BlockName;
 use bytes::Bytes;
 use fxhash::FxBuildHasher;
+use lasso::Spur;
 use smol_str::SmolStr;
 
 use super::loaded_world::RegionCoords;
@@ -52,7 +55,7 @@ impl FileSegment {
 impl Region {
     pub fn from_file(
         path: String,
-        palette: &Palette<BlockState>,
+        palette: &Palette<Block>,
         nbt_loader: NBTLoader,
     ) -> Result<Self, SpiderEyeError> {
         let mut region: Region = Self {
@@ -108,7 +111,7 @@ impl Region {
         FileSegment::new(offset, sectors)
     }
 
-    pub fn get_chunk(&self, x: u32, z: u32, palette: &Palette<BlockState>) -> Option<Chunk> {
+    pub fn get_chunk(&self, x: u32, z: u32, palette: &Palette<Block>) -> Option<Chunk> {
         if x > 32 || z > 32 {
             return None;
         }
@@ -160,7 +163,7 @@ impl Region {
         res
     }
 
-    pub fn get_all_chunks(&self, palette: &Palette<BlockState>) -> Vec<Chunk> {
+    pub fn get_all_chunks(&self, palette: &Palette<Block>) -> Vec<Chunk> {
         let mut chunks = vec![];
         (0..32).for_each(|z| {
             (0..32).for_each(|x| {

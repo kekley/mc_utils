@@ -6,7 +6,7 @@ use super::block_models::BlockModel;
 
 #[derive(Debug, Clone)]
 pub struct ResourceLoader {
-    rodeo: Arc<ThreadedRodeo<Spur>>,
+    pub rodeo: Arc<ThreadedRodeo<Spur>>,
 }
 
 impl ResourceLoader {

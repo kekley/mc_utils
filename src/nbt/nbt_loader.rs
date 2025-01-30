@@ -13,7 +13,7 @@ use super::nbt_compound::NBTCompound;
 
 #[derive(Debug, Clone)]
 pub struct NBTLoader {
-    pub(crate) rodeo: Arc<ThreadedRodeo>,
+    pub rodeo: Arc<ThreadedRodeo>,
 }
 
 impl NBTLoader {

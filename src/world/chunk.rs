@@ -12,6 +12,7 @@ use lasso::Spur;
 use smol_str::SmolStr;
 
 use crate::{
+    block::Block,
     block_states::BlockState,
     nbt::{nbt_compound::NBTCompound, nbt_tag::NBTTag},
     nbt_compound,
@@ -69,7 +70,7 @@ impl SectionTower {
     }
 }
 impl Chunk {
-    pub fn from_nbt(nbt_compound: NBTCompound, palette: &Palette<BlockState>) -> Self {
+    pub fn from_nbt(nbt_compound: NBTCompound, palette: &Palette<Block>) -> Self {
         let binding = nbt_compound.get_tag("").expect("Not a Chunk NBT");
         let chunk = binding.get_compound();
         let data_version = chunk
@@ -181,7 +182,7 @@ impl Default for ChunkSection {
 }
 
 impl ChunkSection {
-    pub fn from_compound(compound: &NBTCompound, palette: &Palette<BlockState>) -> Self {
+    pub fn from_compound(compound: &NBTCompound, palette: &Palette<Block>) -> Self {
         let y = compound.get_tag("Y").unwrap().get_byte();
         if y < -4 || y > 19 {
             return Self {
@@ -205,14 +206,16 @@ impl ChunkSection {
             .get_byte_array()
             .to_owned();
 
-        let block_states: Vec<BlockState> = block_states_compound
+        let block_states: Vec<Block> = block_states_compound
             .get_tag("palette")
             .unwrap()
             .get_list()
             .iter()
             .map(|f| {
                 let block = f.get_compound();
-                let properties: Option<HashMap<Spur, Spur>> =
+                let block_name = *block.get_tag("Name").unwrap().get_string();
+
+                let properties: Option<HashMap<Spur, Spur, FxBuildHasher>> =
                     block.get_tag("properties").map(|properties| {
                         properties
                             .get_compound()
@@ -226,11 +229,9 @@ impl ChunkSection {
                             .collect()
                     });
 
-                let block_name = *block.get_tag("Name").unwrap().get_string();
-                BlockState {
-                    rodeo: compound.rodeo.clone(),
-                    block: block_name,
-                    properties,
+                Block {
+                    block_name,
+                    block_state: BlockState { properties },
                 }
             })
             .collect();

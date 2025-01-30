@@ -7,14 +7,10 @@ use std::{
 use dashmap::DashMap;
 use fxhash::{FxBuildHasher, FxHasher};
 use hashbrown::HashMap;
-use lasso::ThreadedRodeo;
+use lasso::{Spur, ThreadedRodeo};
 use smol_str::SmolStr;
 
-use crate::{
-    block_states::BlockState,
-    nbt_loader::NBTLoader,
-    palette::{self, Palette},
-};
+use crate::{block::Block, block_states::BlockState, nbt_loader::NBTLoader, palette::Palette};
 
 use super::{chunk::Chunk, region::Region};
 #[derive(Debug, Default, Hash, PartialEq, Eq, Clone, Copy)]
@@ -79,12 +75,13 @@ impl From<ChunkCoords> for WorldCoords {
     }
 }
 
+pub type BlockName = Spur;
 #[derive(Debug)]
 pub struct World {
-    nbt_loader: NBTLoader,
+    pub nbt_loader: NBTLoader,
     pub regions: HashMap<RegionCoords, Region, FxBuildHasher>,
     pub cached_chunks: DashMap<ChunkCoords, Option<Arc<Chunk>>, FxBuildHasher>,
-    pub global_palette: Palette<BlockState>,
+    pub global_palette: Palette<Block>,
 }
 
 impl World {

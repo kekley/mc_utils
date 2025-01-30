@@ -8,7 +8,7 @@ use smol_str::SmolStr;
 use super::{
     block_display::BlockDisplay, block_element::BlockElement, block_texture::BlockTextures,
 };
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum BlockRotation {
     Zero,
     Ninety,

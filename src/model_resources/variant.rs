@@ -1,28 +1,42 @@
 use std::{
+    collections::HashMap,
     fs::{self, File},
     io::Read,
+    sync::Arc,
 };
 
 use fxhash::FxHashMap;
-use serde_json::Value;
+use lasso::{Spur, ThreadedRodeo};
+use serde_json::{value, Value};
 use smol_str::SmolStr;
 
 use super::{
     block_models::{BlockRotation, ASSET_PATH},
+    block_states::BlockState,
     block_texture::Uv,
 };
+#[derive(Debug, Clone)]
+
 pub struct Weight(f32);
+
+#[derive(Debug, Clone)]
 
 pub struct UvLock(bool);
 
-pub enum Variant {
+#[derive(Debug, Clone)]
+pub enum ModelVariant {
     SingleModel(VariantEntry),
     ModelArray(Vec<VariantEntry>),
 }
+
+pub type BlockName = Spur;
+#[derive(Debug, Clone)]
+
 pub struct Variants {
-    variants: FxHashMap<SmolStr, Variant>,
+    variants: FxHashMap<BlockState, ModelVariant>,
 }
 
+#[derive(Debug, Clone)]
 pub struct VariantEntry {
     pub model_path: SmolStr,
     pub rotation_x: Option<BlockRotation>,
@@ -32,10 +46,11 @@ pub struct VariantEntry {
 }
 
 impl Variants {
-    fn parse_path(model_path: SmolStr) -> SmolStr {
-        let (namespace, remaining_str) = model_path
-            .split_once(":")
-            .unwrap_or(("", model_path.as_str()));
+    pub fn get(&self, block_state: &BlockState) -> Vec<ModelVariant> {
+        vec![self.variants.get(block_state).unwrap().clone()]
+    }
+    pub fn parse_path(model_path: &str) -> SmolStr {
+        let (namespace, remaining_str) = model_path.split_once(":").unwrap_or(("", model_path));
 
         let (model_type, remaining_str) = remaining_str
             .split_once("/")
@@ -51,44 +66,35 @@ impl Variants {
                 + ".json",
         )
     }
-    pub fn from_json(path: &str) -> Variants {
-        let contents = fs::read_to_string(path).expect("could not read json file");
+}
 
-        let value: Value = serde_json::from_str(&contents).expect("could_not parse_json");
-        if let Some(value) = value.get("variants") {
-            let variants = Variants::from(value);
-            return variants;
-        } else {
-            let multipart = value
-                .get("multipart")
-                .expect("file was not variant or multipart");
-            todo!()
+impl ModelVariant {
+    pub fn new(value: &Value) -> Self {
+        match value.is_array() {
+            true => {
+                let entries = value
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|entry| VariantEntry::from(entry))
+                    .collect::<Vec<_>>();
+                ModelVariant::ModelArray(entries)
+            }
+            false => ModelVariant::SingleModel(VariantEntry::from(value)),
         }
     }
 }
-
-impl From<&Value> for Variants {
-    fn from(value: &Value) -> Self {
+impl Variants {
+    pub(crate) fn new(value: &Value, rodeo: &ThreadedRodeo) -> Self {
         let variants = value
             .as_object()
             .expect("variants was not object")
             .iter()
-            .map(|(variant_name, variant_entry)| {
-                let variant = match variant_entry.is_array() {
-                    true => {
-                        let entries = variant_entry
-                            .as_array()
-                            .unwrap()
-                            .iter()
-                            .map(|entry| VariantEntry::from(entry))
-                            .collect::<Vec<_>>();
-                        Variant::ModelArray(entries)
-                    }
-                    false => Variant::SingleModel(VariantEntry::from(variant_entry)),
-                };
-                (SmolStr::from(variant_name), variant)
+            .map(|(variant_properties, variant_entry)| {
+                let variant_entry = ModelVariant::new(variant_entry);
+                (BlockState::new(&variant_properties, &rodeo), variant_entry)
             })
-            .collect::<FxHashMap<_, _>>();
+            .collect::<HashMap<_, _, _>>();
         return Variants { variants };
     }
 }

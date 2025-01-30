@@ -1,24 +1,20 @@
 use std::{hash::Hash, sync::Arc};
 
+use fxhash::FxBuildHasher;
 use hashbrown::HashMap;
 use lasso::{Spur, ThreadedRodeo};
+use serde_json::Value;
 use smol_str::SmolStr;
 
-pub type BlockResource = Spur;
 pub type StateName = Spur;
 pub type State = Spur;
-
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct BlockState {
-    pub(crate) rodeo: Arc<ThreadedRodeo>,
-    pub(crate) block: BlockResource,
-    pub(crate) properties: Option<HashMap<StateName, State>>,
+    pub(crate) properties: Option<HashMap<StateName, State, FxBuildHasher>>,
 }
 
 impl Hash for BlockState {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.block.hash(state);
-
         if let Some(properties) = &self.properties {
             for (key, value) in properties {
                 key.hash(state);
@@ -29,7 +25,28 @@ impl Hash for BlockState {
 }
 
 impl BlockState {
-    pub fn block_name(&self) -> &str {
-        self.rodeo.resolve(&self.block)
+    pub fn new(properties: &str, rodeo: &ThreadedRodeo) -> Self {
+        if properties.is_empty() {
+            return Self { properties: None };
+        }
+        let split = properties
+            .split(",")
+            .into_iter()
+            .map(|property| {
+                let property = property
+                    .split_once("=")
+                    .map(|(state_name, state)| {
+                        let state_name = rodeo.get_or_intern(state_name);
+                        let state = rodeo.get_or_intern(state);
+                        (state_name, state)
+                    })
+                    .expect("blockstate parse error");
+                property
+            })
+            .collect::<HashMap<_, _, _>>();
+
+        Self {
+            properties: Some(split),
+        }
     }
 }
