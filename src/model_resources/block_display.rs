@@ -3,7 +3,7 @@ use serde_json::Value;
 
 use super::utils::parse_vec3;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum DisplayPosition {
     ThirdPersonRightHand,
     ThirdPersonLeftHand,
@@ -30,7 +30,7 @@ impl From<&str> for DisplayPosition {
         }
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BlockDisplay {
     position: DisplayPosition,
     rotation: Vec3,

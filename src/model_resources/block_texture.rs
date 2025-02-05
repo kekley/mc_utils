@@ -1,12 +1,13 @@
-use fxhash::FxHashMap;
+use fxhash::{FxBuildHasher, FxHashMap, FxHasher};
 use glam::Vec4;
 use hashbrown::HashMap;
+use lasso::{Spur, ThreadedRodeo};
 use serde_json::Value;
 use smol_str::SmolStr;
 
 use super::{block_models::ASSET_PATH, utils::parse_vec4};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Uv {
     x1: f32,
     y1: f32,
@@ -39,33 +40,33 @@ impl From<[f32; 4]> for Uv {
         }
     }
 }
-#[derive(Debug, Hash, PartialEq, Eq)]
+pub type TexVar = Spur;
+pub type TexPath = Spur;
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum TextureVariable {
-    Variable(SmolStr),
-    ResourcePath(SmolStr),
+    Variable(TexVar),
+    ResourcePath(TexPath),
 }
 
 impl TextureVariable {
-    pub fn get(&self) -> &SmolStr {
+    pub fn get_inner(&self) -> Spur {
         match self {
-            TextureVariable::Variable(smol_str) => smol_str,
-            TextureVariable::ResourcePath(smol_str) => smol_str,
+            TextureVariable::Variable(key) => *key,
+            TextureVariable::ResourcePath(key) => *key,
         }
     }
 }
-#[derive(Debug)]
+
+#[derive(Debug, Clone)]
 pub struct BlockTextures {
-    pub textures: FxHashMap<SmolStr, TextureVariable>,
+    pub textures: HashMap<TexVar, TextureVariable, FxBuildHasher>,
 }
 
 impl BlockTextures {
-    pub fn get_all(&self) -> HashMap<SmolStr, SmolStr> {
-        self.textures
-            .iter()
-            .map(|entry| (entry.0.to_owned(), Self::path_inner(entry.1)))
-            .collect()
+    pub fn get_all(&self) -> &HashMap<TexVar, TextureVariable, FxBuildHasher> {
+        &self.textures
     }
-    pub fn get_keys(&self) -> Vec<SmolStr> {
+    pub fn get_keys(&self) -> Vec<TexVar> {
         self.textures
             .keys()
             .into_iter()
@@ -73,8 +74,8 @@ impl BlockTextures {
             .collect()
     }
 
-    fn path_inner(variable: &TextureVariable) -> SmolStr {
-        let path_str = variable.get();
+    fn path_inner(variable: &TextureVariable, rodeo: &ThreadedRodeo) -> SmolStr {
+        let path_str = rodeo.resolve(&variable.get_inner());
         let (namespace, remaining_str) = path_str.split_once(":").unwrap_or(("", path_str));
 
         let (texture_type, remaining_str) = remaining_str
@@ -92,47 +93,31 @@ impl BlockTextures {
         )
     }
 
-    pub fn parse_textures(value: &Value) -> Self {
+    pub fn parse_from_json(value: &Value, rodeo: &ThreadedRodeo) -> Self {
         let obj = value.as_object().expect("textures was not object");
         let textures = obj
             .iter()
             .map(|(var1, var2)| {
-                let name = SmolStr::new(var1);
-                let texture = TextureVariable::from(var2);
+                let name = rodeo.get_or_intern(var1);
+                let texture = TextureVariable::parse_from_json_value(var2, rodeo);
                 (name, texture)
             })
-            .collect::<FxHashMap<SmolStr, TextureVariable>>();
+            .collect::<HashMap<TexVar, TextureVariable, FxBuildHasher>>();
         BlockTextures { textures }
     }
 }
-impl From<&Value> for TextureVariable {
-    fn from(value: &Value) -> Self {
+
+impl TextureVariable {
+    pub(crate) fn parse_from_json_value(value: &Value, rodeo: &ThreadedRodeo) -> Self {
         let val = value.as_str().expect("texture value was not SmolStr");
         let first_char = val.chars().nth(0).expect("texture SmolStr had length of 0");
         if val.len() == 1 {
             panic!("invalid texture variable length")
         }
         if first_char == '#' {
-            return TextureVariable::Variable(SmolStr::new(val));
+            return TextureVariable::Variable(rodeo.get_or_intern(val));
         } else {
-            return TextureVariable::ResourcePath(SmolStr::new(val));
-        }
-    }
-}
-
-impl From<&str> for TextureVariable {
-    fn from(value: &str) -> Self {
-        let first_char = value
-            .chars()
-            .nth(0)
-            .expect("texture SmolStr had length of 0");
-        if value.len() == 1 {
-            panic!("invalid texture variable length")
-        }
-        if first_char == '#' {
-            return TextureVariable::Variable(SmolStr::new(value));
-        } else {
-            return TextureVariable::ResourcePath(SmolStr::new(value));
+            return TextureVariable::ResourcePath(rodeo.get_or_intern(val));
         }
     }
 }

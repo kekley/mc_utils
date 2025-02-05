@@ -38,7 +38,7 @@ impl NBTTag {
     pub fn read_tag(
         stream: &mut Bytes,
         id: NBTId,
-        rodeo: Arc<ThreadedRodeo>,
+        rodeo: &ThreadedRodeo,
     ) -> Result<NBTTag, SpiderEyeError> {
         match id {
             NBTId::EndId => Ok(NBTTag::End),

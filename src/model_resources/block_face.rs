@@ -1,3 +1,4 @@
+use lasso::ThreadedRodeo;
 use serde_json::Value;
 
 use super::{
@@ -7,7 +8,7 @@ use super::{
 };
 pub type TintIndex = i64;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Face {
     pub name: FaceName,
     pub uv: Option<Uv>,
@@ -18,7 +19,7 @@ pub struct Face {
 }
 
 impl Face {
-    pub fn parse_faces(value: &Value) -> [Option<Face>; 6] {
+    pub fn parse_faces(value: &Value, rodeo: &ThreadedRodeo) -> [Option<Face>; 6] {
         const NONE_VALUE: Option<Face> = None;
         let mut face_array = [NONE_VALUE; 6];
         value
@@ -27,7 +28,7 @@ impl Face {
             .iter()
             .enumerate()
             .for_each(|(i, (name, value))| {
-                face_array[i] = Some(Face::from((name.as_str(), value)))
+                face_array[i] = Some(Face::parse_from_json_value(name, value, rodeo))
             });
 
         face_array
@@ -57,14 +58,17 @@ impl From<&str> for FaceName {
     }
 }
 
-impl From<(&str, &Value)> for Face {
-    fn from(value: (&str, &Value)) -> Face {
-        let name = FaceName::from(value.0);
-        let value = value.1;
+impl Face {
+    pub fn parse_from_json_value(face_name: &str, value: &Value, rodeo: &ThreadedRodeo) -> Self {
+        let name = FaceName::from(face_name);
+        let value = value;
         let uv = value
             .get("uv")
             .map(|value| Uv::from(parse_vec4(value).to_array()));
-        let texture = TextureVariable::from(value.get("texture").expect("no texture for face"));
+        let texture = TextureVariable::parse_from_json_value(
+            value.get("texture").expect("no texture for face"),
+            rodeo,
+        );
         let cullface = value
             .get("cullface")
             .map(|value| FaceName::from(value.as_str().expect("cullface was not str")));

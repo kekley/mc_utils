@@ -16,7 +16,6 @@ use super::{
 
 #[derive(Clone)]
 pub struct NBTCompound {
-    pub(crate) rodeo: Arc<ThreadedRodeo>,
     pub children: HashMap<Spur, NBTTag, FxBuildHasher>,
 }
 impl Debug for NBTCompound {
@@ -26,16 +25,16 @@ impl Debug for NBTCompound {
 }
 
 impl NBTCompound {
-    pub fn as_indented_string(&self, indentation: u16) -> String {
+    pub fn as_indented_string(&self, indentation: u16, rodeo: &ThreadedRodeo) -> String {
         let mut res = String::with_capacity(1024 * 38);
         for child in &self.children {
             for _ in 0..indentation + 1 {
                 res = res + "\t"
             }
-            res = res + &format!("Name: {}, ", self.rodeo.resolve(child.0));
+            res = res + &format!("Name: {}, ", rodeo.resolve(child.0));
             match &child.1 {
                 NBTTag::Compound(compound) => {
-                    let str = compound.as_indented_string(indentation + 1);
+                    let str = compound.as_indented_string(indentation + 1, rodeo);
                     res = res + &str;
                 }
                 _ => {
@@ -55,18 +54,17 @@ impl NBTCompound {
     pub fn add_tag(&mut self, name: Spur, tag: NBTTag) {
         self.children.insert(name, tag);
     }
-    pub fn get_tag(&self, tag_name: &str) -> Option<&NBTTag> {
-        let spur = self.rodeo.get(tag_name)?;
+    pub fn get_tag(&self, tag_name: &str, rodeo: &ThreadedRodeo) -> Option<&NBTTag> {
+        let spur = rodeo.get(tag_name)?;
         self.children.get(&spur)
     }
 
-    pub(super) fn from_bytes(
+    pub(crate) fn from_bytes(
         stream: &mut Bytes,
-        rodeo: Arc<ThreadedRodeo>,
+        rodeo: &ThreadedRodeo,
     ) -> Result<Self, SpiderEyeError> {
         let mut tmp = Self {
             children: HashMap::with_hasher(FxBuildHasher::default()),
-            rodeo: rodeo.clone(),
         };
 
         while stream.has_remaining() {
@@ -76,7 +74,7 @@ impl NBTCompound {
             }
             let name = get_nbt_string(stream, &rodeo)?;
 
-            if let Ok(tag) = NBTTag::read_tag(stream, tag_id, rodeo.clone()) {
+            if let Ok(tag) = NBTTag::read_tag(stream, tag_id, rodeo) {
                 tmp.add_tag(name, tag);
             } else {
                 break;

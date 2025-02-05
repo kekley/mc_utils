@@ -7,6 +7,5 @@ pub mod block_states;
 pub mod block_texture;
 pub mod multipart;
 pub mod resource;
-pub mod resource_loader;
 pub mod utils;
 pub mod variant;

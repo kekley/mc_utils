@@ -6,7 +6,7 @@ use lasso::{Spur, ThreadedRodeo};
 use serde_json::Value;
 
 use super::{
-    block_states::BlockState,
+    block_states::InternalBlockState,
     variant::{BlockName, ModelVariant},
 };
 
@@ -16,7 +16,7 @@ pub struct MultiPart {
 }
 
 impl MultiPart {
-    pub fn get(&self, block_state: &BlockState) -> Vec<ModelVariant> {
+    pub fn get(&self, block_state: &InternalBlockState) -> Vec<ModelVariant> {
         self.cases
             .iter()
             .filter_map(|case| {
@@ -36,7 +36,7 @@ pub struct Case {
     apply: Apply,
 }
 impl Case {
-    pub fn check(&self, block_state: &BlockState) -> bool {
+    pub fn check(&self, block_state: &InternalBlockState) -> bool {
         self.when
             .as_ref()
             .is_none_or(|when| when.check(block_state))
@@ -50,12 +50,12 @@ pub struct Apply {
 
 #[derive(Debug, Clone)]
 pub enum When {
-    OrCase(Vec<BlockState>),
-    AndCase(Vec<BlockState>),
-    SingleCase(BlockState),
+    OrCase(Vec<InternalBlockState>),
+    AndCase(Vec<InternalBlockState>),
+    SingleCase(InternalBlockState),
 }
 impl When {
-    pub fn check(&self, block_state: &BlockState) -> bool {
+    pub fn check(&self, block_state: &InternalBlockState) -> bool {
         match self {
             When::OrCase(test_states) => test_states.iter().any(|state| state == block_state),
             When::AndCase(test_states) => test_states.iter().all(|state| state == block_state),
@@ -65,27 +65,27 @@ impl When {
 }
 
 impl MultiPart {
-    pub fn new(value: &Value, block_name: BlockName, rodeo: &ThreadedRodeo) -> Self {
+    pub fn new(value: &Value, rodeo: &ThreadedRodeo) -> Self {
         let cases = value
             .as_array()
             .expect("multipart was not array of cases")
             .iter()
-            .map(|value| Case::new(value, &rodeo, block_name))
+            .map(|value| Case::new(value, &rodeo))
             .collect::<Vec<_>>();
         MultiPart { cases: cases }
     }
 }
 
 impl Case {
-    pub fn new(value: &Value, rodeo: &ThreadedRodeo, block_name: BlockName) -> Self {
+    pub fn new(value: &Value, rodeo: &ThreadedRodeo) -> Self {
         let when = value.get("when").map(|value| {
             if let Some(value) = value.get("OR") {
                 let array = value.as_array().expect("OR case was not array");
-                let block_states = collect_blockstates(block_name, array, rodeo);
+                let block_states = collect_blockstates(array, rodeo);
                 When::OrCase(block_states)
             } else if let Some(value) = value.get("AND") {
                 let array = value.as_array().expect("AND case was not array");
-                let block_states = collect_blockstates(block_name, array, rodeo);
+                let block_states = collect_blockstates(array, rodeo);
                 When::AndCase(block_states)
             } else {
                 let (name, state) = value
@@ -105,17 +105,16 @@ impl Case {
                 let mut map: HashMap<Spur, Spur, FxBuildHasher> =
                     HashMap::with_hasher(FxBuildHasher::default());
                 map.insert(name, state);
-                let block_state = BlockState {
-                    properties: Some(map),
-                };
+                let block_state = InternalBlockState { properties: map };
                 When::SingleCase(block_state)
             }
         });
 
-        let variant = ModelVariant::new(
+        let variant = ModelVariant::from_json_value(
             value
                 .get("apply")
                 .expect("no model specified for multipart"),
+            rodeo,
         );
         let apply = Apply { variant: variant };
 
@@ -123,11 +122,7 @@ impl Case {
     }
 }
 
-fn collect_blockstates(
-    block_name: BlockName,
-    value: &Vec<Value>,
-    rodeo: &ThreadedRodeo,
-) -> Vec<BlockState> {
+fn collect_blockstates(value: &Vec<Value>, rodeo: &ThreadedRodeo) -> Vec<InternalBlockState> {
     value
         .iter()
         .flat_map(|entry| {
@@ -143,10 +138,8 @@ fn collect_blockstates(
                     values.into_iter().for_each(|value| {
                         map.insert(state_name, rodeo.get_or_intern(value)).unwrap();
                     });
-                    BlockState {
-                        properties: Some(map),
-                    }
+                    InternalBlockState { properties: map }
                 })
         })
-        .collect::<Vec<BlockState>>()
+        .collect::<Vec<InternalBlockState>>()
 }

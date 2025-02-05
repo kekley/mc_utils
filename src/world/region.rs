@@ -4,18 +4,18 @@ use std::sync::{Arc, RwLock};
 use std::{usize, vec};
 
 use crate::block::Block;
-use crate::block_states::BlockState;
+use crate::block_states::InternalBlockState;
 use crate::chunk::Chunk;
 
 use crate::nbt::compression::{CompressionData, CompressionScheme};
 use crate::nbt_compound::NBTCompound;
-use crate::nbt_loader::NBTLoader;
 use crate::palette::Palette;
 use crate::spider_eye_error::SpiderEyeError;
 use crate::variant::BlockName;
+use crate::ResourceLoader;
 use bytes::Bytes;
 use fxhash::FxBuildHasher;
-use lasso::Spur;
+use lasso::{Spur, ThreadedRodeo};
 use smol_str::SmolStr;
 
 use super::loaded_world::RegionCoords;
@@ -32,7 +32,7 @@ pub(crate) const CHUNK_HEADER_SIZE: usize = 5;
 
 #[derive(Debug, Clone)]
 pub struct Region {
-    nbt_loader: NBTLoader,
+    resource_loader: ResourceLoader,
     pub coords: RegionCoords,
     pub file_path: String,
 }
@@ -56,12 +56,12 @@ impl Region {
     pub fn from_file(
         path: String,
         palette: &Palette<Block>,
-        nbt_loader: NBTLoader,
+        resource_loader: ResourceLoader,
     ) -> Result<Self, SpiderEyeError> {
         let mut region: Region = Self {
-            nbt_loader,
             file_path: path.to_string(),
             coords: RegionCoords::default(),
+            resource_loader: resource_loader,
         };
 
         let mut found = false;
@@ -130,10 +130,10 @@ impl Region {
 
         let mut bytes = Bytes::from(decompressed_chunk);
         let nbt = self
-            .nbt_loader
+            .resource_loader
             .nbt_from_bytes(&mut bytes)
             .expect("invalid nbt");
-        Some(Chunk::from_nbt(nbt, palette))
+        Some(Chunk::from_nbt(nbt, palette, &self.resource_loader.rodeo))
     }
 
     fn decompress_chunk(data: &Vec<u8>) -> Vec<u8> {

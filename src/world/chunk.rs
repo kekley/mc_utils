@@ -8,15 +8,13 @@ use std::{
 use bytes::Bytes;
 use fxhash::FxBuildHasher;
 use hashbrown::HashMap;
-use lasso::Spur;
+use lasso::{Spur, ThreadedRodeo};
 use smol_str::SmolStr;
 
 use crate::{
     block::Block,
-    block_states::BlockState,
+    block_states::InternalBlockState,
     nbt::{nbt_compound::NBTCompound, nbt_tag::NBTTag},
-    nbt_compound,
-    nbt_loader::NBTLoader,
     palette::Palette,
 };
 
@@ -70,29 +68,36 @@ impl SectionTower {
     }
 }
 impl Chunk {
-    pub fn from_nbt(nbt_compound: NBTCompound, palette: &Palette<Block>) -> Self {
-        let binding = nbt_compound.get_tag("").expect("Not a Chunk NBT");
+    pub fn from_nbt(
+        nbt_compound: NBTCompound,
+        palette: &Palette<Block>,
+        rodeo: &ThreadedRodeo,
+    ) -> Self {
+        let binding = nbt_compound.get_tag("", rodeo).expect("Not a Chunk NBT");
         let chunk = binding.get_compound();
         let data_version = chunk
-            .get_tag("DataVersion")
+            .get_tag("DataVersion", rodeo)
             .expect("Not a Chunk NBT")
             .get_int();
-        let xpos = chunk.get_tag("xPos").expect("Not a Chunk NBT").get_int();
-        let zpos = chunk.get_tag("zPos").expect("Not a Chunk NBT").get_int();
+        let xpos = chunk
+            .get_tag("xPos", rodeo)
+            .expect("Not a Chunk NBT")
+            .get_int();
+        let zpos = chunk
+            .get_tag("zPos", rodeo)
+            .expect("Not a Chunk NBT")
+            .get_int();
 
-        let status = SmolStr::from(
-            chunk
-                .rodeo
-                .resolve(chunk.get_tag("Status").unwrap().get_string()),
-        );
+        let status =
+            SmolStr::from(rodeo.resolve(chunk.get_tag("Status", rodeo).unwrap().get_string()));
 
-        let sections = chunk.get_tag("sections").unwrap().get_list();
+        let sections = chunk.get_tag("sections", rodeo).unwrap().get_list();
 
         let section_array: Vec<ChunkSection> = sections
             .iter()
             .filter_map(|section| {
                 let section_compound = section.get_compound();
-                let section = ChunkSection::from_compound(&section_compound, palette);
+                let section = ChunkSection::from_compound(&section_compound, palette, rodeo);
                 if section.ypos >= -4 {
                     Some(section)
                 } else {
@@ -182,19 +187,26 @@ impl Default for ChunkSection {
 }
 
 impl ChunkSection {
-    pub fn from_compound(compound: &NBTCompound, palette: &Palette<Block>) -> Self {
-        let y = compound.get_tag("Y").unwrap().get_byte();
+    pub fn from_compound(
+        compound: &NBTCompound,
+        palette: &Palette<Block>,
+        rodeo: &ThreadedRodeo,
+    ) -> Self {
+        let y = compound.get_tag("Y", rodeo).unwrap().get_byte();
         if y < -4 || y > 19 {
             return Self {
                 ypos: y,
                 data: [0u32; 4096],
             };
         }
-        let block_states_compound = compound.get_tag("block_states").unwrap().get_compound();
-        let block_light = compound.get_tag("BlockLight");
-        let sky_light = compound.get_tag("SkyLight");
+        let block_states_compound = compound
+            .get_tag("block_states", rodeo)
+            .unwrap()
+            .get_compound();
+        let block_light = compound.get_tag("BlockLight", rodeo);
+        let sky_light = compound.get_tag("SkyLight", rodeo);
 
-        let biomes = compound.get_tag("biomes").unwrap().get_compound();
+        let biomes = compound.get_tag("biomes", rodeo).unwrap().get_compound();
 
         let block_light = block_light
             .unwrap_or(&NBTTag::ByteArray(Bytes::new()))
@@ -207,16 +219,17 @@ impl ChunkSection {
             .to_owned();
 
         let block_states: Vec<Block> = block_states_compound
-            .get_tag("palette")
+            .get_tag("palette", rodeo)
             .unwrap()
             .get_list()
             .iter()
             .map(|f| {
                 let block = f.get_compound();
-                let block_name = *block.get_tag("Name").unwrap().get_string();
+                let block_name = *block.get_tag("Name", rodeo).unwrap().get_string();
 
-                let properties: Option<HashMap<Spur, Spur, FxBuildHasher>> =
-                    block.get_tag("properties").map(|properties| {
+                let properties: HashMap<Spur, Spur, FxBuildHasher> = block
+                    .get_tag("properties", rodeo)
+                    .map(|properties| {
                         properties
                             .get_compound()
                             .children
@@ -227,11 +240,12 @@ impl ChunkSection {
                                 (state_name, state_value)
                             })
                             .collect()
-                    });
+                    })
+                    .unwrap_or(HashMap::default());
 
                 Block {
                     block_name,
-                    block_state: BlockState { properties },
+                    block_state: InternalBlockState { properties },
                 }
             })
             .collect();
@@ -244,7 +258,7 @@ impl ChunkSection {
             &vec![]
         } else {
             block_states_compound
-                .get_tag("data")
+                .get_tag("data", rodeo)
                 .unwrap()
                 .get_long_array()
         };

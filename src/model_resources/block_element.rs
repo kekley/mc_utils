@@ -1,9 +1,10 @@
-use glam::{Mat3A, Vec2, Vec3, Vec3A};
+use glam::{Mat3A, Vec2, Vec3};
+use lasso::ThreadedRodeo;
 use serde_json::Value;
 
 use super::{block_face::Face, utils::parse_vec3};
 pub type Shade = bool;
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BlockElement {
     pub from: Vec3,
     pub to: Vec3,
@@ -22,12 +23,34 @@ impl BlockElement {
             None => true,
         }
     }
-    pub fn parse_elements(value: &Value) -> Vec<BlockElement> {
+    pub fn from_json_value(value: &Value, rodeo: &ThreadedRodeo) -> Self {
+        let from = parse_vec3(
+            value
+                .get("from")
+                .expect("from does not exist in block element"),
+        );
+        let to = parse_vec3(value.get("to").expect("to does not exist in block element"));
+        let rotation = value
+            .get("rotation")
+            .map(|value| ElementRotation::from(value));
+        let shade = value
+            .get("shade")
+            .map(|value| value.as_bool().expect("shade existed but was not bool"));
+        let faces = Face::parse_faces(value.get("faces").expect("faces not defined"), rodeo);
+        BlockElement {
+            from,
+            to,
+            rotation,
+            shade,
+            faces,
+        }
+    }
+    pub fn parse_elements(value: &Value, rodeo: &ThreadedRodeo) -> Vec<BlockElement> {
         value
             .as_array()
             .expect("elements was not an array")
             .iter()
-            .map(|value| BlockElement::from(value))
+            .map(|value| BlockElement::from_json_value(value, rodeo))
             .collect::<Vec<_>>()
     }
 }
@@ -66,31 +89,6 @@ impl From<&Value> for ElementRotation {
     }
 }
 
-impl From<&Value> for BlockElement {
-    fn from(value: &Value) -> Self {
-        let from = parse_vec3(
-            value
-                .get("from")
-                .expect("from does not exist in block element"),
-        );
-        let to = parse_vec3(value.get("to").expect("to does not exist in block element"));
-        let rotation = value
-            .get("rotation")
-            .map(|value| ElementRotation::from(value));
-        let shade = value
-            .get("shade")
-            .map(|value| value.as_bool().expect("shade existed but was not bool"));
-        let faces = Face::parse_faces(value.get("faces").expect("faces not defined"));
-        BlockElement {
-            from,
-            to,
-            rotation,
-            shade,
-            faces,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 enum ElementAxis {
     X,
@@ -99,7 +97,7 @@ enum ElementAxis {
 }
 pub type Angle = f32;
 pub type Rescale = bool;
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ElementRotation {
     origin: Vec3,
     axis: ElementAxis,

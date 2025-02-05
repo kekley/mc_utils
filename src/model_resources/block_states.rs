@@ -1,38 +1,37 @@
-use std::{hash::Hash, sync::Arc};
+use std::hash::Hash;
 
 use fxhash::FxBuildHasher;
 use hashbrown::HashMap;
 use lasso::{Spur, ThreadedRodeo};
-use serde_json::Value;
-use smol_str::SmolStr;
 
 pub type StateName = Spur;
 pub type State = Spur;
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct BlockState {
-    pub(crate) properties: Option<HashMap<StateName, State, FxBuildHasher>>,
+pub struct InternalBlockState {
+    pub(crate) properties: HashMap<StateName, State, FxBuildHasher>,
 }
 
-impl Hash for BlockState {
+impl Hash for InternalBlockState {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        if let Some(properties) = &self.properties {
-            for (key, value) in properties {
-                key.hash(state);
-                value.hash(state);
-            }
+        for (key, value) in &self.properties {
+            key.hash(state);
+            value.hash(state);
         }
     }
 }
 
-impl BlockState {
-    pub fn new(properties: &str, rodeo: &ThreadedRodeo) -> Self {
+impl InternalBlockState {
+    pub fn from_str(properties: &str, rodeo: &ThreadedRodeo) -> Self {
         if properties.is_empty() {
-            return Self { properties: None };
+            return Self {
+                properties: HashMap::with_hasher(FxBuildHasher::default()),
+            };
         }
-        let split = properties
+        let map = properties
             .split(",")
             .into_iter()
             .map(|property| {
+                //                dbg!(property);
                 let property = property
                     .split_once("=")
                     .map(|(state_name, state)| {
@@ -45,8 +44,6 @@ impl BlockState {
             })
             .collect::<HashMap<_, _, _>>();
 
-        Self {
-            properties: Some(split),
-        }
+        Self { properties: map }
     }
 }

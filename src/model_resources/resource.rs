@@ -13,20 +13,13 @@ pub enum BlockStates {
 
 impl BlockStates {
     pub fn new(path: &str, rodeo: &ThreadedRodeo) -> BlockStates {
-        let block_name = path
-            .split("/")
-            .last()
-            .unwrap()
-            .strip_suffix(".json")
-            .unwrap();
-        let block_name = rodeo.get_or_intern(block_name);
         dbg!(path);
         let file = fs::read_to_string(path).expect("could not read file");
         let value: Value = serde_json::from_str(&file).expect("invalid json");
         if let Some(value) = value.get("variants") {
-            BlockStates::Variants(Variants::new(value, &rodeo))
+            BlockStates::Variants(Variants::from_json_value(value, &rodeo))
         } else if let Some(value) = value.get("multipart") {
-            BlockStates::MultiPart(MultiPart::new(value, block_name, rodeo))
+            BlockStates::MultiPart(MultiPart::new(value, rodeo))
         } else {
             panic!()
         }

@@ -10,7 +10,10 @@ use hashbrown::HashMap;
 use lasso::{Spur, ThreadedRodeo};
 use smol_str::SmolStr;
 
-use crate::{block::Block, block_states::BlockState, nbt_loader::NBTLoader, palette::Palette};
+use crate::{
+    block::Block, block_states::InternalBlockState, palette::Palette, resource_loader,
+    ResourceLoader,
+};
 
 use super::{chunk::Chunk, region::Region};
 #[derive(Debug, Default, Hash, PartialEq, Eq, Clone, Copy)]
@@ -78,21 +81,20 @@ impl From<ChunkCoords> for WorldCoords {
 pub type BlockName = Spur;
 #[derive(Debug)]
 pub struct World {
-    pub nbt_loader: NBTLoader,
+    pub resource_loader: ResourceLoader,
     pub regions: HashMap<RegionCoords, Region, FxBuildHasher>,
     pub cached_chunks: DashMap<ChunkCoords, Option<Arc<Chunk>>, FxBuildHasher>,
     pub global_palette: Palette<Block>,
 }
 
 impl World {
-    pub fn new(folder_path: &str) -> Self {
-        let nbt_loader = NBTLoader::new();
+    pub(crate) fn new(folder_path: &str, resource_loader: &ResourceLoader) -> Self {
         let palette = Palette::new();
         let mut temp = Self {
+            resource_loader: resource_loader.clone(),
             regions: HashMap::with_hasher(FxBuildHasher::default()),
             cached_chunks: DashMap::with_hasher(FxBuildHasher::default()),
             global_palette: palette,
-            nbt_loader,
         };
         let read_dir = fs::read_dir(folder_path).expect("could not find folder");
         for dir in read_dir {
@@ -103,7 +105,7 @@ impl World {
                 if let Ok(region) = Region::from_file(
                     path.to_str().unwrap().to_owned(),
                     &temp.global_palette,
-                    temp.nbt_loader.clone(),
+                    temp.resource_loader.clone(),
                 ) {
                     temp.regions.insert(region.coords, region);
                 }
