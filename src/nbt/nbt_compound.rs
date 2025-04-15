@@ -12,10 +12,12 @@ use super::{
     nbt_tag::{get_nbt_string, NBTTag},
 };
 
+pub type NBTTagName = Spur;
+
 #[derive(Clone)]
 pub struct NBTCompound {
     string_interner: Rodeo,
-    pub children: HashMap<Spur, NBTTag, FxBuildHasher>,
+    pub children: Vec<(NBTTagName, NBTTag)>,
 }
 impl Debug for NBTCompound {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -26,18 +28,23 @@ impl Debug for NBTCompound {
 impl NBTCompound {
     pub fn add_tag(&mut self, tag_name: &str, tag: NBTTag) {
         let spur = self.string_interner.get_or_intern(tag_name);
-        self.children.insert(spur, tag);
+        self.children.push((spur, tag));
     }
     pub fn get_tag(&self, tag_name: &str) -> Option<&NBTTag> {
         let spur = self.string_interner.get(tag_name)?;
-        self.children.get(&spur)
+        let tag = self.children.iter().find(|child| child.0 == spur);
+        if let Some(child) = tag {
+            return Some(&child.1);
+        } else {
+            return None;
+        }
     }
 
     pub(crate) fn from_bytes(stream: &mut Bytes) -> anyhow::Result<Self> {
         let interner = Rodeo::new();
         let mut tmp = Self {
             string_interner: interner,
-            children: HashMap::with_hasher(FxBuildHasher::default()),
+            children: vec![],
         };
 
         while stream.has_remaining() {

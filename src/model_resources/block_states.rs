@@ -1,31 +1,16 @@
-use std::hash::Hash;
-
-use fxhash::FxBuildHasher;
-use hashbrown::HashMap;
-use lasso::{Spur, ThreadedRodeo};
+use lasso::{Rodeo, Spur};
 
 pub type StateName = Spur;
 pub type State = Spur;
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct InternalBlockState {
-    pub(crate) properties: HashMap<StateName, State, FxBuildHasher>,
+pub struct BlockStateInternal {
+    pub(crate) properties: Vec<(StateName, State)>,
 }
 
-impl Hash for InternalBlockState {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        for (key, value) in &self.properties {
-            key.hash(state);
-            value.hash(state);
-        }
-    }
-}
-
-impl InternalBlockState {
-    pub fn from_str(properties: &str, rodeo: &ThreadedRodeo) -> Self {
+impl BlockStateInternal {
+    pub fn from_str(properties: &str, rodeo: &mut Rodeo) -> Self {
         if properties.is_empty() {
-            return Self {
-                properties: HashMap::with_hasher(FxBuildHasher::default()),
-            };
+            return Self { properties: vec![] };
         }
         let map = properties
             .split(",")
@@ -42,7 +27,7 @@ impl InternalBlockState {
                     .expect("blockstate parse error");
                 property
             })
-            .collect::<HashMap<_, _, _>>();
+            .collect::<Vec<(StateName, State)>>();
 
         Self { properties: map }
     }

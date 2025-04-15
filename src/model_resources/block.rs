@@ -1,9 +1,9 @@
-use crate::loaded_world::BlockName;
+use crate::loaded_world::BlockNameInternal;
 
-use super::block_states::InternalBlockState;
+use super::block_states::BlockStateInternal;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Block {
-    pub block_name: BlockName,
-    pub block_state: InternalBlockState,
+pub struct BlockInternal {
+    pub block_name: BlockNameInternal,
+    pub block_state: BlockStateInternal,
 }

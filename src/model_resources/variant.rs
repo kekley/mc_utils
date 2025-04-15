@@ -12,7 +12,7 @@ use smol_str::SmolStr;
 
 use super::{
     block_models::{BlockModel, BlockRotation, ASSET_PATH},
-    block_states::InternalBlockState,
+    block_states::BlockStateInternal,
     block_texture::Uv,
     resource::BlockStates,
 };
@@ -33,7 +33,7 @@ pub enum ModelVariant {
 #[derive(Debug, Clone)]
 
 pub struct Variants {
-    variants: FxHashMap<InternalBlockState, ModelVariant>,
+    variants: FxHashMap<BlockStateInternal, ModelVariant>,
 }
 
 #[derive(Debug, Clone)]
@@ -46,7 +46,7 @@ pub struct VariantEntry {
 }
 
 impl Variants {
-    pub fn get(&self, block_state: &InternalBlockState) -> Vec<ModelVariant> {
+    pub fn get(&self, block_state: &BlockStateInternal) -> Vec<ModelVariant> {
         dbg!("getting blockstate:");
         dbg!(&block_state);
         vec![self.variants.get(block_state).unwrap().clone()]
@@ -95,7 +95,7 @@ impl Variants {
             .map(|(variant_properties, variant_entry)| {
                 let variant_entry = ModelVariant::from_json_value(variant_entry, rodeo);
                 (
-                    InternalBlockState::from_str(&variant_properties, &rodeo),
+                    BlockStateInternal::from_str(&variant_properties, &rodeo),
                     variant_entry,
                 )
             })

@@ -3,8 +3,8 @@ use std::io::{self, BufReader, Cursor, Read, Seek};
 use std::sync::{Arc, RwLock};
 use std::{usize, vec};
 
-use crate::block::Block;
-use crate::block_states::InternalBlockState;
+use crate::block::BlockInternal;
+use crate::block_states::BlockStateInternal;
 use crate::chunk::Chunk;
 
 use crate::nbt::compression::{CompressionData, CompressionScheme};
@@ -98,7 +98,12 @@ impl LoadedRegion {
         FileSegment::new(offset, sectors)
     }
 
-    pub fn get_chunk(&self, x: u32, z: u32, palette: &BlockPalette<Block>) -> Option<Chunk> {
+    pub fn get_chunk(
+        &self,
+        x: u32,
+        z: u32,
+        palette: &BlockPalette<BlockInternal>,
+    ) -> Option<Chunk> {
         if x > 32 || z > 32 {
             return None;
         }
@@ -150,7 +155,7 @@ impl LoadedRegion {
         res
     }
 
-    pub fn get_all_chunks(&self, palette: &BlockPalette<Block>) -> Vec<Chunk> {
+    pub fn get_all_chunks(&self, palette: &BlockPalette<BlockInternal>) -> Vec<Chunk> {
         let mut chunks = vec![];
         (0..32).for_each(|z| {
             (0..32).for_each(|x| {

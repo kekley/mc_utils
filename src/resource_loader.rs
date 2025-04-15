@@ -15,7 +15,7 @@ use crate::{
 
 use super::{
     block_models::{BlockModel, ASSET_PATH},
-    block_states::InternalBlockState,
+    block_states::BlockStateInternal,
     resource::BlockStates,
     variant::Variants,
 };
@@ -48,12 +48,12 @@ impl ResourceLoader {
         World::new(region_folder, &self)
     }
 
-    pub fn nbt_from_bytes(&self, bytes: &mut Bytes) -> Result<NBTCompound, SpiderEyeError> {
-        NBTCompound::from_bytes(bytes, &self.rodeo)
+    pub fn nbt_from_bytes(&self, bytes: &mut Bytes) -> anyhow::Result<NBTCompound> {
+        NBTCompound::from_bytes(bytes)
     }
 
-    pub(crate) fn chunk_from_nbt(&self, chunk_nbt: &NBTCompound) -> Option<Chunk> {
-        Chunk::from_nbt(nbt_compound, palette, rodeo)
+    pub(crate) fn chunk_from_nbt(&self, chunk_nbt: NBTCompound) -> Option<Chunk> {
+        Some(Chunk::from_nbt(chunk_nbt))
     }
 
     pub fn new() -> Self {

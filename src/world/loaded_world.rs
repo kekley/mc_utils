@@ -11,7 +11,7 @@ use lasso::{Spur, ThreadedRodeo};
 use smol_str::SmolStr;
 
 use crate::{
-    block::Block, block_states::InternalBlockState, palette::BlockPalette, resource_loader,
+    block::BlockInternal, block_states::BlockStateInternal, palette::BlockPalette, resource_loader,
     ResourceLoader,
 };
 
@@ -78,13 +78,13 @@ impl From<ChunkCoords> for WorldCoords {
     }
 }
 
-pub type BlockName = Spur;
+pub type BlockNameInternal = Spur;
 #[derive(Debug)]
 pub struct World {
     pub resource_loader: ResourceLoader,
     pub regions: HashMap<RegionCoords, LoadedRegion, FxBuildHasher>,
     pub cached_chunks: DashMap<ChunkCoords, Option<Arc<Chunk>>, FxBuildHasher>,
-    pub global_palette: BlockPalette<Block>,
+    pub global_palette: BlockPalette,
 }
 
 impl World {
@@ -119,7 +119,7 @@ impl World {
         self.regions.get(&region_coords)
     }
 
-    pub fn load_region
+    pub fn load_region() {}
     pub fn modulo(a: i64, b: i64) -> i64 {
         let r = a % b;
         if r < 0 {

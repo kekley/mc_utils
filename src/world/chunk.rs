@@ -1,19 +1,14 @@
-use core::str;
-use std::{
-    fmt::Debug,
-    sync::{Arc, RwLock},
-    u32,
-};
+use std::{fmt::Debug, u32};
 
 use bytes::Bytes;
 use fxhash::FxBuildHasher;
 use hashbrown::HashMap;
-use lasso::Spur;
+use lasso::{Rodeo, Spur};
 use smol_str::SmolStr;
 
 use crate::{
-    block::Block,
-    block_states::InternalBlockState,
+    block::BlockInternal,
+    block_states::BlockStateInternal,
     nbt::{nbt_compound::NBTCompound, nbt_tag::NBTTag},
     palette::BlockPalette,
 };
@@ -23,7 +18,6 @@ use super::loaded_world::{ChunkCoords, World, WorldCoords};
 #[derive(Clone)]
 pub struct Chunk {
     data_version: i32,
-    pub palette: BlockPalette<Block>,
     pub coords: ChunkCoords,
     pub status: SmolStr,
     pub sections: SectionTower,
@@ -40,6 +34,7 @@ impl Debug for Chunk {
 
 #[derive(Debug, Clone)]
 pub struct SectionTower {
+    interner: Rodeo,
     sections: Vec<ChunkSection>,
     map: Vec<Option<usize>>,
     y_min: isize,
@@ -70,31 +65,24 @@ impl SectionTower {
 }
 impl Chunk {
     pub fn from_nbt(nbt_compound: NBTCompound) -> Self {
-        let binding = nbt_compound.get_tag("", rodeo).expect("Not a Chunk NBT");
+        let binding = nbt_compound.get_tag("").expect("Not a Chunk NBT");
         let chunk = binding.get_compound();
         let data_version = chunk
-            .get_tag("DataVersion", rodeo)
+            .get_tag("DataVersion")
             .expect("Not a Chunk NBT")
             .get_int();
-        let xpos = chunk
-            .get_tag("xPos", rodeo)
-            .expect("Not a Chunk NBT")
-            .get_int();
-        let zpos = chunk
-            .get_tag("zPos", rodeo)
-            .expect("Not a Chunk NBT")
-            .get_int();
+        let xpos = chunk.get_tag("xPos").expect("Not a Chunk NBT").get_int();
+        let zpos = chunk.get_tag("zPos").expect("Not a Chunk NBT").get_int();
 
-        let status =
-            SmolStr::from(rodeo.resolve(chunk.get_tag("Status", rodeo).unwrap().get_string()));
+        let status = SmolStr::from(chunk.get_tag("Status").unwrap().get_string());
 
-        let sections = chunk.get_tag("sections", rodeo).unwrap().get_list();
+        let sections = chunk.get_tag("sections").unwrap().get_list();
 
         let section_array: Vec<ChunkSection> = sections
             .iter()
             .filter_map(|section| {
                 let section_compound = section.get_compound();
-                let section = ChunkSection::from_compound(&section_compound, palette, rodeo);
+                let section = ChunkSection::from_compound(&section_compound);
                 if section.ypos >= -4 {
                     Some(section)
                 } else {
@@ -123,6 +111,7 @@ impl Chunk {
         }
 
         let sec_tower = SectionTower {
+            interner: Rodeo::new(),
             sections: section_array,
             map: sparse_sections,
             y_min: 16 * min,
@@ -171,7 +160,7 @@ impl ChunkSection {
 #[derive(Debug, Clone)]
 pub struct ChunkSection {
     pub ypos: i8,
-    pub palette: BlockPalette<Block>,
+
     pub data: [u32; 4096],
 }
 
@@ -179,6 +168,7 @@ impl Default for ChunkSection {
     fn default() -> Self {
         Self {
             ypos: 0,
+            palette: BlockPalette::new(),
             data: [0u32; 4096],
         }
     }
@@ -187,20 +177,21 @@ impl Default for ChunkSection {
 impl ChunkSection {
     pub fn from_compound(compound: &NBTCompound) -> Self {
         let y = compound.get_tag("Y").unwrap().get_byte();
+        let mut palette = BlockPalette::new();
+        //ignore non-vanilla world heights for now
+        //FIXME
         if y < -4 || y > 19 {
             return Self {
+                palette,
                 ypos: y,
                 data: [0u32; 4096],
             };
         }
-        let block_states_compound = compound
-            .get_tag("block_states", rodeo)
-            .unwrap()
-            .get_compound();
-        let block_light = compound.get_tag("BlockLight", rodeo);
-        let sky_light = compound.get_tag("SkyLight", rodeo);
+        let block_states_compound = compound.get_tag("block_states").unwrap().get_compound();
+        let block_light = compound.get_tag("BlockLight");
+        let sky_light = compound.get_tag("SkyLight");
 
-        let biomes = compound.get_tag("biomes", rodeo).unwrap().get_compound();
+        let biomes = compound.get_tag("biomes").unwrap().get_compound();
 
         let block_light = block_light
             .unwrap_or(&NBTTag::ByteArray(Bytes::new()))
@@ -212,17 +203,17 @@ impl ChunkSection {
             .get_byte_array()
             .to_owned();
 
-        let block_states: Vec<Block> = block_states_compound
-            .get_tag("palette", rodeo)
+        let block_states: Vec<BlockInternal> = block_states_compound
+            .get_tag("palette")
             .unwrap()
             .get_list()
             .iter()
             .map(|f| {
                 let block = f.get_compound();
-                let block_name = *block.get_tag("Name", rodeo).unwrap().get_string();
+                let block_name = block.get_tag("Name").unwrap().get_string();
 
-                let properties: HashMap<Spur, Spur, FxBuildHasher> = block
-                    .get_tag("properties", rodeo)
+                let properties: Vec<BlockInternal> = block
+                    .get_tag("properties")
                     .map(|properties| {
                         properties
                             .get_compound()
@@ -231,15 +222,14 @@ impl ChunkSection {
                             .map(|f| {
                                 let state_name = f.0.clone();
                                 let state_value = f.1.get_string().clone();
-                                (state_name, state_value)
                             })
                             .collect()
                     })
                     .unwrap_or(HashMap::default());
 
-                Block {
+                BlockInternal {
                     block_name,
-                    block_state: InternalBlockState { properties },
+                    block_state: BlockStateInternal { properties },
                 }
             })
             .collect();
