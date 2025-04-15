@@ -6,7 +6,12 @@ use lasso::{Spur, ThreadedRodeo};
 use serde_json::Value;
 use smol_str::{SmolStr, SmolStrBuilder};
 
-use crate::{loaded_world::World, nbt_compound::NBTCompound, SpiderEyeError};
+use crate::{
+    chunk::{self, Chunk},
+    loaded_world::World,
+    nbt_compound::NBTCompound,
+    SpiderEyeError,
+};
 
 use super::{
     block_models::{BlockModel, ASSET_PATH},
@@ -46,6 +51,11 @@ impl ResourceLoader {
     pub fn nbt_from_bytes(&self, bytes: &mut Bytes) -> Result<NBTCompound, SpiderEyeError> {
         NBTCompound::from_bytes(bytes, &self.rodeo)
     }
+
+    pub(crate) fn chunk_from_nbt(&self, chunk_nbt: &NBTCompound) -> Option<Chunk> {
+        Chunk::from_nbt(nbt_compound, palette, rodeo)
+    }
+
     pub fn new() -> Self {
         Self {
             rodeo: Arc::new(ThreadedRodeo::new()),

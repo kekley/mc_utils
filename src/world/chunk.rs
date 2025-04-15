@@ -8,14 +8,14 @@ use std::{
 use bytes::Bytes;
 use fxhash::FxBuildHasher;
 use hashbrown::HashMap;
-use lasso::{Spur, ThreadedRodeo};
+use lasso::Spur;
 use smol_str::SmolStr;
 
 use crate::{
     block::Block,
     block_states::InternalBlockState,
     nbt::{nbt_compound::NBTCompound, nbt_tag::NBTTag},
-    palette::Palette,
+    palette::BlockPalette,
 };
 
 use super::loaded_world::{ChunkCoords, World, WorldCoords};
@@ -23,6 +23,7 @@ use super::loaded_world::{ChunkCoords, World, WorldCoords};
 #[derive(Clone)]
 pub struct Chunk {
     data_version: i32,
+    pub palette: BlockPalette<Block>,
     pub coords: ChunkCoords,
     pub status: SmolStr,
     pub sections: SectionTower,
@@ -68,11 +69,7 @@ impl SectionTower {
     }
 }
 impl Chunk {
-    pub fn from_nbt(
-        nbt_compound: NBTCompound,
-        palette: &Palette<Block>,
-        rodeo: &ThreadedRodeo,
-    ) -> Self {
+    pub fn from_nbt(nbt_compound: NBTCompound) -> Self {
         let binding = nbt_compound.get_tag("", rodeo).expect("Not a Chunk NBT");
         let chunk = binding.get_compound();
         let data_version = chunk
@@ -174,6 +171,7 @@ impl ChunkSection {
 #[derive(Debug, Clone)]
 pub struct ChunkSection {
     pub ypos: i8,
+    pub palette: BlockPalette<Block>,
     pub data: [u32; 4096],
 }
 
@@ -187,12 +185,8 @@ impl Default for ChunkSection {
 }
 
 impl ChunkSection {
-    pub fn from_compound(
-        compound: &NBTCompound,
-        palette: &Palette<Block>,
-        rodeo: &ThreadedRodeo,
-    ) -> Self {
-        let y = compound.get_tag("Y", rodeo).unwrap().get_byte();
+    pub fn from_compound(compound: &NBTCompound) -> Self {
+        let y = compound.get_tag("Y").unwrap().get_byte();
         if y < -4 || y > 19 {
             return Self {
                 ypos: y,

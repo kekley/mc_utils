@@ -9,7 +9,7 @@ use crate::chunk::Chunk;
 
 use crate::nbt::compression::{CompressionData, CompressionScheme};
 use crate::nbt_compound::NBTCompound;
-use crate::palette::Palette;
+use crate::palette::BlockPalette;
 use crate::spider_eye_error::SpiderEyeError;
 use crate::variant::BlockName;
 use crate::ResourceLoader;
@@ -31,9 +31,9 @@ pub(crate) const REGION_HEADER_SIZE: usize = 2 * SECTOR_SIZE;
 pub(crate) const CHUNK_HEADER_SIZE: usize = 5;
 
 #[derive(Debug, Clone)]
-pub struct Region {
-    resource_loader: ResourceLoader,
+pub struct LoadedRegion {
     pub coords: RegionCoords,
+    chunks: Box<[Option<Chunk>; 1024]>,
     pub file_path: String,
 }
 
@@ -52,42 +52,29 @@ impl FileSegment {
     }
 }
 
-impl Region {
-    pub fn from_file(
-        path: String,
-        palette: &Palette<Block>,
-        resource_loader: ResourceLoader,
-    ) -> Result<Self, SpiderEyeError> {
-        let mut region: Region = Self {
-            file_path: path.to_string(),
-            coords: RegionCoords::default(),
-            resource_loader: resource_loader,
-        };
-
-        let mut found = false;
+impl LoadedRegion {
+    fn load_region(path: String, resource_loader: &ResourceLoader) -> Result<Self, SpiderEyeError> {
+        let mut chunks: Box<[Option<Chunk>; 1024]> = Box::new([const { None }; 1024]);
+        let mut reader =
+            BufReader::new(File::open(&path).expect("not a valid file path for region"));
         for z in 0..32 {
             for x in 0..32 {
-                if let Some(chunk) = region.get_chunk(x, z, palette) {
-                    region.coords = chunk.coords.into();
-                    found = true;
-                    break;
+                let segment = Self::read_chunk_segment(x, z, &mut reader);
+                if segment.sector_offset != 0 && segment.sectors != 0 {
+                    let compressed_chunk_data = Self::get_compressed_chunk(&mut reader, &segment);
+                    let chunk_bytes = Self::decompress_chunk(&compressed_chunk_data);
+                    let mut bytes = Bytes::from(chunk_bytes);
+                    let chunk_nbt = resource_loader
+                        .nbt_from_bytes(&mut bytes)
+                        .expect("Chunk NBT was invalid");
+                    Chunk::from_nbt(nbt_compound, palette, rodeo)
                 }
             }
-            if found {
-                break;
-            }
         }
-
-        if found {
-            Ok(region)
-        } else {
-            Err(SpiderEyeError::InvalidFile())
-        }
+        unimplemented!()
     }
 
-    pub fn get_compressed_chunk(&self, segment: &FileSegment) -> Vec<u8> {
-        let mut reader =
-            BufReader::new(File::open(&self.file_path).expect("not a valid file path"));
+    fn get_compressed_chunk(reader: &mut BufReader<File>, segment: &FileSegment) -> Vec<u8> {
         let offset = segment.sector_offset * SECTOR_SIZE as u32;
         let len = segment.sectors as usize * SECTOR_SIZE;
         let mut buf = vec![0u8; len];
@@ -97,7 +84,7 @@ impl Region {
         buf
     }
 
-    fn read_chunk_segment(&self, x: u32, z: u32, reader: &mut BufReader<File>) -> FileSegment {
+    fn read_chunk_segment(x: u32, z: u32, reader: &mut BufReader<File>) -> FileSegment {
         let offset = Self::get_segment_pos(x, z);
         let _ = reader.seek(io::SeekFrom::Start(offset as u64));
 
@@ -111,7 +98,7 @@ impl Region {
         FileSegment::new(offset, sectors)
     }
 
-    pub fn get_chunk(&self, x: u32, z: u32, palette: &Palette<Block>) -> Option<Chunk> {
+    pub fn get_chunk(&self, x: u32, z: u32, palette: &BlockPalette<Block>) -> Option<Chunk> {
         if x > 32 || z > 32 {
             return None;
         }
@@ -163,7 +150,7 @@ impl Region {
         res
     }
 
-    pub fn get_all_chunks(&self, palette: &Palette<Block>) -> Vec<Chunk> {
+    pub fn get_all_chunks(&self, palette: &BlockPalette<Block>) -> Vec<Chunk> {
         let mut chunks = vec![];
         (0..32).for_each(|z| {
             (0..32).for_each(|x| {

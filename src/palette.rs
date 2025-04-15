@@ -2,26 +2,25 @@ use std::{hash::Hash, sync::RwLock};
 
 use dashmap::DashMap;
 use fxhash::FxBuildHasher;
+use lasso::Rodeo;
+
+use crate::{block_states::InternalBlockState, loaded_world::BlockName};
 pub type EntryID = u32;
 
-#[derive(Debug)]
-pub struct Palette<T: Eq + PartialEq + Hash + Clone> {
-    map: DashMap<T, EntryID, FxBuildHasher>,
-    entries: RwLock<Vec<T>>,
+#[derive(Debug, Clone)]
+pub struct BlockPalette {
+    interner: Rodeo,
+    block_states: Vec<(BlockName, InternalBlockState)>,
 }
 
-impl<T: Eq + Hash + Clone> Palette<T> {
+impl BlockPalette {
     pub fn new() -> Self {
-        let map = DashMap::with_hasher(FxBuildHasher::default());
-        let entries = RwLock::new(vec![]);
-        Self {
-            map,
-            entries: entries,
-        }
+        let interner = Rodeo::new();
+        Self { interner }
     }
 
-    fn contains(&self, key: &T) -> bool {
-        self.map.contains_key(key)
+    fn contains(&self, block: &str) -> bool {
+        self.interner.contains(block)
     }
 
     pub fn insert(&self, key: T) -> EntryID {
@@ -40,7 +39,7 @@ impl<T: Eq + Hash + Clone> Palette<T> {
     }
 }
 
-impl<T: Eq + Hash + Clone> IntoIterator for Palette<T> {
+impl IntoIterator for BlockPalette {
     type Item = T;
     type IntoIter = std::vec::IntoIter<T>;
 

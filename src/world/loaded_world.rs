@@ -11,11 +11,11 @@ use lasso::{Spur, ThreadedRodeo};
 use smol_str::SmolStr;
 
 use crate::{
-    block::Block, block_states::InternalBlockState, palette::Palette, resource_loader,
+    block::Block, block_states::InternalBlockState, palette::BlockPalette, resource_loader,
     ResourceLoader,
 };
 
-use super::{chunk::Chunk, region::Region};
+use super::{chunk::Chunk, region::LoadedRegion};
 #[derive(Debug, Default, Hash, PartialEq, Eq, Clone, Copy)]
 pub struct WorldCoords {
     pub x: i64,
@@ -82,27 +82,28 @@ pub type BlockName = Spur;
 #[derive(Debug)]
 pub struct World {
     pub resource_loader: ResourceLoader,
-    pub regions: HashMap<RegionCoords, Region, FxBuildHasher>,
+    pub regions: HashMap<RegionCoords, LoadedRegion, FxBuildHasher>,
     pub cached_chunks: DashMap<ChunkCoords, Option<Arc<Chunk>>, FxBuildHasher>,
-    pub global_palette: Palette<Block>,
+    pub global_palette: BlockPalette<Block>,
 }
 
 impl World {
     pub(crate) fn new(folder_path: &str, resource_loader: &ResourceLoader) -> Self {
-        let palette = Palette::new();
+        let palette = BlockPalette::new();
         let mut temp = Self {
             resource_loader: resource_loader.clone(),
             regions: HashMap::with_hasher(FxBuildHasher::default()),
             cached_chunks: DashMap::with_hasher(FxBuildHasher::default()),
             global_palette: palette,
         };
+
         let read_dir = fs::read_dir(folder_path).expect("could not find folder");
         for dir in read_dir {
             let entry = dir.unwrap();
 
             let path = entry.path();
             if path.is_file() && path.extension().unwrap() == "mca" {
-                if let Ok(region) = Region::from_file(
+                if let Ok(region) = LoadedRegion::from_file(
                     path.to_str().unwrap().to_owned(),
                     &temp.global_palette,
                     temp.resource_loader.clone(),
@@ -114,9 +115,11 @@ impl World {
         temp
     }
 
-    pub fn get_region(&self, region_coords: RegionCoords) -> Option<&Region> {
+    pub fn get_region(&self, region_coords: RegionCoords) -> Option<&LoadedRegion> {
         self.regions.get(&region_coords)
     }
+
+    pub fn load_region
     pub fn modulo(a: i64, b: i64) -> i64 {
         let r = a % b;
         if r < 0 {

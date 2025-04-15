@@ -1,13 +1,11 @@
 use bytes::{Buf, Bytes};
+use cesu8::from_java_cesu8;
 use core::str;
 use fxhash::FxBuildHasher;
 use hashbrown::HashMap;
-use lasso::{Spur, ThreadedRodeo};
+use lasso::{Rodeo, Spur};
 use num_enum::TryFromPrimitive;
-use smol_str::SmolStr;
-use std::{fmt::Debug, sync::Arc, u16};
-
-use crate::spider_eye_error::SpiderEyeError;
+use std::fmt::Debug;
 
 use super::{
     nbt_ids::NBTId,
@@ -16,6 +14,7 @@ use super::{
 
 #[derive(Clone)]
 pub struct NBTCompound {
+    string_interner: Rodeo,
     pub children: HashMap<Spur, NBTTag, FxBuildHasher>,
 }
 impl Debug for NBTCompound {
@@ -25,45 +24,19 @@ impl Debug for NBTCompound {
 }
 
 impl NBTCompound {
-    pub fn as_indented_string(&self, indentation: u16, rodeo: &ThreadedRodeo) -> String {
-        let mut res = String::with_capacity(1024 * 38);
-        for child in &self.children {
-            for _ in 0..indentation + 1 {
-                res = res + "\t"
-            }
-            res = res + &format!("Name: {}, ", rodeo.resolve(child.0));
-            match &child.1 {
-                NBTTag::Compound(compound) => {
-                    let str = compound.as_indented_string(indentation + 1, rodeo);
-                    res = res + &str;
-                }
-                _ => {
-                    for _ in 0..indentation + 1 {
-                        res = res + "\t"
-                    }
-                    let str = format!("{:?}", child.1);
-                    res = res + &str;
-                }
-            }
-        }
-        res
+    pub fn add_tag(&mut self, tag_name: &str, tag: NBTTag) {
+        let spur = self.string_interner.get_or_intern(tag_name);
+        self.children.insert(spur, tag);
     }
-}
-
-impl NBTCompound {
-    pub fn add_tag(&mut self, name: Spur, tag: NBTTag) {
-        self.children.insert(name, tag);
-    }
-    pub fn get_tag(&self, tag_name: &str, rodeo: &ThreadedRodeo) -> Option<&NBTTag> {
-        let spur = rodeo.get(tag_name)?;
+    pub fn get_tag(&self, tag_name: &str) -> Option<&NBTTag> {
+        let spur = self.string_interner.get(tag_name)?;
         self.children.get(&spur)
     }
 
-    pub(crate) fn from_bytes(
-        stream: &mut Bytes,
-        rodeo: &ThreadedRodeo,
-    ) -> Result<Self, SpiderEyeError> {
+    pub(crate) fn from_bytes(stream: &mut Bytes) -> anyhow::Result<Self> {
+        let interner = Rodeo::new();
         let mut tmp = Self {
+            string_interner: interner,
             children: HashMap::with_hasher(FxBuildHasher::default()),
         };
 
@@ -72,10 +45,10 @@ impl NBTCompound {
             if tag_id == NBTId::EndId {
                 break;
             }
-            let name = get_nbt_string(stream, &rodeo)?;
-
-            if let Ok(tag) = NBTTag::read_tag(stream, tag_id, rodeo) {
-                tmp.add_tag(name, tag);
+            let string_bytes = get_nbt_string(stream)?;
+            let name = from_java_cesu8(&string_bytes)?;
+            if let Ok(tag) = NBTTag::read_tag(stream, tag_id) {
+                tmp.add_tag(&name, tag);
             } else {
                 break;
             }

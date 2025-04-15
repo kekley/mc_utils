@@ -30,7 +30,6 @@ pub enum ModelVariant {
     ModelArray(Vec<VariantEntry>),
 }
 
-pub type BlockName = Spur;
 #[derive(Debug, Clone)]
 
 pub struct Variants {
@@ -48,6 +47,7 @@ pub struct VariantEntry {
 
 impl Variants {
     pub fn get(&self, block_state: &InternalBlockState) -> Vec<ModelVariant> {
+        dbg!("getting blockstate:");
         dbg!(&block_state);
         vec![self.variants.get(block_state).unwrap().clone()]
     }
