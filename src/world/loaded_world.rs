@@ -11,8 +11,10 @@ use lasso::{Spur, ThreadedRodeo};
 use smol_str::SmolStr;
 
 use crate::{
-    block::BlockInternal, block_states::BlockStateInternal, palette::BlockPalette, resource_loader,
-    ResourceLoader,
+    block::BlockInternal,
+    block_states::BlockStateInternal,
+    palette::{BlockPalette, InternerType},
+    resource_loader, ResourceLoader,
 };
 
 use super::{chunk::Chunk, region::LoadedRegion};
@@ -81,17 +83,17 @@ impl From<ChunkCoords> for WorldCoords {
 pub type BlockNameInternal = Spur;
 #[derive(Debug)]
 pub struct World {
-    pub resource_loader: ResourceLoader,
+    interner: InternerType,
     pub regions: HashMap<RegionCoords, LoadedRegion, FxBuildHasher>,
     pub cached_chunks: DashMap<ChunkCoords, Option<Arc<Chunk>>, FxBuildHasher>,
     pub global_palette: BlockPalette,
 }
 
 impl World {
-    pub(crate) fn new(folder_path: &str, resource_loader: &ResourceLoader) -> Self {
-        let palette = BlockPalette::new();
+    pub(crate) fn new(folder_path: &str, interner: &Arc<ThreadedRodeo>) -> Self {
+        let palette = BlockPalette::new_inner(interner);
         let mut temp = Self {
-            resource_loader: resource_loader.clone(),
+            interner: InternerType::External(interner.clone()),
             regions: HashMap::with_hasher(FxBuildHasher::default()),
             cached_chunks: DashMap::with_hasher(FxBuildHasher::default()),
             global_palette: palette,
@@ -103,11 +105,7 @@ impl World {
 
             let path = entry.path();
             if path.is_file() && path.extension().unwrap() == "mca" {
-                if let Ok(region) = LoadedRegion::from_file(
-                    path.to_str().unwrap().to_owned(),
-                    &temp.global_palette,
-                    temp.resource_loader.clone(),
-                ) {
+                if let Ok(region) = LoadedRegion::load_region(path.to_str().unwrap(), interner) {
                     temp.regions.insert(region.coords, region);
                 }
             }
@@ -119,7 +117,9 @@ impl World {
         self.regions.get(&region_coords)
     }
 
-    pub fn load_region() {}
+    pub fn load_region() -> LoadedRegion {
+        todo!()
+    }
     pub fn modulo(a: i64, b: i64) -> i64 {
         let r = a % b;
         if r < 0 {
@@ -140,7 +140,7 @@ impl World {
         let local_x = Self::modulo(chunk_coords.x, 32).abs() as u32;
         let local_z = Self::modulo(chunk_coords.z, 32).abs() as u32;
         if let Some(region) = opt {
-            let chunk = region.get_chunk(local_x, local_z, &self.global_palette);
+            let chunk = region.get_chunk(local_x, local_z);
             if chunk.is_none() {
                 self.cached_chunks.insert(chunk_coords, None);
                 return None;

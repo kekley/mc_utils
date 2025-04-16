@@ -99,9 +99,8 @@ impl Case {
                     .first()
                     .cloned()
                     .unwrap();
-                let mut map: HashMap<Spur, Spur, FxBuildHasher> =
-                    HashMap::with_hasher(FxBuildHasher::default());
-                map.insert(name, state);
+                let mut map: Vec<(Spur, Spur)> = vec![];
+
                 let block_state = BlockStateInternal { properties: map };
                 When::SingleCase(block_state)
             }

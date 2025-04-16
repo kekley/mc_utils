@@ -3,9 +3,11 @@ use cesu8::from_java_cesu8;
 use core::str;
 use fxhash::FxBuildHasher;
 use hashbrown::HashMap;
-use lasso::{Rodeo, Spur};
+use lasso::{Interner, Reader, Resolver, Rodeo, Spur, ThreadedRodeo};
 use num_enum::TryFromPrimitive;
-use std::fmt::Debug;
+use std::{borrow::Cow, fmt::Debug, sync::Arc};
+
+use crate::palette::InternerType;
 
 use super::{
     nbt_ids::NBTId,
@@ -16,7 +18,7 @@ pub type NBTTagName = Spur;
 
 #[derive(Clone)]
 pub struct NBTCompound {
-    string_interner: Rodeo,
+    string_interner: InternerType,
     pub children: Vec<(NBTTagName, NBTTag)>,
 }
 impl Debug for NBTCompound {
@@ -40,10 +42,10 @@ impl NBTCompound {
         }
     }
 
-    pub(crate) fn from_bytes(stream: &mut Bytes) -> anyhow::Result<Self> {
-        let interner = Rodeo::new();
+    pub fn from_bytes(stream: &mut Bytes) -> anyhow::Result<Self> {
+        let interner = Arc::new(ThreadedRodeo::new());
         let mut tmp = Self {
-            string_interner: interner,
+            string_interner: InternerType::External(interner.clone()),
             children: vec![],
         };
 
@@ -54,7 +56,32 @@ impl NBTCompound {
             }
             let string_bytes = get_nbt_string(stream)?;
             let name = from_java_cesu8(&string_bytes)?;
-            if let Ok(tag) = NBTTag::read_tag(stream, tag_id) {
+            if let Ok(tag) = NBTTag::read_tag(stream, tag_id, &interner) {
+                tmp.add_tag(&name, tag);
+            } else {
+                break;
+            }
+        }
+        Ok(tmp)
+    }
+
+    pub(crate) fn internal_nbt(
+        stream: &mut Bytes,
+        interner: &Arc<ThreadedRodeo>,
+    ) -> anyhow::Result<Self> {
+        let mut tmp = Self {
+            string_interner: InternerType::External(interner.clone()),
+            children: vec![],
+        };
+
+        while stream.has_remaining() {
+            let tag_id = NBTId::try_from_primitive(stream.get_u8())?;
+            if tag_id == NBTId::EndId {
+                break;
+            }
+            let string_bytes = get_nbt_string(stream)?;
+            let name = from_java_cesu8(&string_bytes)?;
+            if let Ok(tag) = NBTTag::read_tag(stream, tag_id, interner) {
                 tmp.add_tag(&name, tag);
             } else {
                 break;

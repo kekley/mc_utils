@@ -1,14 +1,97 @@
-use std::rc::Rc;
+use std::{rc::Rc, sync::Arc};
 
-use lasso::Rodeo;
+use lasso::{Interner, Reader, Resolver, Rodeo, Spur, ThreadedRodeo};
 
 use crate::{block::BlockInternal, block_states::BlockStateInternal};
 pub type PaletteIndex = u32;
 
+impl Resolver for InternerType {
+    fn resolve<'a>(&'a self, key: &Spur) -> &'a str {
+        match self {
+            InternerType::Internal(rodeo) => rodeo.resolve(key),
+            InternerType::External(threaded_rodeo) => threaded_rodeo.resolve(key),
+        }
+    }
+
+    fn try_resolve<'a>(&'a self, key: &Spur) -> Option<&'a str> {
+        match self {
+            InternerType::Internal(rodeo) => rodeo.try_resolve(key),
+            InternerType::External(threaded_rodeo) => threaded_rodeo.try_resolve(key),
+        }
+    }
+
+    unsafe fn resolve_unchecked<'a>(&'a self, key: &Spur) -> &'a str {
+        match self {
+            InternerType::Internal(rodeo) => rodeo.resolve_unchecked(key),
+            InternerType::External(threaded_rodeo) => threaded_rodeo.resolve_unchecked(key),
+        }
+    }
+
+    fn contains_key(&self, key: &Spur) -> bool {
+        match self {
+            InternerType::Internal(rodeo) => rodeo.contains_key(key),
+            InternerType::External(threaded_rodeo) => threaded_rodeo.contains_key(key),
+        }
+    }
+
+    fn len(&self) -> usize {
+        match self {
+            InternerType::Internal(rodeo) => rodeo.len(),
+            InternerType::External(threaded_rodeo) => threaded_rodeo.len(),
+        }
+    }
+}
+
+impl Reader for InternerType {
+    fn get(&self, val: &str) -> Option<Spur> {
+        match self {
+            InternerType::Internal(rodeo) => rodeo.get(val),
+            InternerType::External(threaded_rodeo) => threaded_rodeo.get(val),
+        }
+    }
+
+    fn contains(&self, val: &str) -> bool {
+        match self {
+            InternerType::Internal(rodeo) => rodeo.contains(val),
+            InternerType::External(threaded_rodeo) => threaded_rodeo.contains(val),
+        }
+    }
+}
+
+impl Interner for InternerType {
+    fn get_or_intern(&mut self, val: &str) -> Spur {
+        match self {
+            InternerType::Internal(rodeo) => rodeo.get_or_intern(val),
+            InternerType::External(threaded_rodeo) => threaded_rodeo.get_or_intern(val),
+        }
+    }
+
+    fn try_get_or_intern(&mut self, val: &str) -> lasso::LassoResult<Spur> {
+        match self {
+            InternerType::Internal(rodeo) => rodeo.try_get_or_intern(val),
+            InternerType::External(threaded_rodeo) => threaded_rodeo.try_get_or_intern(val),
+        }
+    }
+
+    fn get_or_intern_static(&mut self, val: &'static str) -> Spur {
+        match self {
+            InternerType::Internal(rodeo) => rodeo.get_or_intern_static(val),
+            InternerType::External(threaded_rodeo) => threaded_rodeo.get_or_intern_static(val),
+        }
+    }
+
+    fn try_get_or_intern_static(&mut self, val: &'static str) -> lasso::LassoResult<Spur> {
+        match self {
+            InternerType::Internal(rodeo) => rodeo.try_get_or_intern_static(val),
+            InternerType::External(threaded_rodeo) => threaded_rodeo.try_get_or_intern_static(val),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum InternerType {
     Internal(Rodeo),
-    External(Rc<Rodeo>),
+    External(Arc<ThreadedRodeo>),
 }
 
 #[derive(Debug, Clone)]
@@ -18,11 +101,9 @@ pub struct BlockPalette {
 }
 
 impl BlockPalette {
-    pub fn new_with_interner(interner: Rc<Rodeo>) -> Self {}
-    pub fn new() -> Self {
-        let interner = Rodeo::new();
+    pub fn new_inner(interner: &Arc<ThreadedRodeo>) -> Self {
         Self {
-            interner,
+            interner: InternerType::External(interner.clone()),
             block_states: vec![],
         }
     }
@@ -37,8 +118,21 @@ impl BlockPalette {
             }
         })
     }
-
-    pub fn insert(&mut self, block_name: &str, properties: &str) -> PaletteIndex {
+    pub fn insert_block(&mut self, block_: BlockInternal) -> PaletteIndex {
+        let a = self
+            .block_states
+            .iter()
+            .enumerate()
+            .find(|(_, block)| block == block);
+        if let Some(value) = a {
+            return value.0 as PaletteIndex;
+        } else {
+            let ind = self.block_states.len();
+            self.block_states.push(block_);
+            return ind as PaletteIndex;
+        }
+    }
+    pub fn insert_str(&mut self, block_name: &str, properties: &str) -> PaletteIndex {
         if self.interner.contains(block_name) {
             let (index, _) = self
                 .block_states
@@ -59,7 +153,7 @@ impl BlockPalette {
             let block_state = BlockStateInternal::from_str(properties, &mut self.interner);
             let block = BlockInternal {
                 block_name: block_name_spur,
-                block_state,
+                properties: block_state,
             };
             let index = self.block_states.len();
             self.block_states.push(block);

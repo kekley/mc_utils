@@ -1,4 +1,6 @@
-use lasso::{Rodeo, Spur};
+use std::sync::Arc;
+
+use lasso::{Interner, Rodeo, Spur, ThreadedRodeo};
 
 pub type StateName = Spur;
 pub type State = Spur;
@@ -8,7 +10,7 @@ pub struct BlockStateInternal {
 }
 
 impl BlockStateInternal {
-    pub fn from_str(properties: &str, rodeo: &mut Rodeo) -> Self {
+    pub fn from_str(properties: &str, interner: &mut dyn Interner) -> Self {
         if properties.is_empty() {
             return Self { properties: vec![] };
         }
@@ -20,8 +22,8 @@ impl BlockStateInternal {
                 let property = property
                     .split_once("=")
                     .map(|(state_name, state)| {
-                        let state_name = rodeo.get_or_intern(state_name);
-                        let state = rodeo.get_or_intern(state);
+                        let state_name = interner.get_or_intern(state_name);
+                        let state = interner.get_or_intern(state);
                         (state_name, state)
                     })
                     .expect("blockstate parse error");

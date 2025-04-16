@@ -15,9 +15,7 @@ use crate::{
 
 use super::{
     block_models::{BlockModel, ASSET_PATH},
-    block_states::BlockStateInternal,
     resource::BlockStates,
-    variant::Variants,
 };
 
 #[derive(Debug, Clone)]
@@ -26,9 +24,6 @@ pub struct ResourceLoader {
 }
 
 impl ResourceLoader {
-    pub fn resolve_spur(&self, spur: &Spur) -> &str {
-        self.rodeo.resolve(spur)
-    }
     pub fn load_block(&self, block_name: &str) -> BlockStates {
         let mut path = SmolStrBuilder::new();
         path.push_str(&ASSET_PATH);
@@ -45,15 +40,15 @@ impl ResourceLoader {
         BlockModel::load(path, &self.rodeo)
     }
     pub fn open_world(&self, region_folder: &str) -> World {
-        World::new(region_folder, &self)
+        World::new(region_folder, &self.rodeo)
     }
 
     pub fn nbt_from_bytes(&self, bytes: &mut Bytes) -> anyhow::Result<NBTCompound> {
-        NBTCompound::from_bytes(bytes)
+        NBTCompound::internal_nbt(bytes, &self.rodeo)
     }
 
     pub(crate) fn chunk_from_nbt(&self, chunk_nbt: NBTCompound) -> Option<Chunk> {
-        Some(Chunk::from_nbt(chunk_nbt))
+        Some(Chunk::from_nbt_internal(chunk_nbt, &self.rodeo))
     }
 
     pub fn new() -> Self {

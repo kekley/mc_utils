@@ -33,7 +33,11 @@ impl NBTTag {
         // See https://doc.rust-lang.org/reference/items/enumerations.html#pointer-casting
         unsafe { *(self as *const Self as *const u8) }
     }
-    pub fn read_tag(stream: &mut Bytes, id: NBTId) -> anyhow::Result<NBTTag> {
+    pub fn read_tag(
+        stream: &mut Bytes,
+        id: NBTId,
+        interner: &Arc<ThreadedRodeo>,
+    ) -> anyhow::Result<NBTTag> {
         match id {
             NBTId::EndId => Ok(NBTTag::End),
             NBTId::ByteId => Ok(NBTTag::Byte(stream.get_i8())),
@@ -54,7 +58,7 @@ impl NBTTag {
                 let len = stream.get_i32();
                 let mut list = Vec::with_capacity(len as usize);
                 for _ in 0..len {
-                    let tag = Self::read_tag(stream, tag_id)?;
+                    let tag = Self::read_tag(stream, tag_id, interner)?;
                     if tag.get_type_id() != tag_id as u8 {
                         return Err(anyhow!(
                             "type of item in NBT list did not match declared list type"
@@ -65,7 +69,9 @@ impl NBTTag {
                 }
                 Ok(NBTTag::List(list))
             }
-            NBTId::CompoundId => Ok(NBTTag::Compound(NBTCompound::from_bytes(stream)?)),
+            NBTId::CompoundId => Ok(NBTTag::Compound(NBTCompound::internal_nbt(
+                stream, interner,
+            )?)),
             NBTId::IntArrayId => {
                 let len = stream.get_i32() as usize;
                 let bytes = stream.slice(0..len);

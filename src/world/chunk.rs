@@ -1,16 +1,16 @@
-use std::{fmt::Debug, u32};
+use std::{fmt::Debug, sync::Arc, u32};
 
 use bytes::Bytes;
 use fxhash::FxBuildHasher;
 use hashbrown::HashMap;
-use lasso::{Rodeo, Spur};
+use lasso::{Rodeo, Spur, ThreadedRodeo};
 use smol_str::SmolStr;
 
 use crate::{
     block::BlockInternal,
     block_states::BlockStateInternal,
     nbt::{nbt_compound::NBTCompound, nbt_tag::NBTTag},
-    palette::BlockPalette,
+    palette::{self, BlockPalette},
 };
 
 use super::loaded_world::{ChunkCoords, World, WorldCoords};
@@ -34,7 +34,6 @@ impl Debug for Chunk {
 
 #[derive(Debug, Clone)]
 pub struct SectionTower {
-    interner: Rodeo,
     sections: Vec<ChunkSection>,
     map: Vec<Option<usize>>,
     y_min: isize,
@@ -64,7 +63,10 @@ impl SectionTower {
     }
 }
 impl Chunk {
-    pub fn from_nbt(nbt_compound: NBTCompound) -> Self {
+    pub(crate) fn from_nbt_internal(
+        nbt_compound: NBTCompound,
+        interner: &Arc<ThreadedRodeo>,
+    ) -> Chunk {
         let binding = nbt_compound.get_tag("").expect("Not a Chunk NBT");
         let chunk = binding.get_compound();
         let data_version = chunk
@@ -82,7 +84,7 @@ impl Chunk {
             .iter()
             .filter_map(|section| {
                 let section_compound = section.get_compound();
-                let section = ChunkSection::from_compound(&section_compound);
+                let section = ChunkSection::from_compound_internal(&section_compound, interner);
                 if section.ypos >= -4 {
                     Some(section)
                 } else {
@@ -111,7 +113,6 @@ impl Chunk {
         }
 
         let sec_tower = SectionTower {
-            interner: Rodeo::new(),
             sections: section_array,
             map: sparse_sections,
             y_min: 16 * min,
@@ -127,6 +128,7 @@ impl Chunk {
             sections: sec_tower,
         }
     }
+
     pub fn get_local_block(&self, x: usize, y: isize, z: usize) -> Option<u32> {
         let sections = &self.sections;
 
@@ -160,29 +162,22 @@ impl ChunkSection {
 #[derive(Debug, Clone)]
 pub struct ChunkSection {
     pub ypos: i8,
-
+    palette: BlockPalette,
     pub data: [u32; 4096],
 }
 
-impl Default for ChunkSection {
-    fn default() -> Self {
-        Self {
-            ypos: 0,
-            palette: BlockPalette::new(),
-            data: [0u32; 4096],
-        }
-    }
-}
-
 impl ChunkSection {
-    pub fn from_compound(compound: &NBTCompound) -> Self {
+    pub(crate) fn from_compound_internal(
+        compound: &NBTCompound,
+        interner: &Arc<ThreadedRodeo>,
+    ) -> Self {
+        let mut palette = BlockPalette::new_inner(interner);
         let y = compound.get_tag("Y").unwrap().get_byte();
-        let mut palette = BlockPalette::new();
         //ignore non-vanilla world heights for now
         //FIXME
         if y < -4 || y > 19 {
             return Self {
-                palette,
+                palette: BlockPalette::new_inner(interner),
                 ypos: y,
                 data: [0u32; 4096],
             };
@@ -211,52 +206,46 @@ impl ChunkSection {
             .map(|f| {
                 let block = f.get_compound();
                 let block_name = block.get_tag("Name").unwrap().get_string();
+                let block_name_spur = interner.get_or_intern(block_name);
+                let mut props = vec![];
 
-                let properties: Vec<BlockInternal> = block
+                let block_states: BlockStateInternal = block
                     .get_tag("properties")
                     .map(|properties| {
-                        properties
-                            .get_compound()
-                            .children
-                            .iter()
-                            .map(|f| {
-                                let state_name = f.0.clone();
-                                let state_value = f.1.get_string().clone();
-                            })
-                            .collect()
+                        properties.get_compound().children.iter().for_each(|f| {
+                            let state_name = f.0.clone();
+                            let state_value = interner.get_or_intern(f.1.get_string());
+                            props.push((state_name, state_value));
+                        });
+                        BlockStateInternal { properties: props }
                     })
-                    .unwrap_or(HashMap::default());
+                    .unwrap_or(BlockStateInternal { properties: vec![] });
 
                 BlockInternal {
-                    block_name,
-                    block_state: BlockStateInternal { properties },
+                    block_name: block_name_spur,
+                    properties: block_states,
                 }
             })
             .collect();
-
-        /*         block_states.into_iter().for_each(|state| {
-            palette.insert(state);
-        }); */
-
         let data = if block_states.len() == 1 {
             &vec![]
         } else {
             block_states_compound
-                .get_tag("data", rodeo)
+                .get_tag("data")
                 .unwrap()
                 .get_long_array()
         };
-
         let bit_size = (f32::log2(block_states.len() as f32 - 1.0)).floor() + 1.0;
-        let mut temp: [u32; 4096] = std::array::from_fn(|i| {
+        let temp: [u32; 4096] = std::array::from_fn(|i| {
             let ind = Self::extract_index(&data[..], i as u32, bit_size as u32);
             ind
         });
-
-        temp.iter_mut().for_each(|i| {
-            *i = palette.insert(block_states[*i as usize].clone()) as u32;
+        block_states.into_iter().for_each(|state| {
+            palette.insert_block(state);
         });
+
         Self {
+            palette,
             ypos: y,
             data: temp,
         }
