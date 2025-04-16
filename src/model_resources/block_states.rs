@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use lasso::{Interner, Rodeo, Spur, ThreadedRodeo};
+use lasso::{Interner, Spur, ThreadedRodeo};
 
 pub type StateName = Spur;
 pub type State = Spur;

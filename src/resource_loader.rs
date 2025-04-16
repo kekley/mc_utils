@@ -1,24 +1,19 @@
-use std::{fs, sync::Arc};
+use std::sync::Arc;
 
 use bytes::Bytes;
-use hashbrown::HashMap;
 use lasso::{Spur, ThreadedRodeo};
-use serde_json::Value;
 use smol_str::{SmolStr, SmolStrBuilder};
 
 use crate::{
     block::InternedBlock,
-    block_states::InternedBlockState,
-    chunk::{self, Chunk},
+    chunk::{Chunk},
     loaded_world::World,
     nbt_compound::NBTCompound,
-    palette::InternerType,
-    variant::{ModelVariant, Variants},
-    SpiderEyeError,
+    variant::ModelVariant,
 };
 
 use super::{
-    block_models::{InternedBlockModel, ASSET_PATH},
+    block_models::ASSET_PATH,
     resource::BlockStates,
 };
 

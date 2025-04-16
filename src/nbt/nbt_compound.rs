@@ -1,11 +1,9 @@
 use bytes::{Buf, Bytes};
 use cesu8::from_java_cesu8;
 use core::str;
-use fxhash::FxBuildHasher;
-use hashbrown::HashMap;
-use lasso::{Interner, Reader, Resolver, Rodeo, Spur, ThreadedRodeo};
+use lasso::{Interner, Reader, Spur, ThreadedRodeo};
 use num_enum::TryFromPrimitive;
-use std::{borrow::Cow, fmt::Debug, sync::Arc};
+use std::{fmt::Debug, sync::Arc};
 
 use crate::palette::InternerType;
 

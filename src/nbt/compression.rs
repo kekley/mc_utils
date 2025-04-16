@@ -1,7 +1,7 @@
-use std::io::{self, Write};
+use std::io::{Write};
 
 use byteorder::{BigEndian, ReadBytesExt};
-use bytes::{buf, Buf, Bytes};
+use bytes::{Buf, Bytes};
 use num_enum::TryFromPrimitive;
 
 use crate::spider_eye_error::SpiderEyeError;

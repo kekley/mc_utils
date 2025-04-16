@@ -4,7 +4,7 @@ use lasso::{Spur, ThreadedRodeo};
 use serde_json::Value;
 
 use super::{
-    block_states::{BlockState, InternedBlockState},
+    block_states::InternedBlockState,
     variant::ModelVariant,
 };
 

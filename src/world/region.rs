@@ -1,22 +1,16 @@
 use std::fs::File;
 use std::io::{self, BufReader, Cursor, Read, Seek};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::{usize, vec};
 
-use crate::block::InternedBlock;
-use crate::block_states::InternedBlockState;
 use crate::chunk::Chunk;
 
 use crate::nbt::compression::{CompressionData, CompressionScheme};
 use crate::nbt_compound::NBTCompound;
 
-use crate::spider_eye_error::SpiderEyeError;
-use crate::ResourceLoader;
 use anyhow::Ok;
 use bytes::Bytes;
-use fxhash::FxBuildHasher;
-use lasso::{Spur, ThreadedRodeo};
-use smol_str::SmolStr;
+use lasso::ThreadedRodeo;
 
 use super::loaded_world::RegionCoords;
 

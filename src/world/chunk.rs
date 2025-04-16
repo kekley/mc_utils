@@ -1,7 +1,7 @@
 use std::{fmt::Debug, sync::Arc, u32};
 
 use bytes::Bytes;
-use lasso::{Spur, ThreadedRodeo};
+use lasso::ThreadedRodeo;
 use smol_str::SmolStr;
 
 use crate::{
@@ -11,7 +11,7 @@ use crate::{
     palette::BlockPalette,
 };
 
-use super::loaded_world::{modulo, ChunkCoords, World, WorldCoords};
+use super::loaded_world::{modulo, ChunkCoords, WorldCoords};
 
 #[derive(Clone)]
 pub struct Chunk {

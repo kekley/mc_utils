@@ -1,10 +1,10 @@
 use core::str;
-use std::{any::Any, borrow::Cow, fmt::Debug, mem, ops::Deref, sync::Arc};
+use std::{borrow::Cow, fmt::Debug, sync::Arc};
 
 use anyhow::anyhow;
-use bytes::{buf, Buf, Bytes};
+use bytes::{Buf, Bytes};
 use cesu8::from_java_cesu8;
-use lasso::{Spur, ThreadedRodeo};
+use lasso::ThreadedRodeo;
 use num_enum::TryFromPrimitive;
 
 use super::{nbt_compound::NBTCompound, nbt_ids::*};

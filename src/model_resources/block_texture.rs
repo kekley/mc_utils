@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
-use fxhash::{FxBuildHasher, FxHashMap, FxHasher};
 use glam::Vec4;
-use hashbrown::HashMap;
 use lasso::{Spur, ThreadedRodeo};
 use serde_json::Value;
 use smol_str::SmolStr;

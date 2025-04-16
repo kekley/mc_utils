@@ -1,22 +1,13 @@
-use std::{
-    collections::HashMap,
-    fs::{self, File},
-    io::Read,
-    sync::Arc,
-};
+use std::sync::Arc;
 
-use fxhash::FxHashMap;
-use lasso::{Spur, ThreadedRodeo};
-use serde_json::{value, Value};
+use lasso::ThreadedRodeo;
+use serde_json::Value;
 use smol_str::SmolStr;
 
-use crate::block_states;
 
 use super::{
     block_models::{InternedBlockModel, BlockRotation, ASSET_PATH},
     block_states::InternedBlockState,
-    block_texture::Uv,
-    resource::BlockStates,
 };
 #[derive(Debug, Clone)]
 
