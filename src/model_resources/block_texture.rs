@@ -45,34 +45,34 @@ impl From<[f32; 4]> for Uv {
 pub type TexVar = Spur;
 pub type TexPath = Spur;
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub enum TextureVariable {
+pub enum InternedTextureVariable {
     Variable(TexVar),
     ResourcePath(TexPath),
 }
 
-impl TextureVariable {
+impl InternedTextureVariable {
     pub fn get_inner(&self) -> Spur {
         match self {
-            TextureVariable::Variable(key) => *key,
-            TextureVariable::ResourcePath(key) => *key,
+            InternedTextureVariable::Variable(key) => *key,
+            InternedTextureVariable::ResourcePath(key) => *key,
         }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct BlockTextures {
-    pub textures: Vec<(TexVar, TextureVariable)>,
+    pub textures: Vec<(TexVar, InternedTextureVariable)>,
 }
 
 impl BlockTextures {
-    pub fn get_all(&self) -> &[(TexVar, TextureVariable)] {
+    pub fn get_all(&self) -> &[(TexVar, InternedTextureVariable)] {
         &self.textures
     }
     pub fn get_keys(&self) -> Vec<TexVar> {
         self.textures.iter().map(|entry| entry.0).collect()
     }
 
-    fn path_inner(variable: &TextureVariable, rodeo: &ThreadedRodeo) -> SmolStr {
+    fn path_inner(variable: &InternedTextureVariable, rodeo: &ThreadedRodeo) -> SmolStr {
         let path_str = rodeo.resolve(&variable.get_inner());
         let (namespace, remaining_str) = path_str.split_once(":").unwrap_or(("", path_str));
 
@@ -97,7 +97,7 @@ impl BlockTextures {
             .iter()
             .map(|(var1, var2)| {
                 let name = rodeo.get_or_intern(var1);
-                let texture = TextureVariable::parse_from_json_value(var2, rodeo);
+                let texture = InternedTextureVariable::parse_from_json_value(var2, rodeo);
                 (name, texture)
             })
             .collect();
@@ -105,7 +105,7 @@ impl BlockTextures {
     }
 }
 
-impl TextureVariable {
+impl InternedTextureVariable {
     pub(crate) fn parse_from_json_value(value: &Value, rodeo: &Arc<ThreadedRodeo>) -> Self {
         let val = value.as_str().expect("texture value was not SmolStr");
         let first_char = val.chars().nth(0).expect("texture SmolStr had length of 0");
@@ -113,9 +113,9 @@ impl TextureVariable {
             panic!("invalid texture variable length")
         }
         if first_char == '#' {
-            return TextureVariable::Variable(rodeo.get_or_intern(val));
+            return InternedTextureVariable::Variable(rodeo.get_or_intern(val));
         } else {
-            return TextureVariable::ResourcePath(rodeo.get_or_intern(val));
+            return InternedTextureVariable::ResourcePath(rodeo.get_or_intern(val));
         }
     }
 }

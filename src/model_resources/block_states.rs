@@ -6,15 +6,16 @@ pub type StateName = Spur;
 pub type State = Spur;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct BlockStateInternal {
+pub struct InternedBlockState {
     pub(crate) properties: Vec<(StateName, State)>,
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct BlockState<'a> {
     pub properties: Vec<(&'a str, &'a str)>,
 }
 
-impl BlockStateInternal {
+impl InternedBlockState {
     pub fn resolve<'a>(&'a self, interner: &'a Arc<ThreadedRodeo>) -> BlockState<'a> {
         let properties_str: Vec<_> = self
             .properties

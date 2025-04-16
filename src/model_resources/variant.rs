@@ -13,8 +13,8 @@ use smol_str::SmolStr;
 use crate::block_states;
 
 use super::{
-    block_models::{BlockModel, BlockRotation, ASSET_PATH},
-    block_states::BlockStateInternal,
+    block_models::{InternedBlockModel, BlockRotation, ASSET_PATH},
+    block_states::InternedBlockState,
     block_texture::Uv,
     resource::BlockStates,
 };
@@ -35,12 +35,12 @@ pub enum ModelVariant {
 #[derive(Debug, Clone)]
 
 pub struct Variants {
-    variants: Vec<(BlockStateInternal, ModelVariant)>,
+    variants: Vec<(InternedBlockState, ModelVariant)>,
 }
 
 #[derive(Debug, Clone)]
 pub struct VariantEntry {
-    pub model: BlockModel,
+    pub model: InternedBlockModel,
     pub rotation_x: Option<BlockRotation>,
     pub rotation_y: Option<BlockRotation>,
     pub uv_lock: Option<UvLock>,
@@ -48,7 +48,7 @@ pub struct VariantEntry {
 }
 
 impl Variants {
-    pub fn get_model(&self, block_state: &BlockStateInternal) -> Vec<ModelVariant> {
+    pub fn get_model(&self, block_state: &InternedBlockState) -> Vec<ModelVariant> {
         dbg!("getting blockstate:");
         dbg!(&block_state);
         self.variants
@@ -105,7 +105,7 @@ impl Variants {
             .map(|(variant_properties, variant_entry)| {
                 let variant_entry = ModelVariant::from_json_value(variant_entry, rodeo);
                 (
-                    BlockStateInternal::from_str(&variant_properties, rodeo),
+                    InternedBlockState::from_str(&variant_properties, rodeo),
                     variant_entry,
                 )
             })
@@ -122,7 +122,7 @@ impl VariantEntry {
             .as_str()
             .expect("model was not str");
         let file_path = Variants::parse_path(model);
-        let block_model = BlockModel::load(&file_path, rodeo);
+        let block_model = InternedBlockModel::load(&file_path, rodeo);
         let y_rotation = value.get("y").map(|value| BlockRotation::from(value));
         let x_rotation = value.get("x").map(|value| BlockRotation::from(value));
         let uv_lock = value.get("uvlock").map(|value| UvLock::from(value));

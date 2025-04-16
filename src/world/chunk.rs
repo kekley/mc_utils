@@ -1,17 +1,17 @@
 use std::{fmt::Debug, sync::Arc, u32};
 
 use bytes::Bytes;
-use lasso::ThreadedRodeo;
+use lasso::{Spur, ThreadedRodeo};
 use smol_str::SmolStr;
 
 use crate::{
-    block::BlockInternal,
-    block_states::BlockStateInternal,
+    block::InternedBlock,
+    block_states::InternedBlockState,
     nbt::{nbt_compound::NBTCompound, nbt_tag::NBTTag},
     palette::BlockPalette,
 };
 
-use super::loaded_world::{ChunkCoords, World, WorldCoords};
+use super::loaded_world::{modulo, ChunkCoords, World, WorldCoords};
 
 #[derive(Clone)]
 pub struct Chunk {
@@ -127,7 +127,7 @@ impl Chunk {
         }
     }
 
-    pub fn get_local_block(&self, x: usize, y: isize, z: usize) -> Option<u32> {
+    pub fn get_local_block(&self, x: usize, y: isize, z: usize) -> Option<&InternedBlock> {
         let sections = &self.sections;
 
         if y > self.sections.y_max() || y < self.sections.y_min() {
@@ -137,9 +137,9 @@ impl Chunk {
         let sec_y = (y - sec.ypos as isize * 16) as usize;
         sec.get_block(x, sec_y, z)
     }
-    pub fn get_world_block(&self, world_coords: WorldCoords) -> Option<u32> {
-        let local_block_x: i16 = World::modulo(world_coords.x, 16) as i16;
-        let local_block_z: i16 = World::modulo(world_coords.z, 16) as i16;
+    pub fn get_world_block(&self, world_coords: WorldCoords) -> Option<&InternedBlock> {
+        let local_block_x: i16 = modulo(world_coords.x, 16) as i16;
+        let local_block_z: i16 = modulo(world_coords.z, 16) as i16;
         let block = self.get_local_block(
             local_block_x.try_into().unwrap(),
             world_coords.y.try_into().unwrap(),
@@ -151,9 +151,9 @@ impl Chunk {
 }
 
 impl ChunkSection {
-    pub fn get_block(&self, x: usize, sec_y: usize, z: usize) -> Option<u32> {
-        let num = self.data.get((sec_y * 16 * 16 + z * 16 + x) as usize);
-        num.cloned()
+    pub fn get_block(&self, x: usize, sec_y: usize, z: usize) -> Option<&InternedBlock> {
+        let num = self.data.get((sec_y * 16 * 16 + z * 16 + x) as usize)?;
+        self.palette.get(*num)
     }
 }
 
@@ -196,7 +196,7 @@ impl ChunkSection {
             .get_byte_array()
             .to_owned();
 
-        let block_states: Vec<BlockInternal> = block_states_compound
+        let block_states: Vec<InternedBlock> = block_states_compound
             .get_tag("palette")
             .unwrap()
             .get_list()
@@ -207,7 +207,7 @@ impl ChunkSection {
                 let block_name_spur = interner.get_or_intern(block_name);
                 let mut props = vec![];
 
-                let block_states: BlockStateInternal = block
+                let block_states: InternedBlockState = block
                     .get_tag("properties")
                     .map(|properties| {
                         properties.get_compound().children.iter().for_each(|f| {
@@ -215,11 +215,11 @@ impl ChunkSection {
                             let state_value = interner.get_or_intern(f.1.get_string());
                             props.push((state_name, state_value));
                         });
-                        BlockStateInternal { properties: props }
+                        InternedBlockState { properties: props }
                     })
-                    .unwrap_or(BlockStateInternal { properties: vec![] });
+                    .unwrap_or(InternedBlockState { properties: vec![] });
 
-                BlockInternal {
+                InternedBlock {
                     block_name: block_name_spur,
                     properties: block_states,
                 }

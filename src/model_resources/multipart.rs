@@ -1,9 +1,12 @@
-use std::{fs, hash::Hash, sync::Arc};
+use std::sync::Arc;
 
 use lasso::{Spur, ThreadedRodeo};
 use serde_json::Value;
 
-use super::{block_states::BlockStateInternal, variant::ModelVariant};
+use super::{
+    block_states::{BlockState, InternedBlockState},
+    variant::ModelVariant,
+};
 
 #[derive(Debug, Clone)]
 pub struct Multipart {
@@ -11,7 +14,7 @@ pub struct Multipart {
 }
 
 impl Multipart {
-    pub fn get(&self, block_state: &BlockStateInternal) -> Vec<ModelVariant> {
+    pub fn get(&self, block_state: &InternedBlockState) -> Vec<ModelVariant> {
         self.cases
             .iter()
             .filter_map(|case| {
@@ -31,7 +34,7 @@ pub struct Case {
     apply: Apply,
 }
 impl Case {
-    pub fn check(&self, block_state: &BlockStateInternal) -> bool {
+    pub fn check(&self, block_state: &InternedBlockState) -> bool {
         self.when
             .as_ref()
             .is_none_or(|when| when.check(block_state))
@@ -45,12 +48,12 @@ pub struct Apply {
 
 #[derive(Debug, Clone)]
 pub enum When {
-    OrCase(Vec<BlockStateInternal>),
-    AndCase(Vec<BlockStateInternal>),
-    SingleCase(BlockStateInternal),
+    OrCase(Vec<InternedBlockState>),
+    AndCase(Vec<InternedBlockState>),
+    SingleCase(InternedBlockState),
 }
 impl When {
-    pub fn check(&self, block_state: &BlockStateInternal) -> bool {
+    pub fn check(&self, block_state: &InternedBlockState) -> bool {
         match self {
             When::OrCase(test_states) => test_states.iter().any(|state| state == block_state),
             When::AndCase(test_states) => test_states.iter().all(|state| state == block_state),
@@ -99,7 +102,7 @@ impl Case {
                     .unwrap();
                 let map: Vec<(Spur, Spur)> = vec![(name, state)];
 
-                let block_state = BlockStateInternal { properties: map };
+                let block_state = InternedBlockState { properties: map };
                 When::SingleCase(block_state)
             }
         });
@@ -116,7 +119,7 @@ impl Case {
     }
 }
 
-fn collect_blockstates(value: &Vec<Value>, rodeo: &Arc<ThreadedRodeo>) -> Vec<BlockStateInternal> {
+fn collect_blockstates(value: &Vec<Value>, rodeo: &Arc<ThreadedRodeo>) -> Vec<InternedBlockState> {
     value
         .iter()
         .flat_map(|entry| {
@@ -131,8 +134,8 @@ fn collect_blockstates(value: &Vec<Value>, rodeo: &Arc<ThreadedRodeo>) -> Vec<Bl
                         .into_iter()
                         .map(|value| (state_name, rodeo.get_or_intern(value)))
                         .collect();
-                    BlockStateInternal { properties: map }
+                    InternedBlockState { properties: map }
                 })
         })
-        .collect::<Vec<BlockStateInternal>>()
+        .collect::<Vec<InternedBlockState>>()
 }

@@ -3,8 +3,8 @@ use std::io::{self, BufReader, Cursor, Read, Seek};
 use std::sync::{Arc, RwLock};
 use std::{usize, vec};
 
-use crate::block::BlockInternal;
-use crate::block_states::BlockStateInternal;
+use crate::block::InternedBlock;
+use crate::block_states::InternedBlockState;
 use crate::chunk::Chunk;
 
 use crate::nbt::compression::{CompressionData, CompressionScheme};

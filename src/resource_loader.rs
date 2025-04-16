@@ -7,15 +7,18 @@ use serde_json::Value;
 use smol_str::{SmolStr, SmolStrBuilder};
 
 use crate::{
+    block::InternedBlock,
+    block_states::InternedBlockState,
     chunk::{self, Chunk},
     loaded_world::World,
     nbt_compound::NBTCompound,
     palette::InternerType,
+    variant::{ModelVariant, Variants},
     SpiderEyeError,
 };
 
 use super::{
-    block_models::{BlockModel, ASSET_PATH},
+    block_models::{InternedBlockModel, ASSET_PATH},
     resource::BlockStates,
 };
 
@@ -25,7 +28,7 @@ pub struct ResourceLoader {
 }
 
 impl ResourceLoader {
-    pub fn load_block(&self, block_name: &str) -> BlockStates {
+    pub fn load_block_states(&self, block_name: &str) -> BlockStates {
         let mut path = SmolStrBuilder::new();
         path.push_str(&ASSET_PATH);
 
@@ -37,8 +40,13 @@ impl ResourceLoader {
         let path = path.finish();
         BlockStates::new(&path, &self.rodeo)
     }
-    pub fn load_model(&self, path: &str) -> BlockModel {
-        BlockModel::load(path, &self.rodeo)
+    pub fn load_models(&self, block: &InternedBlock) -> Vec<ModelVariant> {
+        let block_states = self.load_block_states(self.resolve_spur(&block.block_name));
+        let variants = match block_states {
+            BlockStates::MultiPart(multipart) => multipart.get(&block.properties),
+            BlockStates::Variants(variants) => variants.get_model(&block.properties),
+        };
+        variants
     }
     pub fn open_world(&self, region_folder: &str) -> World {
         World::new(region_folder, &self.rodeo)
@@ -77,5 +85,8 @@ impl ResourceLoader {
                 + remaining_str
                 + ".png",
         )
+    }
+    pub fn resolve_spur(&self, spur: &Spur) -> &str {
+        self.rodeo.resolve(spur)
     }
 }

@@ -4,18 +4,18 @@ use glam::{Mat3A, Vec2, Vec3};
 use lasso::ThreadedRodeo;
 use serde_json::Value;
 
-use super::{block_face::Face, utils::parse_vec3};
+use super::{block_face::InternedFace, utils::parse_vec3};
 pub type Shade = bool;
 #[derive(Debug, Clone)]
-pub struct BlockElement {
+pub struct InternedBlockElement {
     pub from: Vec3,
     pub to: Vec3,
     pub rotation: Option<ElementRotation>,
     shade: Option<Shade>,
-    pub faces: [Option<Face>; 6],
+    pub faces: [Option<InternedFace>; 6],
 }
 
-impl BlockElement {
+impl InternedBlockElement {
     pub fn is_cube(&self) -> bool {
         !self.faces.iter().any(|f| f.is_none())
     }
@@ -38,8 +38,9 @@ impl BlockElement {
         let shade = value
             .get("shade")
             .map(|value| value.as_bool().expect("shade existed but was not bool"));
-        let faces = Face::parse_faces(value.get("faces").expect("faces not defined"), rodeo);
-        BlockElement {
+        let faces =
+            InternedFace::parse_faces(value.get("faces").expect("faces not defined"), rodeo);
+        InternedBlockElement {
             from,
             to,
             rotation,
@@ -47,12 +48,12 @@ impl BlockElement {
             faces,
         }
     }
-    pub fn parse_elements(value: &Value, rodeo: &Arc<ThreadedRodeo>) -> Vec<BlockElement> {
+    pub fn parse_elements(value: &Value, rodeo: &Arc<ThreadedRodeo>) -> Vec<InternedBlockElement> {
         value
             .as_array()
             .expect("elements was not an array")
             .iter()
-            .map(|value| BlockElement::from_json_value(value, rodeo))
+            .map(|value| InternedBlockElement::from_json_value(value, rodeo))
             .collect::<Vec<_>>()
     }
 }

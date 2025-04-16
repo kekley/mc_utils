@@ -1,15 +1,13 @@
 use std::{fs, sync::Arc};
 
-use fxhash::FxBuildHasher;
-use hashbrown::HashMap;
 use lasso::{Spur, ThreadedRodeo};
 use serde_json::Value;
 use smol_str::SmolStr;
 
 use super::{
     block_display::BlockDisplay,
-    block_element::BlockElement,
-    block_texture::{BlockTextures, TexPath, TexVar, TextureVariable},
+    block_element::InternedBlockElement,
+    block_texture::{BlockTextures, InternedTextureVariable, TexVar},
 };
 #[derive(Debug, Clone)]
 pub enum BlockRotation {
@@ -37,18 +35,18 @@ pub struct IntermediateBlockModel {
     pub ambient_occlusion: Option<AmbientOcclusion>,
     pub displays: Option<Vec<BlockDisplay>>,
     pub textures: Option<BlockTextures>,
-    pub elements: Option<Vec<BlockElement>>,
+    pub elements: Option<Vec<InternedBlockElement>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct BlockModel {
+pub struct InternedBlockModel {
     pub ambient_occlusion: AmbientOcclusion,
     pub displays: Vec<BlockDisplay>,
     textures: BlockTextures,
-    pub elements: Vec<BlockElement>,
+    pub elements: Vec<InternedBlockElement>,
 }
-impl BlockModel {
-    pub fn get_textures(&self) -> &[(TexVar, TextureVariable)] {
+impl InternedBlockModel {
+    pub fn get_textures(&self) -> &[(TexVar, InternedTextureVariable)] {
         self.textures.get_all()
     }
     pub fn is_axis_aligned(&self) -> bool {
@@ -59,14 +57,14 @@ impl BlockModel {
     pub fn is_cube(&self) -> bool {
         self.elements.len() == 1 && self.elements[0].is_cube()
     }
-    pub(crate) fn load(path: &str, rodeo: &Arc<ThreadedRodeo>) -> BlockModel {
+    pub(crate) fn load(path: &str, rodeo: &Arc<ThreadedRodeo>) -> InternedBlockModel {
         let tmp = IntermediateBlockModel::from_json(path, rodeo);
         let res = IntermediateBlockModel::collapse_parents(tmp, rodeo);
         res
     }
 }
 
-impl From<IntermediateBlockModel> for BlockModel {
+impl From<IntermediateBlockModel> for InternedBlockModel {
     fn from(value: IntermediateBlockModel) -> Self {
         let IntermediateBlockModel {
             parent: _,
@@ -109,7 +107,10 @@ impl IntermediateBlockModel {
                 + ".json",
         )
     }
-    fn collapse_parents(model: IntermediateBlockModel, rodeo: &Arc<ThreadedRodeo>) -> BlockModel {
+    fn collapse_parents(
+        model: IntermediateBlockModel,
+        rodeo: &Arc<ThreadedRodeo>,
+    ) -> InternedBlockModel {
         if model.parent.is_some() {
             let parent = model.parent.as_ref().unwrap();
             let parent_path = IntermediateBlockModel::parent_to_path(rodeo.resolve(parent));
@@ -152,7 +153,7 @@ impl IntermediateBlockModel {
 
         let elements = value
             .get("elements")
-            .map(|value| BlockElement::parse_elements(value, rodeo));
+            .map(|value| InternedBlockElement::parse_elements(value, rodeo));
         let result = IntermediateBlockModel {
             parent,
             ambient_occlusion,

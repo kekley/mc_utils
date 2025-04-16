@@ -27,7 +27,7 @@ macro_rules! dbg {
 
 fn main() -> Result<(), SpiderEyeError> {
     let loader = ResourceLoader::new();
-    let a = loader.load_block("grass_block");
+    let a = loader.load_block_states("cobblestone");
     dbg!(a);
     Ok(())
 }

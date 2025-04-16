@@ -1,9 +1,32 @@
-use crate::loaded_world::BlockNameInternal;
+use std::sync::Arc;
 
-use super::block_states::BlockStateInternal;
+use lasso::ThreadedRodeo;
+
+use crate::loaded_world::InternedBlockName;
+
+use super::block_states::{BlockState, InternedBlockState};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct BlockInternal {
-    pub block_name: BlockNameInternal,
-    pub properties: BlockStateInternal,
+pub struct InternedBlock {
+    pub(crate) block_name: InternedBlockName,
+    pub(crate) properties: InternedBlockState,
+}
+
+impl InternedBlock {
+    pub fn resolve<'a>(&'a self, interner: &'a Arc<ThreadedRodeo>) -> ResolvedBlock<'a> {
+        let name = interner.resolve(&self.block_name);
+
+        let properties = self.properties.resolve(interner);
+
+        ResolvedBlock {
+            block_name: name,
+            properties: properties,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ResolvedBlock<'a> {
+    pub block_name: &'a str,
+    pub properties: BlockState<'a>,
 }

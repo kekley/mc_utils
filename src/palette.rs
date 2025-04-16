@@ -2,7 +2,7 @@ use std::{rc::Rc, sync::Arc};
 
 use lasso::{Interner, Reader, Resolver, Rodeo, Spur, ThreadedRodeo};
 
-use crate::{block::BlockInternal, block_states::BlockStateInternal};
+use crate::{block::InternedBlock, block_states::InternedBlockState};
 pub type PaletteIndex = u32;
 
 impl Resolver for InternerType {
@@ -96,8 +96,8 @@ pub enum InternerType {
 
 #[derive(Debug, Clone)]
 pub struct BlockPalette {
-    interner: Arc<ThreadedRodeo>,
-    block_states: Vec<BlockInternal>,
+    pub interner: Arc<ThreadedRodeo>,
+    block_states: Vec<InternedBlock>,
 }
 
 impl BlockPalette {
@@ -118,7 +118,7 @@ impl BlockPalette {
             }
         })
     }
-    pub fn insert_block(&mut self, block_: BlockInternal) -> PaletteIndex {
+    pub fn insert_block(&mut self, block_: InternedBlock) -> PaletteIndex {
         let a = self
             .block_states
             .iter()
@@ -150,8 +150,8 @@ impl BlockPalette {
             return index as PaletteIndex;
         } else {
             let block_name_spur = self.interner.get_or_intern(block_name);
-            let block_state = BlockStateInternal::from_str(properties, &mut self.interner);
-            let block = BlockInternal {
+            let block_state = InternedBlockState::from_str(properties, &mut self.interner);
+            let block = InternedBlock {
                 block_name: block_name_spur,
                 properties: block_state,
             };
@@ -161,7 +161,7 @@ impl BlockPalette {
         }
     }
 
-    pub fn get(&self, ind: PaletteIndex) -> Option<&BlockInternal> {
+    pub fn get(&self, ind: PaletteIndex) -> Option<&InternedBlock> {
         self.block_states.get(ind as usize)
     }
 }

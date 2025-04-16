@@ -5,24 +5,24 @@ use serde_json::Value;
 
 use super::{
     block_models::BlockRotation,
-    block_texture::{TextureVariable, Uv},
+    block_texture::{InternedTextureVariable, Uv},
     utils::parse_vec4,
 };
 pub type TintIndex = i64;
 
 #[derive(Debug, Clone)]
-pub struct Face {
+pub struct InternedFace {
     pub name: FaceName,
     pub uv: Option<Uv>,
-    pub texture: TextureVariable,
+    pub texture: InternedTextureVariable,
     cullface: Option<FaceName>,
     pub texture_rotation: Option<BlockRotation>,
     pub tint_index: Option<TintIndex>,
 }
 
-impl Face {
-    pub fn parse_faces(value: &Value, rodeo: &Arc<ThreadedRodeo>) -> [Option<Face>; 6] {
-        const NONE_VALUE: Option<Face> = None;
+impl InternedFace {
+    pub fn parse_faces(value: &Value, rodeo: &Arc<ThreadedRodeo>) -> [Option<InternedFace>; 6] {
+        const NONE_VALUE: Option<InternedFace> = None;
         let mut face_array = [NONE_VALUE; 6];
         value
             .as_object()
@@ -30,7 +30,7 @@ impl Face {
             .iter()
             .enumerate()
             .for_each(|(i, (name, value))| {
-                face_array[i] = Some(Face::parse_from_json_value(name, value, rodeo))
+                face_array[i] = Some(InternedFace::parse_from_json_value(name, value, rodeo))
             });
 
         face_array
@@ -60,7 +60,7 @@ impl From<&str> for FaceName {
     }
 }
 
-impl Face {
+impl InternedFace {
     pub fn parse_from_json_value(
         face_name: &str,
         value: &Value,
@@ -71,7 +71,7 @@ impl Face {
         let uv = value
             .get("uv")
             .map(|value| Uv::from(parse_vec4(value).to_array()));
-        let texture = TextureVariable::parse_from_json_value(
+        let texture = InternedTextureVariable::parse_from_json_value(
             value.get("texture").expect("no texture for face"),
             rodeo,
         );
@@ -85,7 +85,7 @@ impl Face {
             .get("tint")
             .map(|value| value.as_i64().expect("tint was not integer"));
 
-        Face {
+        InternedFace {
             name,
             uv,
             texture,

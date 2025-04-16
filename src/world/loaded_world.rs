@@ -69,7 +69,7 @@ impl From<ChunkCoords> for WorldCoords {
     }
 }
 
-pub type BlockNameInternal = Spur;
+pub type InternedBlockName = Spur;
 #[derive(Debug)]
 pub struct World {
     interner: InternerType,
@@ -107,12 +107,12 @@ impl World {
     pub fn load_region(&self, region_coords: RegionCoords) -> Option<LoadedRegion> {
         self.get_region_lazy(region_coords).map(|f| f.into())
     }
-    pub fn modulo(a: i64, b: i64) -> i64 {
-        let r = a % b;
-        if r < 0 {
-            r + b
-        } else {
-            r
-        }
+}
+pub fn modulo(a: i64, b: i64) -> i64 {
+    let r = a % b;
+    if r < 0 {
+        r + b
+    } else {
+        r
     }
 }
