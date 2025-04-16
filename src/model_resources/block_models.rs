@@ -48,7 +48,7 @@ pub struct BlockModel {
     pub elements: Vec<BlockElement>,
 }
 impl BlockModel {
-    pub fn get_textures(&self) -> &HashMap<TexVar, TextureVariable, FxBuildHasher> {
+    pub fn get_textures(&self) -> &[(TexVar, TextureVariable)] {
         self.textures.get_all()
     }
     pub fn is_axis_aligned(&self) -> bool {
@@ -59,7 +59,7 @@ impl BlockModel {
     pub fn is_cube(&self) -> bool {
         self.elements.len() == 1 && self.elements[0].is_cube()
     }
-    pub(crate) fn load(path: &str, rodeo: &ThreadedRodeo) -> BlockModel {
+    pub(crate) fn load(path: &str, rodeo: &Arc<ThreadedRodeo>) -> BlockModel {
         let tmp = IntermediateBlockModel::from_json(path, rodeo);
         let res = IntermediateBlockModel::collapse_parents(tmp, rodeo);
         res
@@ -109,7 +109,7 @@ impl IntermediateBlockModel {
                 + ".json",
         )
     }
-    fn collapse_parents(model: IntermediateBlockModel, rodeo: &ThreadedRodeo) -> BlockModel {
+    fn collapse_parents(model: IntermediateBlockModel, rodeo: &Arc<ThreadedRodeo>) -> BlockModel {
         if model.parent.is_some() {
             let parent = model.parent.as_ref().unwrap();
             let parent_path = IntermediateBlockModel::parent_to_path(rodeo.resolve(parent));
@@ -129,7 +129,7 @@ impl IntermediateBlockModel {
         }
     }
 
-    fn from_json(path: &str, rodeo: &ThreadedRodeo) -> IntermediateBlockModel {
+    fn from_json(path: &str, rodeo: &Arc<ThreadedRodeo>) -> IntermediateBlockModel {
         let json =
             fs::read_to_string(path).expect(format!("failed to read json file: {}", path).as_str());
         let value: Value = serde_json::from_str(&json).expect("failed to parse json");

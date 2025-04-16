@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use lasso::ThreadedRodeo;
 use serde_json::Value;
 
@@ -19,7 +21,7 @@ pub struct Face {
 }
 
 impl Face {
-    pub fn parse_faces(value: &Value, rodeo: &ThreadedRodeo) -> [Option<Face>; 6] {
+    pub fn parse_faces(value: &Value, rodeo: &Arc<ThreadedRodeo>) -> [Option<Face>; 6] {
         const NONE_VALUE: Option<Face> = None;
         let mut face_array = [NONE_VALUE; 6];
         value
@@ -59,7 +61,11 @@ impl From<&str> for FaceName {
 }
 
 impl Face {
-    pub fn parse_from_json_value(face_name: &str, value: &Value, rodeo: &ThreadedRodeo) -> Self {
+    pub fn parse_from_json_value(
+        face_name: &str,
+        value: &Value,
+        rodeo: &Arc<ThreadedRodeo>,
+    ) -> Self {
         let name = FaceName::from(face_name);
         let value = value;
         let uv = value

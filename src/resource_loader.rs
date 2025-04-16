@@ -10,6 +10,7 @@ use crate::{
     chunk::{self, Chunk},
     loaded_world::World,
     nbt_compound::NBTCompound,
+    palette::InternerType,
     SpiderEyeError,
 };
 
@@ -20,7 +21,7 @@ use super::{
 
 #[derive(Debug, Clone)]
 pub struct ResourceLoader {
-    pub rodeo: Arc<ThreadedRodeo<Spur>>,
+    pub rodeo: Arc<ThreadedRodeo>,
 }
 
 impl ResourceLoader {

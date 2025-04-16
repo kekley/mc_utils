@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use fxhash::{FxBuildHasher, FxHashMap, FxHasher};
 use glam::Vec4;
 use hashbrown::HashMap;
@@ -59,19 +61,15 @@ impl TextureVariable {
 
 #[derive(Debug, Clone)]
 pub struct BlockTextures {
-    pub textures: HashMap<TexVar, TextureVariable, FxBuildHasher>,
+    pub textures: Vec<(TexVar, TextureVariable)>,
 }
 
 impl BlockTextures {
-    pub fn get_all(&self) -> &HashMap<TexVar, TextureVariable, FxBuildHasher> {
+    pub fn get_all(&self) -> &[(TexVar, TextureVariable)] {
         &self.textures
     }
     pub fn get_keys(&self) -> Vec<TexVar> {
-        self.textures
-            .keys()
-            .into_iter()
-            .map(|key| key.clone())
-            .collect()
+        self.textures.iter().map(|entry| entry.0).collect()
     }
 
     fn path_inner(variable: &TextureVariable, rodeo: &ThreadedRodeo) -> SmolStr {
@@ -93,7 +91,7 @@ impl BlockTextures {
         )
     }
 
-    pub fn parse_from_json(value: &Value, rodeo: &ThreadedRodeo) -> Self {
+    pub fn parse_from_json(value: &Value, rodeo: &Arc<ThreadedRodeo>) -> Self {
         let obj = value.as_object().expect("textures was not object");
         let textures = obj
             .iter()
@@ -102,13 +100,13 @@ impl BlockTextures {
                 let texture = TextureVariable::parse_from_json_value(var2, rodeo);
                 (name, texture)
             })
-            .collect::<HashMap<TexVar, TextureVariable, FxBuildHasher>>();
+            .collect();
         BlockTextures { textures }
     }
 }
 
 impl TextureVariable {
-    pub(crate) fn parse_from_json_value(value: &Value, rodeo: &ThreadedRodeo) -> Self {
+    pub(crate) fn parse_from_json_value(value: &Value, rodeo: &Arc<ThreadedRodeo>) -> Self {
         let val = value.as_str().expect("texture value was not SmolStr");
         let first_char = val.chars().nth(0).expect("texture SmolStr had length of 0");
         if val.len() == 1 {

@@ -96,14 +96,14 @@ pub enum InternerType {
 
 #[derive(Debug, Clone)]
 pub struct BlockPalette {
-    interner: InternerType,
+    interner: Arc<ThreadedRodeo>,
     block_states: Vec<BlockInternal>,
 }
 
 impl BlockPalette {
     pub fn new_inner(interner: &Arc<ThreadedRodeo>) -> Self {
         Self {
-            interner: InternerType::External(interner.clone()),
+            interner: interner.clone(),
             block_states: vec![],
         }
     }

@@ -12,6 +12,7 @@ use crate::nbt_compound::NBTCompound;
 
 use crate::spider_eye_error::SpiderEyeError;
 use crate::ResourceLoader;
+use anyhow::Ok;
 use bytes::Bytes;
 use fxhash::FxBuildHasher;
 use lasso::{Spur, ThreadedRodeo};
@@ -29,11 +30,38 @@ pub(crate) const REGION_HEADER_SIZE: usize = 2 * SECTOR_SIZE;
 // The size of the header for a chunk which immediate proceeds the compressed chunk data
 pub(crate) const CHUNK_HEADER_SIZE: usize = 5;
 
+#[derive(Debug)]
 pub struct LazyRegion {
     interner: Arc<ThreadedRodeo>,
     pub file_path: String,
     pub coords: RegionCoords,
     segments: [FileSegment; 1024],
+}
+
+impl LazyRegion {
+    pub fn new(path: &str, interner: &Arc<ThreadedRodeo>) -> anyhow::Result<Self> {
+        let mut segments: [FileSegment; 1024] = [const {
+            FileSegment {
+                sector_offset: 0,
+                sectors: 0,
+            }
+        }; 1024];
+        let mut reader =
+            BufReader::new(File::open(&path).expect("not a valid file path for region"));
+        for z in 0..32 {
+            for x in 0..32 {
+                let segment = read_chunk_segment(x, z, &mut reader);
+                segments[(x + z * 32) as usize] = segment
+            }
+        }
+        let value = LazyRegion {
+            interner: interner.clone(),
+            file_path: path.to_owned(),
+            coords: todo!(),
+            segments: segments,
+        };
+        Ok(value)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -58,6 +86,39 @@ impl FileSegment {
     }
 }
 
+impl From<&LazyRegion> for LoadedRegion {
+    fn from(value: &LazyRegion) -> Self {
+        let LazyRegion {
+            interner,
+            file_path,
+            coords,
+            segments,
+        } = value;
+        let mut chunks: Box<[Option<Chunk>; 1024]> = Box::new([const { None }; 1024]);
+        let mut reader = BufReader::new(File::open(file_path).unwrap());
+        for z in 0..32 {
+            for x in 0..32 {
+                let segment = segments[x + 32 * z];
+                if segment.sector_offset != 0 && segment.sectors != 0 {
+                    let compressed_chunk_data = Self::get_compressed_chunk(&mut reader, &segment);
+                    let chunk_bytes = Self::decompress_chunk(&compressed_chunk_data);
+                    let mut bytes = Bytes::from(chunk_bytes);
+                    let chunk_nbt = NBTCompound::internal_nbt(&mut bytes, &interner)
+                        .expect("Chunk NBT was invalid");
+                    let chunk = Chunk::from_nbt_internal(chunk_nbt, &interner);
+                    chunks[(x + z * 32) as usize] = Some(chunk);
+                }
+            }
+        }
+
+        LoadedRegion {
+            interner: interner.clone(),
+            coords: coords.clone(),
+            chunks: chunks,
+        }
+    }
+}
+
 impl LoadedRegion {
     pub(crate) fn load_region(
         path: &str,
@@ -68,7 +129,7 @@ impl LoadedRegion {
             BufReader::new(File::open(&path).expect("not a valid file path for region"));
         for z in 0..32 {
             for x in 0..32 {
-                let segment = Self::read_chunk_segment(x, z, &mut reader);
+                let segment = read_chunk_segment(x, z, &mut reader);
                 if segment.sector_offset != 0 && segment.sectors != 0 {
                     let compressed_chunk_data = Self::get_compressed_chunk(&mut reader, &segment);
                     let chunk_bytes = Self::decompress_chunk(&compressed_chunk_data);
@@ -98,25 +159,11 @@ impl LoadedRegion {
         buf
     }
 
-    fn read_chunk_segment(x: u32, z: u32, reader: &mut BufReader<File>) -> FileSegment {
-        let offset = Self::get_segment_pos(x, z);
-        let _ = reader.seek(io::SeekFrom::Start(offset as u64));
-
-        let mut buf = [0u8; 4];
-        let _ = reader.read_exact(&mut buf);
-
-        let offset: u32 = ((buf[0] as u32) << 16) | ((buf[1] as u32) << 8) | (buf[2] as u32);
-
-        let sectors: u8 = buf[3];
-
-        FileSegment::new(offset, sectors)
-    }
-
-    pub fn get_chunk(&self, x: u32, z: u32) -> Option<Chunk> {
+    pub fn get_chunk(&self, x: u32, z: u32) -> Option<&Chunk> {
         if x > 32 || z > 32 {
             return None;
         }
-        todo!()
+        self.chunks[(x + z * 32) as usize].as_ref()
     }
 
     fn decompress_chunk(data: &Vec<u8>) -> Vec<u8> {
@@ -146,7 +193,7 @@ impl LoadedRegion {
         res
     }
 
-    fn get_compression_data(data: &Vec<u8>) -> Result<CompressionData, SpiderEyeError> {
+    fn get_compression_data(data: &Vec<u8>) -> anyhow::Result<CompressionData> {
         let chunk_header = data
             .get(0..5)
             .expect("ran out of bytes getting compression data");
@@ -155,8 +202,21 @@ impl LoadedRegion {
 
         Ok(compression_data)
     }
+}
 
-    fn get_segment_pos(x: u32, z: u32) -> u32 {
-        4 * ((x & 31) + ((z & 31) << 5))
-    }
+fn read_chunk_segment(x: u32, z: u32, reader: &mut BufReader<File>) -> FileSegment {
+    let offset = get_segment_pos(x, z);
+    let _ = reader.seek(io::SeekFrom::Start(offset as u64));
+
+    let mut buf = [0u8; 4];
+    let _ = reader.read_exact(&mut buf);
+
+    let offset: u32 = ((buf[0] as u32) << 16) | ((buf[1] as u32) << 8) | (buf[2] as u32);
+
+    let sectors: u8 = buf[3];
+
+    FileSegment::new(offset, sectors)
+}
+fn get_segment_pos(x: u32, z: u32) -> u32 {
+    4 * ((x & 31) + ((z & 31) << 5))
 }

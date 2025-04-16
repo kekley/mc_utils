@@ -10,6 +10,8 @@ use lasso::{Spur, ThreadedRodeo};
 use serde_json::{value, Value};
 use smol_str::SmolStr;
 
+use crate::block_states;
+
 use super::{
     block_models::{BlockModel, BlockRotation, ASSET_PATH},
     block_states::BlockStateInternal,
@@ -33,7 +35,7 @@ pub enum ModelVariant {
 #[derive(Debug, Clone)]
 
 pub struct Variants {
-    variants: FxHashMap<BlockStateInternal, ModelVariant>,
+    variants: Vec<(BlockStateInternal, ModelVariant)>,
 }
 
 #[derive(Debug, Clone)]
@@ -46,10 +48,18 @@ pub struct VariantEntry {
 }
 
 impl Variants {
-    pub fn get(&self, block_state: &BlockStateInternal) -> Vec<ModelVariant> {
+    pub fn get_model(&self, block_state: &BlockStateInternal) -> Vec<ModelVariant> {
         dbg!("getting blockstate:");
         dbg!(&block_state);
-        vec![self.variants.get(block_state).unwrap().clone()]
+        self.variants
+            .iter()
+            .filter_map(|(block_state_, model)| {
+                if block_state == block_state_ {
+                    return Some(model.clone());
+                }
+                None
+            })
+            .collect()
     }
     pub fn parse_path(model_path: &str) -> SmolStr {
         let (namespace, remaining_str) = model_path.split_once(":").unwrap_or(("", model_path));
@@ -71,7 +81,7 @@ impl Variants {
 }
 
 impl ModelVariant {
-    pub fn from_json_value(value: &Value, rodeo: &ThreadedRodeo) -> Self {
+    pub fn from_json_value(value: &Value, rodeo: &Arc<ThreadedRodeo>) -> Self {
         match value.is_array() {
             true => {
                 let entries = value
@@ -87,7 +97,7 @@ impl ModelVariant {
     }
 }
 impl Variants {
-    pub(crate) fn from_json_value(value: &Value, rodeo: &ThreadedRodeo) -> Self {
+    pub(crate) fn from_json_value(value: &Value, rodeo: &Arc<ThreadedRodeo>) -> Self {
         let variants = value
             .as_object()
             .expect("variants was not object")
@@ -95,17 +105,17 @@ impl Variants {
             .map(|(variant_properties, variant_entry)| {
                 let variant_entry = ModelVariant::from_json_value(variant_entry, rodeo);
                 (
-                    BlockStateInternal::from_str(&variant_properties, &rodeo),
+                    BlockStateInternal::from_str(&variant_properties, rodeo),
                     variant_entry,
                 )
             })
-            .collect::<HashMap<_, _, _>>();
+            .collect();
         return Variants { variants };
     }
 }
 
 impl VariantEntry {
-    fn from_json_value(value: &Value, rodeo: &ThreadedRodeo) -> Self {
+    fn from_json_value(value: &Value, rodeo: &Arc<ThreadedRodeo>) -> Self {
         let model = value
             .get("model")
             .expect("variant did not have model")

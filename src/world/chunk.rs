@@ -1,16 +1,14 @@
 use std::{fmt::Debug, sync::Arc, u32};
 
 use bytes::Bytes;
-use fxhash::FxBuildHasher;
-use hashbrown::HashMap;
-use lasso::{Rodeo, Spur, ThreadedRodeo};
+use lasso::ThreadedRodeo;
 use smol_str::SmolStr;
 
 use crate::{
     block::BlockInternal,
     block_states::BlockStateInternal,
     nbt::{nbt_compound::NBTCompound, nbt_tag::NBTTag},
-    palette::{self, BlockPalette},
+    palette::BlockPalette,
 };
 
 use super::loaded_world::{ChunkCoords, World, WorldCoords};

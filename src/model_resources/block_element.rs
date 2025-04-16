@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use glam::{Mat3A, Vec2, Vec3};
 use lasso::ThreadedRodeo;
 use serde_json::Value;
@@ -23,7 +25,7 @@ impl BlockElement {
             None => true,
         }
     }
-    pub fn from_json_value(value: &Value, rodeo: &ThreadedRodeo) -> Self {
+    pub fn from_json_value(value: &Value, rodeo: &Arc<ThreadedRodeo>) -> Self {
         let from = parse_vec3(
             value
                 .get("from")
@@ -45,7 +47,7 @@ impl BlockElement {
             faces,
         }
     }
-    pub fn parse_elements(value: &Value, rodeo: &ThreadedRodeo) -> Vec<BlockElement> {
+    pub fn parse_elements(value: &Value, rodeo: &Arc<ThreadedRodeo>) -> Vec<BlockElement> {
         value
             .as_array()
             .expect("elements was not an array")

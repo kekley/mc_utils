@@ -1,18 +1,16 @@
 use std::{fs, hash::Hash, sync::Arc};
 
-use fxhash::FxBuildHasher;
-use hashbrown::HashMap;
 use lasso::{Spur, ThreadedRodeo};
 use serde_json::Value;
 
 use super::{block_states::BlockStateInternal, variant::ModelVariant};
 
 #[derive(Debug, Clone)]
-pub struct MultiPart {
+pub struct Multipart {
     cases: Vec<Case>,
 }
 
-impl MultiPart {
+impl Multipart {
     pub fn get(&self, block_state: &BlockStateInternal) -> Vec<ModelVariant> {
         self.cases
             .iter()
@@ -61,20 +59,20 @@ impl When {
     }
 }
 
-impl MultiPart {
-    pub fn new(value: &Value, rodeo: &ThreadedRodeo) -> Self {
+impl Multipart {
+    pub fn new(value: &Value, rodeo: &Arc<ThreadedRodeo>) -> Self {
         let cases = value
             .as_array()
             .expect("multipart was not array of cases")
             .iter()
             .map(|value| Case::new(value, &rodeo))
             .collect::<Vec<_>>();
-        MultiPart { cases: cases }
+        Multipart { cases: cases }
     }
 }
 
 impl Case {
-    pub fn new(value: &Value, rodeo: &ThreadedRodeo) -> Self {
+    pub fn new(value: &Value, rodeo: &Arc<ThreadedRodeo>) -> Self {
         let when = value.get("when").map(|value| {
             if let Some(value) = value.get("OR") {
                 let array = value.as_array().expect("OR case was not array");
@@ -99,7 +97,7 @@ impl Case {
                     .first()
                     .cloned()
                     .unwrap();
-                let mut map: Vec<(Spur, Spur)> = vec![];
+                let map: Vec<(Spur, Spur)> = vec![(name, state)];
 
                 let block_state = BlockStateInternal { properties: map };
                 When::SingleCase(block_state)
@@ -118,7 +116,7 @@ impl Case {
     }
 }
 
-fn collect_blockstates(value: &Vec<Value>, rodeo: &ThreadedRodeo) -> Vec<BlockStateInternal> {
+fn collect_blockstates(value: &Vec<Value>, rodeo: &Arc<ThreadedRodeo>) -> Vec<BlockStateInternal> {
     value
         .iter()
         .flat_map(|entry| {
@@ -127,13 +125,12 @@ fn collect_blockstates(value: &Vec<Value>, rodeo: &ThreadedRodeo) -> Vec<BlockSt
                 .expect("or case entry was not obj")
                 .iter()
                 .map(|obj| {
-                    let mut map: HashMap<Spur, Spur, _> =
-                        HashMap::with_hasher(FxBuildHasher::default());
                     let state_name = rodeo.get_or_intern(obj.0);
                     let values = obj.1.as_str().expect("values were not str").split("|");
-                    values.into_iter().for_each(|value| {
-                        map.insert(state_name, rodeo.get_or_intern(value)).unwrap();
-                    });
+                    let map = values
+                        .into_iter()
+                        .map(|value| (state_name, rodeo.get_or_intern(value)))
+                        .collect();
                     BlockStateInternal { properties: map }
                 })
         })
