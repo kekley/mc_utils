@@ -1,5 +1,5 @@
 use core::str;
-use std::{borrow::Cow, fmt::Debug, sync::Arc};
+use std::{borrow::Cow, fmt::Debug, mem::transmute_copy, ptr::slice_from_raw_parts, sync::Arc};
 
 use anyhow::anyhow;
 use bytes::{Buf, Bytes};
@@ -74,15 +74,15 @@ impl NBTTag {
             )?)),
             NBTId::IntArrayId => {
                 let len = stream.get_i32() as usize;
-                let bytes = stream.slice(0..len);
-                stream.advance(len);
+                let bytes = stream.slice(0..len * 4);
+                stream.advance(len * 4);
 
                 Ok(NBTTag::IntArray(bytes))
             }
             NBTId::LongArrayId => {
                 let len = stream.get_i32() as usize;
-                let bytes = stream.slice(0..len);
-                stream.advance(len);
+                let bytes = stream.slice(0..len * 8);
+                stream.advance(len * 8);
 
                 Ok(NBTTag::LongArray(bytes))
             }
@@ -173,23 +173,37 @@ impl NBTTag {
         }
     }
     #[inline]
-    pub fn get_int_array(&self) -> &[i32] {
+    pub fn get_int_array(&self) -> Vec<i32> {
         if let NBTTag::IntArray(value) = self {
             let byte_slice = value.as_ref();
-            let (a, int_slice, b) = unsafe { byte_slice.align_to::<i32>() };
-            assert!(a.is_empty() && b.is_empty());
-            int_slice
+            let array = byte_slice
+                .chunks_exact(4)
+                .into_iter()
+                .map(|s| {
+                    assert!(s.len() == 4);
+                    let s: [u8; 4] = s.try_into().unwrap();
+                    i32::from_ne_bytes(s)
+                })
+                .collect();
+            array
         } else {
             panic!("Tried to read an int array from a {:?}", self);
         }
     }
     #[inline]
-    pub fn get_long_array(&self) -> &[i64] {
+    pub fn get_long_array(&self) -> Vec<i64> {
         if let NBTTag::LongArray(value) = self {
             let byte_slice = value.as_ref();
-            let (a, long_slice, b) = unsafe { byte_slice.align_to::<i64>() };
-            assert!(a.is_empty() && b.is_empty());
-            long_slice
+            let array = byte_slice
+                .chunks_exact(8)
+                .into_iter()
+                .map(|s| {
+                    assert!(s.len() == 8);
+                    let s: [u8; 8] = s.try_into().unwrap();
+                    i64::from_ne_bytes(s)
+                })
+                .collect();
+            array
         } else {
             panic!("Tried to read a long array from a {:?}", self);
         }

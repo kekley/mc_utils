@@ -204,9 +204,9 @@ impl ChunkSection {
             .map(|f| {
                 let block = f.get_compound();
                 let block_name = block.get_tag("Name").unwrap().get_string();
+                println!("{}", block_name);
                 let block_name_spur = interner.get_or_intern(block_name);
                 let mut props = vec![];
-
                 let block_states: InternedBlockState = block
                     .get_tag("properties")
                     .map(|properties| {
@@ -228,7 +228,7 @@ impl ChunkSection {
         let data = if block_states.len() == 1 {
             &vec![]
         } else {
-            block_states_compound
+            &block_states_compound
                 .get_tag("data")
                 .unwrap()
                 .get_long_array()

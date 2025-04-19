@@ -40,29 +40,6 @@ impl NBTCompound {
         }
     }
 
-    pub fn from_bytes(stream: &mut Bytes) -> anyhow::Result<Self> {
-        let interner = Arc::new(ThreadedRodeo::new());
-        let mut tmp = Self {
-            string_interner: InternerType::External(interner.clone()),
-            children: vec![],
-        };
-
-        while stream.has_remaining() {
-            let tag_id = NBTId::try_from_primitive(stream.get_u8())?;
-            if tag_id == NBTId::EndId {
-                break;
-            }
-            let string_bytes = get_nbt_string(stream)?;
-            let name = from_java_cesu8(&string_bytes)?;
-            if let Ok(tag) = NBTTag::read_tag(stream, tag_id, &interner) {
-                tmp.add_tag(&name, tag);
-            } else {
-                break;
-            }
-        }
-        Ok(tmp)
-    }
-
     pub(crate) fn internal_nbt(
         stream: &mut Bytes,
         interner: &Arc<ThreadedRodeo>,

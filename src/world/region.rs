@@ -8,7 +8,7 @@ use crate::chunk::Chunk;
 use crate::nbt::compression::{CompressionData, CompressionScheme};
 use crate::nbt_compound::NBTCompound;
 
-use anyhow::Ok;
+use anyhow::{anyhow, Ok};
 use bytes::Bytes;
 use lasso::ThreadedRodeo;
 
@@ -40,6 +40,7 @@ impl LazyRegion {
                 sectors: 0,
             }
         }; 1024];
+
         let mut reader =
             BufReader::new(File::open(&path).expect("not a valid file path for region"));
         for z in 0..32 {
@@ -48,10 +49,28 @@ impl LazyRegion {
                 segments[(x + z * 32) as usize] = segment
             }
         }
+
+        let first_valid_segment = segments
+            .iter()
+            .find(|segment| segment.sector_offset != 0 && segment.sectors != 0);
+
+        let coords = match first_valid_segment {
+            Some(segment) => {
+                let compressed = LoadedRegion::get_compressed_chunk(&mut reader, segment);
+                let chunk = LoadedRegion::decompress_chunk(&compressed);
+                let mut bytes = Bytes::from(chunk);
+                let nbt = NBTCompound::internal_nbt(&mut bytes, interner)?;
+                let chunk = Chunk::from_nbt_internal(nbt, interner);
+                let coords = RegionCoords::from(chunk.coords);
+                coords
+            }
+            None => return Err(anyhow!("No valid chunk segments")),
+        };
+
         let value = LazyRegion {
             interner: interner.clone(),
             file_path: path.to_owned(),
-            coords: todo!(),
+            coords,
             segments: segments,
         };
         Ok(value)
@@ -158,6 +177,10 @@ impl LoadedRegion {
             return None;
         }
         self.chunks[(x + z * 32) as usize].as_ref()
+    }
+
+    pub fn get_all_chunks(self) -> Box<[Option<Chunk>; 1024]> {
+        self.chunks
     }
 
     fn decompress_chunk(data: &Vec<u8>) -> Vec<u8> {

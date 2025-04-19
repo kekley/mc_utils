@@ -1,12 +1,20 @@
 use std::{fs, hash::Hash, sync::Arc};
 
+use dashmap::DashMap;
 use fxhash::FxBuildHasher;
 use hashbrown::HashMap;
 use lasso::{Spur, ThreadedRodeo};
 
-use crate::palette::{BlockPalette, InternerType};
+use crate::{
+    block::InternedBlock,
+    palette::{BlockPalette, InternerType},
+    ResourceLoader,
+};
 
-use super::region::{LazyRegion, LoadedRegion};
+use super::{
+    chunk::Chunk,
+    region::{LazyRegion, LoadedRegion},
+};
 #[derive(Debug, Default, Hash, PartialEq, Eq, Clone, Copy)]
 pub struct WorldCoords {
     pub x: i64,
@@ -74,6 +82,7 @@ pub type InternedBlockName = Spur;
 pub struct World {
     interner: InternerType,
     pub regions: HashMap<RegionCoords, LazyRegion, FxBuildHasher>,
+    chunk_cache: DashMap<ChunkCoords, Option<Chunk>, FxBuildHasher>,
     pub global_palette: BlockPalette,
 }
 
@@ -84,6 +93,7 @@ impl World {
             interner: InternerType::External(interner.clone()),
             regions: HashMap::with_hasher(FxBuildHasher::default()),
             global_palette: palette,
+            chunk_cache: DashMap::with_hasher(FxBuildHasher::default()),
         };
 
         let read_dir = fs::read_dir(folder_path).expect("could not find folder");
@@ -107,6 +117,27 @@ impl World {
     pub fn load_region(&self, region_coords: RegionCoords) -> Option<LoadedRegion> {
         self.get_region_lazy(region_coords).map(|f| f.into())
     }
+
+    pub fn get_block(&self, block_coords: &WorldCoords) -> Option<InternedBlock> {
+        let chunk_coords = ChunkCoords::from(*block_coords);
+        if let Some(chunk) = self.chunk_cache.get(&chunk_coords) {
+            return chunk.as_ref()?.get_world_block(*block_coords).cloned();
+        } else {
+            let region_coords = RegionCoords::from(*block_coords);
+            let region = self.regions.get(&region_coords)?;
+            let loaded = LoadedRegion::from(region);
+            let mut chunks = loaded.get_all_chunks();
+            for z in 0..32 {
+                for x in 0..32 {
+                    let coords =
+                        ChunkCoords::new((region_coords.x * 32) + x, (region_coords.z * 32) + z);
+                    let chunk = chunks[(x + 32 * z) as usize].take();
+                    self.chunk_cache.insert(coords, chunk);
+                }
+            }
+            return self.get_block(block_coords);
+        }
+    }
 }
 pub fn modulo(a: i64, b: i64) -> i64 {
     let r = a % b;
@@ -114,5 +145,25 @@ pub fn modulo(a: i64, b: i64) -> i64 {
         r + b
     } else {
         r
+    }
+}
+
+#[test]
+
+pub fn world_loading() {
+    let loader = ResourceLoader::new();
+    let interner = &loader.rodeo;
+    let world = loader.open_world("./test_world");
+    for z in 0..32 {
+        for x in 0..32 {
+            let block = world.get_block(&WorldCoords { x: x, y: -63, z: z });
+            if let Some(block) = block {
+                let InternedBlock {
+                    block_name,
+                    properties,
+                } = block;
+                println!("{}", loader.resolve_spur(&block_name));
+            }
+        }
     }
 }
