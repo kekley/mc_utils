@@ -97,7 +97,7 @@ pub enum InternerType {
 #[derive(Debug, Clone)]
 pub struct BlockPalette {
     pub interner: Arc<ThreadedRodeo>,
-    block_states: Vec<InternedBlock>,
+    pub(crate) block_states: Vec<InternedBlock>,
 }
 
 impl BlockPalette {
@@ -123,7 +123,7 @@ impl BlockPalette {
             .block_states
             .iter()
             .enumerate()
-            .find(|(_, block)| block == block);
+            .find(|(_, block)| **block == block_);
         if let Some(value) = a {
             return value.0 as PaletteIndex;
         } else {

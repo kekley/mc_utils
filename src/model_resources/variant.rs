@@ -4,9 +4,8 @@ use lasso::ThreadedRodeo;
 use serde_json::Value;
 use smol_str::SmolStr;
 
-
 use super::{
-    block_models::{InternedBlockModel, BlockRotation, ASSET_PATH},
+    block_models::{BlockRotation, InternedBlockModel, ASSET_PATH},
     block_states::InternedBlockState,
 };
 #[derive(Debug, Clone)]
@@ -40,9 +39,9 @@ pub struct VariantEntry {
 
 impl Variants {
     pub fn get_model(&self, block_state: &InternedBlockState) -> Vec<ModelVariant> {
-        dbg!("getting blockstate:");
-        dbg!(&block_state);
-        self.variants
+        //dbg!(&block_state);
+        let mut a: Vec<ModelVariant> = self
+            .variants
             .iter()
             .filter_map(|(block_state_, model)| {
                 if block_state == block_state_ {
@@ -50,7 +49,11 @@ impl Variants {
                 }
                 None
             })
-            .collect()
+            .collect();
+        if a.len() == 0 {
+            a.push(self.variants[0].1.clone());
+        }
+        a
     }
     pub fn parse_path(model_path: &str) -> SmolStr {
         let (namespace, remaining_str) = model_path.split_once(":").unwrap_or(("", model_path));

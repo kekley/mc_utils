@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{hash::Hash, sync::Arc};
 
 use lasso::{Interner, Spur, ThreadedRodeo};
 
@@ -7,7 +7,14 @@ pub type State = Spur;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct InternedBlockState {
-    pub(crate) properties: Vec<(StateName, State)>,
+    pub properties: Vec<(StateName, State)>,
+}
+impl Hash for InternedBlockState {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        for prop in &self.properties {
+            prop.hash(state);
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -26,6 +33,7 @@ impl InternedBlockState {
             properties: properties_str,
         }
     }
+
     pub fn from_str(properties: &str, interner: &Arc<ThreadedRodeo>) -> Self {
         if properties.is_empty() {
             return Self { properties: vec![] };

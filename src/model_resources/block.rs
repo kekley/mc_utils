@@ -6,10 +6,10 @@ use crate::loaded_world::InternedBlockName;
 
 use super::block_states::{BlockState, InternedBlockState};
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct InternedBlock {
-    pub(crate) block_name: InternedBlockName,
-    pub(crate) properties: InternedBlockState,
+    pub block_name: InternedBlockName,
+    pub properties: InternedBlockState,
 }
 
 impl InternedBlock {

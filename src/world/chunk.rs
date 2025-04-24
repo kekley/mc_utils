@@ -5,7 +5,7 @@ use lasso::ThreadedRodeo;
 use smol_str::SmolStr;
 
 use crate::{
-    block::InternedBlock,
+    block::{self, InternedBlock},
     block_states::InternedBlockState,
     nbt::{nbt_compound::NBTCompound, nbt_tag::NBTTag},
     palette::BlockPalette,
@@ -129,7 +129,6 @@ impl Chunk {
 
     pub fn get_local_block(&self, x: usize, y: isize, z: usize) -> Option<&InternedBlock> {
         let sections = &self.sections;
-
         if y > self.sections.y_max() || y < self.sections.y_min() {
             return None;
         }
@@ -152,7 +151,10 @@ impl Chunk {
 
 impl ChunkSection {
     pub fn get_block(&self, x: usize, sec_y: usize, z: usize) -> Option<&InternedBlock> {
-        let num = self.data.get((sec_y * 16 * 16 + z * 16 + x) as usize)?;
+        let num = self
+            .data
+            .get((sec_y * 16 * 16 + z * 16 + x) as usize)
+            .expect("invalid index");
         self.palette.get(*num)
     }
 }
@@ -160,7 +162,7 @@ impl ChunkSection {
 #[derive(Debug, Clone)]
 pub struct ChunkSection {
     pub ypos: i8,
-    palette: BlockPalette,
+    pub(crate) palette: BlockPalette,
     pub data: [u32; 4096],
 }
 
@@ -204,7 +206,6 @@ impl ChunkSection {
             .map(|f| {
                 let block = f.get_compound();
                 let block_name = block.get_tag("Name").unwrap().get_string();
-                println!("{}", block_name);
                 let block_name_spur = interner.get_or_intern(block_name);
                 let mut props = vec![];
                 let block_states: InternedBlockState = block
@@ -233,12 +234,20 @@ impl ChunkSection {
                 .unwrap()
                 .get_long_array()
         };
+
         let bit_size = (f32::log2(block_states.len() as f32 - 1.0)).floor() + 1.0;
+
         let temp: [u32; 4096] = std::array::from_fn(|i| {
             let ind = Self::extract_index(&data[..], i as u32, bit_size as u32);
             ind
         });
+
         block_states.into_iter().for_each(|state| {
+            /*             let resolved_block = state.resolve(interner);
+            if resolved_block.block_name != "minecraft:air" {
+                dbg!(resolved_block);
+            } */
+
             palette.insert_block(state);
         });
 

@@ -119,12 +119,21 @@ impl IntermediateBlockModel {
                 parent.elements = model.elements;
             }
             if model.textures.is_some() {
-                parent.textures = model.textures;
+                if parent.textures.is_some() {
+                    parent
+                        .textures
+                        .as_mut()
+                        .unwrap()
+                        .combine(model.textures.unwrap());
+                } else {
+                    parent.textures = model.textures;
+                }
             }
             if model.displays.is_some() {
                 parent.displays = model.displays;
             }
-            return parent.into();
+
+            return Self::collapse_parents(parent, rodeo);
         } else {
             return model.into();
         }
@@ -134,7 +143,6 @@ impl IntermediateBlockModel {
         let json =
             fs::read_to_string(path).expect(format!("failed to read json file: {}", path).as_str());
         let value: Value = serde_json::from_str(&json).expect("failed to parse json");
-
         let parent = value
             .get("parent")
             .map(|value| rodeo.get_or_intern(value.as_str().expect("parent was not str")));
@@ -154,6 +162,7 @@ impl IntermediateBlockModel {
         let elements = value
             .get("elements")
             .map(|value| InternedBlockElement::parse_elements(value, rodeo));
+
         let result = IntermediateBlockModel {
             parent,
             ambient_occlusion,

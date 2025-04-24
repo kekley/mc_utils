@@ -5,32 +5,27 @@ use lasso::{Spur, ThreadedRodeo};
 use smol_str::{SmolStr, SmolStrBuilder};
 
 use crate::{
-    block::InternedBlock,
-    chunk::{Chunk},
-    loaded_world::World,
-    nbt_compound::NBTCompound,
+    block::InternedBlock, chunk::Chunk, loaded_world::World, nbt_compound::NBTCompound,
     variant::ModelVariant,
 };
 
-use super::{
-    block_models::ASSET_PATH,
-    resource::BlockStates,
-};
+use super::{block_models::ASSET_PATH, resource::BlockStates};
 
-#[derive(Debug, Clone)]
-pub struct ResourceLoader {
+#[derive(Debug, Clone, Default)]
+pub struct MCLoader {
     pub rodeo: Arc<ThreadedRodeo>,
 }
 
-impl ResourceLoader {
+impl MCLoader {
     pub fn load_block_states(&self, block_name: &str) -> BlockStates {
+        let stripped_name = block_name.strip_prefix("minecraft:").unwrap();
         let mut path = SmolStrBuilder::new();
         path.push_str(&ASSET_PATH);
 
         path.push_str("minecraft/");
         path.push_str("blockstates/");
 
-        path.push_str(block_name);
+        path.push_str(stripped_name);
         path.push_str(".json");
         let path = path.finish();
         BlockStates::new(&path, &self.rodeo)
@@ -64,12 +59,12 @@ impl ResourceLoader {
         let (namespace, remaining_str) = resource_path
             .split_once(":")
             .unwrap_or(("minecraft", resource_path));
-        //        dbg!(namespace, remaining_str);
+        //dbg!(namespace, remaining_str);
 
         let (model_type, remaining_str) = remaining_str
             .split_once("/")
             .expect("invalid path for parent");
-        //        dbg!(model_type, remaining_str);
+        //dbg!(model_type, remaining_str);
         SmolStr::from(
             ASSET_PATH.to_string()
                 + namespace

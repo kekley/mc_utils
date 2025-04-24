@@ -8,7 +8,7 @@ use lasso::{Spur, ThreadedRodeo};
 use crate::{
     block::InternedBlock,
     palette::{BlockPalette, InternerType},
-    ResourceLoader,
+    MCLoader,
 };
 
 use super::{
@@ -151,7 +151,7 @@ pub fn modulo(a: i64, b: i64) -> i64 {
 #[test]
 
 pub fn world_loading() {
-    let loader = ResourceLoader::new();
+    let loader = MCLoader::new();
     let interner = &loader.rodeo;
     let world = loader.open_world("./test_world");
     for z in 0..32 {
@@ -162,7 +162,6 @@ pub fn world_loading() {
                     block_name,
                     properties,
                 } = block;
-                println!("{}", loader.resolve_spur(&block_name));
             }
         }
     }

@@ -13,7 +13,7 @@ pub enum BlockStates {
 
 impl BlockStates {
     pub fn new(path: &str, rodeo: &Arc<ThreadedRodeo>) -> BlockStates {
-        dbg!(path);
+        //dbg!(path);
         let file = fs::read_to_string(path).expect("could not read file");
         let value: Value = serde_json::from_str(&file).expect("invalid json");
         if let Some(value) = value.get("variants") {

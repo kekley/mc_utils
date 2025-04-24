@@ -66,6 +66,13 @@ impl BlockTextures {
     pub fn get_all(&self) -> &[(TexVar, InternedTextureVariable)] {
         &self.textures
     }
+    pub fn combine(&mut self, textures: BlockTextures) {
+        for texture in textures.textures {
+            if !self.textures.contains(&texture) {
+                self.textures.push(texture);
+            }
+        }
+    }
     pub fn get_keys(&self) -> Vec<TexVar> {
         self.textures.iter().map(|entry| entry.0).collect()
     }
@@ -90,8 +97,8 @@ impl BlockTextures {
     }
 
     pub fn parse_from_json(value: &Value, rodeo: &Arc<ThreadedRodeo>) -> Self {
-        let obj = value.as_object().expect("textures was not object");
-        let textures = obj
+        let json_object = value.as_object().expect("textures was not object");
+        let textures = json_object
             .iter()
             .map(|(var1, var2)| {
                 let name = rodeo.get_or_intern(var1);
@@ -105,13 +112,15 @@ impl BlockTextures {
 
 impl InternedTextureVariable {
     pub(crate) fn parse_from_json_value(value: &Value, rodeo: &Arc<ThreadedRodeo>) -> Self {
-        let val = value.as_str().expect("texture value was not SmolStr");
-        let first_char = val.chars().nth(0).expect("texture SmolStr had length of 0");
+        let val = value.as_str().expect("texture value was not string");
+        let first_char = val.chars().nth(0).expect("texture string had length of 0");
         if val.len() == 1 {
             panic!("invalid texture variable length")
         }
         if first_char == '#' {
-            return InternedTextureVariable::Variable(rodeo.get_or_intern(val));
+            return InternedTextureVariable::Variable(
+                rodeo.get_or_intern(val.strip_prefix('#').unwrap()),
+            );
         } else {
             return InternedTextureVariable::ResourcePath(rodeo.get_or_intern(val));
         }
