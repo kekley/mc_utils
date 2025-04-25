@@ -182,7 +182,7 @@ impl NBTTag {
                 .map(|s| {
                     assert!(s.len() == 4);
                     let s: [u8; 4] = s.try_into().unwrap();
-                    i32::from_ne_bytes(s)
+                    i32::from_be_bytes(s)
                 })
                 .collect();
             array
@@ -200,7 +200,7 @@ impl NBTTag {
                 .map(|s| {
                     assert!(s.len() == 8);
                     let s: [u8; 8] = s.try_into().unwrap();
-                    i64::from_ne_bytes(s)
+                    i64::from_be_bytes(s)
                 })
                 .collect();
             array
