@@ -12,11 +12,11 @@ use crate::{
 use super::{block_models::ASSET_PATH, resource::BlockStates};
 
 #[derive(Debug, Clone, Default)]
-pub struct MCLoader {
+pub struct MCResourceLoader {
     pub rodeo: Arc<ThreadedRodeo>,
 }
 
-impl MCLoader {
+impl MCResourceLoader {
     pub fn load_block_states(&self, block_name: &str) -> BlockStates {
         let stripped_name = block_name.strip_prefix("minecraft:").unwrap();
         let mut path = SmolStrBuilder::new();

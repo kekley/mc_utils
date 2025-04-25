@@ -1,4 +1,6 @@
-use spider_eye::{loaded_world::WorldCoords, resource::BlockStates, MCLoader, SpiderEyeError};
+use spider_eye::{
+    loaded_world::WorldCoords, resource::BlockStates, MCResourceLoader, SpiderEyeError,
+};
 
 extern crate spider_eye;
 macro_rules! dbg {
@@ -26,7 +28,7 @@ macro_rules! dbg {
 }
 
 fn main() -> Result<(), SpiderEyeError> {
-    let loader = MCLoader::new();
+    let loader = MCResourceLoader::new();
     let world = loader.open_world("./test_world");
     let block = world
         .get_block(&WorldCoords { x: 0, y: -64, z: 0 })
