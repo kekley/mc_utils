@@ -18,14 +18,18 @@ pub struct MCResourceLoader {
 
 impl MCResourceLoader {
     pub fn load_block_states(&self, block_name: &str) -> BlockStates {
-        let stripped_name = block_name.strip_prefix("minecraft:").unwrap();
+        let split = block_name
+            .split_once(":")
+            .unwrap_or(("minecraft", block_name));
+        let namespace = split.0;
+        let block_name = split.1;
         let mut path = SmolStrBuilder::new();
         path.push_str(&ASSET_PATH);
-
-        path.push_str("minecraft/");
+        path.push_str(namespace);
+        path.push_str("/");
         path.push_str("blockstates/");
 
-        path.push_str(stripped_name);
+        path.push_str(block_name);
         path.push_str(".json");
         let path = path.finish();
         BlockStates::new(&path, &self.rodeo)
@@ -33,7 +37,7 @@ impl MCResourceLoader {
     pub fn load_models(&self, block: &InternedBlock) -> Vec<ModelVariant> {
         let block_states = self.load_block_states(self.resolve_spur(&block.block_name));
         let variants = match block_states {
-            BlockStates::MultiPart(multipart) => multipart.get(&block.properties),
+            BlockStates::MultiPart(multipart) => multipart.get(&block.properties, &self.rodeo),
             BlockStates::Variants(variants) => variants.get_model(&block.properties),
         };
         variants

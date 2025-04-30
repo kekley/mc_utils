@@ -33,6 +33,8 @@ fn main() -> Result<(), SpiderEyeError> {
     let block = world
         .get_block(&WorldCoords { x: 0, y: -64, z: 0 })
         .unwrap();
+    let states = loader.load_block_states("minecraft:redstone_wire");
+    dbg!(states);
     let a = loader.load_models(&block);
 
     Ok(())
