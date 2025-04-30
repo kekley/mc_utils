@@ -1,5 +1,6 @@
 use std::{fs, sync::Arc};
 
+use glam::{Affine3A, Quat, Vec3};
 use lasso::{Spur, ThreadedRodeo};
 use serde_json::Value;
 use smol_str::SmolStr;
@@ -9,7 +10,7 @@ use super::{
     block_element::InternedBlockElement,
     block_texture::{BlockTextures, InternedTextureVariable, TexVar},
 };
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum BlockRotation {
     Zero,
     Ninety,
@@ -25,6 +26,36 @@ impl From<&Value> for BlockRotation {
             270 => BlockRotation::TwoSeventy,
             _ => panic!("invalid block rotation"),
         }
+    }
+}
+impl BlockRotation {
+    fn rotation_x_angle(&self) -> f32 {
+        match self {
+            BlockRotation::Zero => 0.0,
+            BlockRotation::Ninety => -90.0,
+            BlockRotation::OneEighty => -180.0,
+            BlockRotation::TwoSeventy => -270.0,
+        }
+    }
+
+    fn rotation_y_angle(&self) -> f32 {
+        match self {
+            BlockRotation::Zero => 0.0,
+            BlockRotation::Ninety => -90.0,
+            BlockRotation::OneEighty => -180.0,
+            BlockRotation::TwoSeventy => -270.0,
+        }
+    }
+
+    pub fn to_matrix_x(&self) -> Affine3A {
+        let angle = self.rotation_x_angle();
+
+        Affine3A::from_rotation_x(angle.to_radians())
+    }
+    pub fn to_matrix_y(&self) -> Affine3A {
+        let angle = self.rotation_x_angle();
+
+        Affine3A::from_rotation_y(angle.to_radians())
     }
 }
 pub type AmbientOcclusion = bool;

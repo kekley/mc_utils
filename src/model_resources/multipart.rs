@@ -58,7 +58,6 @@ pub enum When {
 }
 impl When {
     pub fn check(&self, block_state: &InternedBlockState, rodeo: &Arc<ThreadedRodeo>) -> bool {
-        dbg!(block_state.resolve(rodeo));
         match self {
             When::OrCase(test_block_states) => test_block_states.iter().any(|case_block_state| {
                 case_block_state

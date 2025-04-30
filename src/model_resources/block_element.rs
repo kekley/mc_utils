@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use glam::{Mat3A, Vec2, Vec3};
+use glam::{Affine3A, Mat3A, Mat4, Quat, Vec2, Vec3, Vec3A};
 use lasso::ThreadedRodeo;
 use serde_json::Value;
 
@@ -76,6 +76,7 @@ impl From<&Value> for ElementAxis {
 
 impl From<&Value> for ElementRotation {
     fn from(value: &Value) -> Self {
+        dbg!("rotation parsed");
         let origin = parse_vec3(value.get("origin").expect("rotation missing origin"));
         let axis = ElementAxis::from(value.get("axis").expect("rotation missing axis"));
         let angle = value
@@ -112,18 +113,21 @@ pub struct ElementRotation {
 }
 
 impl ElementRotation {
-    pub fn to_matrix(&self) -> Mat3A {
+    pub fn to_matrix(&self) -> Affine3A {
+        let origin = self.origin;
         let radians = self.angle.to_radians();
-
-        let rotation = match self.axis {
-            ElementAxis::X => Mat3A::from_rotation_x(radians),
-            ElementAxis::Y => Mat3A::from_rotation_y(radians),
-            ElementAxis::Z => Mat3A::from_rotation_z(radians),
+        let rotation_axis = match self.axis {
+            ElementAxis::X => Vec3::X,
+            ElementAxis::Y => Vec3::Y,
+            ElementAxis::Z => Vec3::Z,
         };
+        let matrix = Affine3A::from_scale_rotation_translation(
+            Vec3::ONE,
+            Quat::from_axis_angle(rotation_axis, radians),
+            -origin,
+        );
 
-        if self.rescale.unwrap_or(false) {
-            return Mat3A::from_scale(Vec2::splat(1.0)) * rotation;
-        }
-        rotation
+        if self.rescale.unwrap_or(false) {}
+        matrix
     }
 }
