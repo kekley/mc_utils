@@ -55,6 +55,7 @@ impl InternedBlockState {
             })
             .collect::<Vec<(StateName, State)>>();
 
-        Self { properties: map }
+        let r = Self { properties: map };
+        r
     }
 }

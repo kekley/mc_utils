@@ -209,7 +209,7 @@ impl ChunkSection {
                 let block_name_spur = interner.get_or_intern(block_name);
                 let mut props = vec![];
                 let block_states: InternedBlockState = block
-                    .get_tag("properties")
+                    .get_tag("Properties")
                     .map(|properties| {
                         properties.get_compound().children.iter().for_each(|f| {
                             let state_name = f.0.clone();

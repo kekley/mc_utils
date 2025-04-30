@@ -18,6 +18,9 @@ pub struct InternedBlockElement {
 impl InternedBlockElement {
     pub fn is_cube(&self) -> bool {
         !self.faces.iter().any(|f| f.is_none())
+            && self.rotation.is_none()
+            && self.from == Vec3::ZERO
+            && self.to == Vec3::splat(16.0)
     }
     pub fn is_axis_aligned(&self) -> bool {
         match &self.rotation {

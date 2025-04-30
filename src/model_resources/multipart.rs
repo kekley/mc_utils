@@ -58,6 +58,7 @@ pub enum When {
 }
 impl When {
     pub fn check(&self, block_state: &InternedBlockState, rodeo: &Arc<ThreadedRodeo>) -> bool {
+        dbg!(block_state.resolve(rodeo));
         match self {
             When::OrCase(test_block_states) => test_block_states.iter().any(|case_block_state| {
                 case_block_state
@@ -65,13 +66,12 @@ impl When {
                     .iter()
                     .all(|(case_state_name, case_state)| {
                         block_state.properties.iter().any(|(state_name, state)| {
-                            state_name == case_state_name && {
-                                rodeo.resolve(case_state).split("|").any(|case_state_str| {
+                            state_name == case_state_name
+                                && rodeo.resolve(case_state).split("|").any(|case_state_str| {
                                     rodeo
                                         .get(case_state_str)
                                         .is_some_and(|case_state_spur| case_state_spur == *state)
                                 })
-                            }
                         })
                     })
             }),
@@ -91,19 +91,18 @@ impl When {
                         })
                     })
             }),
-            When::SingleCase(case_block_state) => {
-                case_block_state
+            When::SingleCase(test_block_state) => {
+                test_block_state
                     .properties
                     .iter()
                     .all(|(case_state_name, case_state)| {
                         block_state.properties.iter().any(|(state_name, state)| {
-                            state_name == case_state_name && {
-                                rodeo.resolve(case_state).split("|").any(|case_state_str| {
+                            state_name == case_state_name
+                                && rodeo.resolve(case_state).split("|").any(|case_state_str| {
                                     rodeo
                                         .get(case_state_str)
                                         .is_some_and(|case_state_spur| case_state_spur == *state)
                                 })
-                            }
                         })
                     })
             }
@@ -184,9 +183,11 @@ fn collect_blockstates(value: &Vec<Value>, rodeo: &Arc<ThreadedRodeo>) -> Vec<In
                     (name_spur, field_spur)
                 })
                 .collect();
-            InternedBlockState {
+
+            let r = InternedBlockState {
                 properties: properties,
-            }
+            };
+            r
         })
         .collect::<Vec<_>>()
 }
