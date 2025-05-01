@@ -13,7 +13,7 @@ pub struct InternedBlock {
 }
 
 impl InternedBlock {
-    pub fn resolve<'a>(&'a self, interner: &'a Arc<ThreadedRodeo>) -> ResolvedBlock<'a> {
+    pub fn resolve<'a>(&'a self, interner: &'a ThreadedRodeo) -> ResolvedBlock<'a> {
         let name = interner.resolve(&self.block_name);
 
         let properties = self.properties.resolve(interner);

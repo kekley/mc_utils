@@ -76,7 +76,6 @@ impl From<&Value> for ElementAxis {
 
 impl From<&Value> for ElementRotation {
     fn from(value: &Value) -> Self {
-        dbg!("rotation parsed");
         let origin = parse_vec3(value.get("origin").expect("rotation missing origin"));
         let axis = ElementAxis::from(value.get("axis").expect("rotation missing axis"));
         let angle = value

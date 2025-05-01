@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{slice, sync::Arc};
 
 use lasso::{Spur, ThreadedRodeo};
 use serde_json::Value;
@@ -19,6 +19,7 @@ impl Multipart {
         block_state: &InternedBlockState,
         rodeo: &Arc<ThreadedRodeo>,
     ) -> Vec<ModelVariant> {
+        println!("{:?}", self.cases.len());
         self.cases
             .iter()
             .filter_map(|case| {
@@ -39,9 +40,15 @@ pub struct Case {
 }
 impl Case {
     pub fn check(&self, block_state: &InternedBlockState, rodeo: &Arc<ThreadedRodeo>) -> bool {
-        self.when
+        if self
+            .when
             .as_ref()
             .is_none_or(|when| when.check(block_state, rodeo))
+        {
+            return true;
+        } else {
+            return false;
+        }
     }
 }
 #[derive(Debug, Clone)]
@@ -59,51 +66,85 @@ pub enum When {
 impl When {
     pub fn check(&self, block_state: &InternedBlockState, rodeo: &Arc<ThreadedRodeo>) -> bool {
         match self {
-            When::OrCase(test_block_states) => test_block_states.iter().any(|case_block_state| {
-                case_block_state
-                    .properties
+            When::OrCase(test_block_states) => {
+                test_block_states
                     .iter()
-                    .all(|(case_state_name, case_state)| {
-                        block_state.properties.iter().any(|(state_name, state)| {
-                            state_name == case_state_name
-                                && rodeo.resolve(case_state).split("|").any(|case_state_str| {
-                                    rodeo
-                                        .get(case_state_str)
-                                        .is_some_and(|case_state_spur| case_state_spur == *state)
+                    .enumerate()
+                    .any(|(index, case_block_state)| {
+                        case_block_state
+                            .properties
+                            .iter()
+                            .all(|(case_state_name, case_state)| {
+                                block_state.properties.iter().any(|(state_name, state)| {
+                                    state_name == case_state_name
+                                        && rodeo.resolve(case_state).split("|").any(
+                                            |case_state_str| {
+                                                let val = rodeo.get(case_state_str).is_some_and(
+                                                    |case_state_spur| case_state_spur == *state,
+                                                );
+                                                dbg!("And Case chose state index", index);
+                                                val
+                                            },
+                                        )
                                 })
-                        })
+                            })
                     })
-            }),
-            When::AndCase(test_states) => test_states.iter().all(|case_block_state| {
-                case_block_state
-                    .properties
+            }
+            When::AndCase(test_states) => {
+                test_states
                     .iter()
-                    .all(|(case_state_name, case_state)| {
-                        block_state.properties.iter().any(|(state_name, state)| {
-                            state_name == case_state_name && {
-                                rodeo.resolve(case_state).split("|").any(|case_state_str| {
-                                    rodeo
-                                        .get(case_state_str)
-                                        .is_some_and(|case_state_spur| case_state_spur == *state)
+                    .enumerate()
+                    .all(|(index, case_block_state)| {
+                        case_block_state
+                            .properties
+                            .iter()
+                            .all(|(case_state_name, case_state)| {
+                                block_state.properties.iter().any(|(state_name, state)| {
+                                    state_name == case_state_name && {
+                                        rodeo.resolve(case_state).split("|").any(|case_state_str| {
+                                            let val = rodeo.get(case_state_str).is_some_and(
+                                                |case_state_spur| case_state_spur == *state,
+                                            );
+                                            dbg!("And Case chose state index", index);
+                                            val
+                                        })
+                                    }
                                 })
-                            }
-                        })
+                            })
                     })
-            }),
+            }
             When::SingleCase(test_block_state) => {
-                test_block_state
+                let a = test_block_state
                     .properties
                     .iter()
-                    .all(|(case_state_name, case_state)| {
-                        block_state.properties.iter().any(|(state_name, state)| {
-                            state_name == case_state_name
-                                && rodeo.resolve(case_state).split("|").any(|case_state_str| {
-                                    rodeo
-                                        .get(case_state_str)
-                                        .is_some_and(|case_state_spur| case_state_spur == *state)
-                                })
-                        })
-                    })
+                    .all(|(test_state_name, test_state)| {
+                        block_state
+                            .properties
+                            .iter()
+                            .any(|(tested_state_name, tested_state)| {
+                                if tested_state_name == test_state_name {
+                                    let mut split = rodeo.resolve(test_state).split("|");
+                                    split.any(|case_state_str| {
+                                        let val = rodeo.get(case_state_str).is_some_and(
+                                            |case_state_spur| case_state_spur == *tested_state,
+                                        );
+
+                                        val
+                                    })
+                                } else {
+                                    false
+                                }
+                            })
+                    });
+                if a {
+                    println!("Chose single case");
+                    println!(
+                        "tested: {:?}, tested against:{:?}",
+                        block_state.resolve(rodeo),
+                        test_block_state.resolve(rodeo)
+                    );
+                }
+                a
             }
         }
     }
@@ -133,23 +174,9 @@ impl Case {
                 let block_states = collect_blockstates(array, rodeo);
                 When::AndCase(block_states)
             } else {
-                let (name, state) = value
-                    .as_object()
-                    .unwrap()
-                    .iter()
-                    .map(|f| {
-                        let state_name = rodeo.get_or_intern(f.0);
-                        let state = rodeo
-                            .get_or_intern(f.1.as_str().expect("single when case was not str"));
-                        (state_name, state)
-                    })
-                    .collect::<Vec<_>>()
-                    .first()
-                    .cloned()
-                    .unwrap();
-                let map: Vec<(Spur, Spur)> = vec![(name, state)];
-
-                let block_state = InternedBlockState { properties: map };
+                let a = collect_blockstates(slice::from_ref(&value), rodeo);
+                let a = a[0].clone();
+                let block_state = a;
                 When::SingleCase(block_state)
             }
         });
@@ -166,7 +193,7 @@ impl Case {
     }
 }
 
-fn collect_blockstates(value: &Vec<Value>, rodeo: &Arc<ThreadedRodeo>) -> Vec<InternedBlockState> {
+fn collect_blockstates(value: &[Value], rodeo: &Arc<ThreadedRodeo>) -> Vec<InternedBlockState> {
     value
         .iter()
         .map(|block_state_entry| {

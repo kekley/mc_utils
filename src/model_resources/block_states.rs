@@ -23,7 +23,7 @@ pub struct BlockState<'a> {
 }
 
 impl InternedBlockState {
-    pub fn resolve<'a>(&'a self, interner: &'a Arc<ThreadedRodeo>) -> BlockState<'a> {
+    pub fn resolve<'a>(&'a self, interner: &'a ThreadedRodeo) -> BlockState<'a> {
         let properties_str: Vec<_> = self
             .properties
             .iter()
