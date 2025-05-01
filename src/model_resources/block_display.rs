@@ -44,9 +44,18 @@ impl TryFrom<(&str, &Value)> for BlockDisplay {
     fn try_from(value: (&str, &Value)) -> Result<Self, Self::Error> {
         let position = value.0;
         let data = value.1;
-        let rotation = parse_vec3(data.get("rotation").expect("no rotation"));
-        let translation = parse_vec3(data.get("translation").expect("no translation"));
-        let scale = parse_vec3(data.get("scale").expect("no scale"));
+        let rotation = data
+            .get("rotation")
+            .map(|f| parse_vec3(f))
+            .unwrap_or(Vec3::ZERO);
+        let translation = data
+            .get("translation")
+            .map(|f| parse_vec3(f))
+            .unwrap_or(Vec3::ZERO);
+        let scale = data
+            .get("scale")
+            .map(|f| parse_vec3(f))
+            .unwrap_or(Vec3::ZERO);
         let res = BlockDisplay {
             position: position.try_into()?,
             rotation,
