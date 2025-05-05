@@ -3,6 +3,8 @@ use std::{slice, sync::Arc};
 use lasso::{Spur, ThreadedRodeo};
 use serde_json::Value;
 
+use crate::MCResourceLoader;
+
 use super::{
     block_states::{InternedBlockState, State, StateName},
     variant::ModelVariant,
@@ -14,12 +16,11 @@ pub struct Multipart {
 }
 
 impl Multipart {
-    pub fn get(
+    pub fn load_models(
         &self,
         block_state: &InternedBlockState,
         rodeo: &Arc<ThreadedRodeo>,
     ) -> Vec<ModelVariant> {
-        println!("{:?}", self.cases.len());
         self.cases
             .iter()
             .filter_map(|case| {
@@ -82,7 +83,6 @@ impl When {
                                                 let val = rodeo.get(case_state_str).is_some_and(
                                                     |case_state_spur| case_state_spur == *state,
                                                 );
-                                                dbg!("And Case chose state index", index);
                                                 val
                                             },
                                         )
@@ -105,7 +105,6 @@ impl When {
                                             let val = rodeo.get(case_state_str).is_some_and(
                                                 |case_state_spur| case_state_spur == *state,
                                             );
-                                            dbg!("And Case chose state index", index);
                                             val
                                         })
                                     }
@@ -114,7 +113,7 @@ impl When {
                     })
             }
             When::SingleCase(test_block_state) => {
-                let a = test_block_state
+                test_block_state
                     .properties
                     .iter()
                     .all(|(test_state_name, test_state)| {
@@ -135,46 +134,37 @@ impl When {
                                     false
                                 }
                             })
-                    });
-                if a {
-                    println!("Chose single case");
-                    println!(
-                        "tested: {:?}, tested against:{:?}",
-                        block_state.resolve(rodeo),
-                        test_block_state.resolve(rodeo)
-                    );
-                }
-                a
+                    })
             }
         }
     }
 }
 
 impl Multipart {
-    pub fn new(value: &Value, rodeo: &Arc<ThreadedRodeo>) -> Self {
+    pub fn new(value: &Value, loader: &MCResourceLoader) -> Self {
         let cases = value
             .as_array()
             .expect("multipart was not array of cases")
             .iter()
-            .map(|value| Case::new(value, &rodeo))
+            .filter_map(|value| Case::new(value, &loader))
             .collect::<Vec<_>>();
         Multipart { cases: cases }
     }
 }
 
 impl Case {
-    pub fn new(value: &Value, rodeo: &Arc<ThreadedRodeo>) -> Self {
+    pub fn new(value: &Value, loader: &MCResourceLoader) -> Option<Self> {
         let when = value.get("when").map(|value| {
             if let Some(value) = value.get("OR") {
                 let array = value.as_array().expect("OR case was not array");
-                let block_states = collect_blockstates(array, rodeo);
+                let block_states = collect_blockstates(array, loader);
                 When::OrCase(block_states)
             } else if let Some(value) = value.get("AND") {
                 let array = value.as_array().expect("AND case was not array");
-                let block_states = collect_blockstates(array, rodeo);
+                let block_states = collect_blockstates(array, loader);
                 When::AndCase(block_states)
             } else {
-                let a = collect_blockstates(slice::from_ref(&value), rodeo);
+                let a = collect_blockstates(slice::from_ref(&value), loader);
                 let a = a[0].clone();
                 let block_state = a;
                 When::SingleCase(block_state)
@@ -184,16 +174,17 @@ impl Case {
         let variant = ModelVariant::from_json_value(
             value
                 .get("apply")
-                .expect("no model specified for multipart"),
-            rodeo,
-        );
+                .expect("no model specified for apply field in multipart"),
+            loader,
+        )?;
         let apply = Apply { variant: variant };
 
-        Case { when, apply: apply }
+        Some(Case { when, apply: apply })
     }
 }
 
-fn collect_blockstates(value: &[Value], rodeo: &Arc<ThreadedRodeo>) -> Vec<InternedBlockState> {
+fn collect_blockstates(value: &[Value], loader: &MCResourceLoader) -> Vec<InternedBlockState> {
+    let rodeo = &loader.rodeo;
     value
         .iter()
         .map(|block_state_entry| {

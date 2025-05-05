@@ -73,7 +73,7 @@ impl BlockDisplay {
             .as_object()
             .expect("display was not object")
             .iter()
-            .filter_map(|(name, value)| BlockDisplay::try_from((name.as_str(), value)).ok())
+            .map(|(name, value)| BlockDisplay::try_from((name.as_str(), value)).unwrap())
             .collect::<Vec<BlockDisplay>>()
     }
 }

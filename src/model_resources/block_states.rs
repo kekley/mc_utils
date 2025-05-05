@@ -2,6 +2,8 @@ use std::{hash::Hash, sync::Arc};
 
 use lasso::{Interner, Spur, ThreadedRodeo};
 
+use crate::MCResourceLoader;
+
 pub type StateName = Spur;
 pub type State = Spur;
 
@@ -23,7 +25,8 @@ pub struct BlockState<'a> {
 }
 
 impl InternedBlockState {
-    pub fn resolve<'a>(&'a self, interner: &'a ThreadedRodeo) -> BlockState<'a> {
+    pub fn resolve<'a>(&'a self, loader: &'a MCResourceLoader) -> BlockState<'a> {
+        let interner = &loader.rodeo;
         let properties_str: Vec<_> = self
             .properties
             .iter()
@@ -34,24 +37,25 @@ impl InternedBlockState {
         }
     }
 
-    pub fn from_str(properties: &str, interner: &Arc<ThreadedRodeo>) -> Self {
+    pub fn from_str(properties: &str, loader: &MCResourceLoader) -> Self {
+        let interner = &loader.rodeo;
         if properties.is_empty() {
             return Self { properties: vec![] };
         }
         let map = properties
             .split(",")
             .into_iter()
-            .map(|property| {
+            .filter_map(|property| {
                 //                dbg!(property);
-                let property = property
-                    .split_once("=")
-                    .map(|(state_name, state)| {
-                        let state_name = interner.get_or_intern(state_name);
-                        let state = interner.get_or_intern(state);
-                        (state_name, state)
-                    })
-                    .expect("blockstate parse error");
-                property
+                let property_spur = property.split_once("=").map(|(state_name, state)| {
+                    let state_name = interner.get_or_intern(state_name);
+                    let state = interner.get_or_intern(state);
+                    (state_name, state)
+                });
+                if property_spur.is_none() {
+                    //TODO
+                }
+                property_spur
             })
             .collect::<Vec<(StateName, State)>>();
 

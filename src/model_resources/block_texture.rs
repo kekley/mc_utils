@@ -67,9 +67,9 @@ impl BlockTextures {
         &self.textures
     }
     pub fn combine(&mut self, textures: BlockTextures) {
-        for texture in textures.textures {
+        for texture in &textures.textures {
             if !self.textures.contains(&texture) {
-                self.textures.push(texture);
+                self.textures.push(texture.clone());
             }
         }
     }

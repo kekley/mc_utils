@@ -152,18 +152,19 @@ impl Chunk {
 impl ChunkSection {
     pub fn get_block(&self, x: usize, sec_y: usize, z: usize) -> Option<&InternedBlock> {
         let num = self
-            .data
+            .block_data
             .get((sec_y * 16 * 16 + z * 16 + x) as usize)
             .expect("invalid index");
-        self.palette.get(*num)
+        self.block_palette.get(*num)
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct ChunkSection {
     pub ypos: i8,
-    pub(crate) palette: BlockPalette,
-    pub data: [u32; 4096],
+    pub(crate) block_palette: BlockPalette,
+    pub block_data: [u32; 4096],
+    pub biome_data: [u32; 4096],
 }
 
 impl ChunkSection {
@@ -177,16 +178,22 @@ impl ChunkSection {
         //FIXME
         if y < -4 || y > 19 {
             return Self {
-                palette: BlockPalette::new_inner(interner),
+                block_palette: BlockPalette::new_inner(interner),
                 ypos: y,
-                data: [0u32; 4096],
+                block_data: [0u32; 4096],
+                biome_data: [0u32; 4096],
             };
         }
         let block_states_compound = compound.get_tag("block_states").unwrap().get_compound();
         let block_light = compound.get_tag("BlockLight");
         let sky_light = compound.get_tag("SkyLight");
 
-        let biomes = compound.get_tag("biomes").unwrap().get_compound();
+        let biomes_tag = compound.get_tag("biomes").unwrap().get_compound();
+        let biome_palette = biomes_tag.get_tag("palette").unwrap().get_list();
+        biome_palette.iter().for_each(|entry| {
+            let biome_resource = entry.get_string();
+            //dbg!(biome_resource);
+        });
 
         let block_light = block_light
             .unwrap_or(&NBTTag::ByteArray(Bytes::new()))
@@ -237,10 +244,12 @@ impl ChunkSection {
 
         let bit_size = (f32::log2(block_states.len() as f32 - 1.0)).floor() + 1.0;
 
-        let temp: [u32; 4096] = std::array::from_fn(|i| {
+        let block_data: [u32; 4096] = std::array::from_fn(|i| {
             let ind = Self::extract_index(&data[..], i as u32, bit_size as u32);
             ind
         });
+
+        let biome_data = [0u32; 4096];
 
         block_states.into_iter().for_each(|state| {
             /*             let resolved_block = state.resolve(interner);
@@ -252,9 +261,10 @@ impl ChunkSection {
         });
 
         Self {
-            palette,
+            block_palette: palette,
             ypos: y,
-            data: temp,
+            block_data,
+            biome_data,
         }
     }
 

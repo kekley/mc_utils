@@ -60,7 +60,7 @@ impl BlockRotation {
 }
 pub type AmbientOcclusion = bool;
 pub type Parent = Spur;
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IntermediateBlockModel {
     pub parent: Option<Parent>,
     pub ambient_occlusion: Option<AmbientOcclusion>,
@@ -88,15 +88,10 @@ impl InternedBlockModel {
     pub fn is_cube(&self) -> bool {
         self.elements.len() == 1 && self.elements[0].is_cube()
     }
-    pub(crate) fn load(path: &str, rodeo: &Arc<ThreadedRodeo>) -> InternedBlockModel {
-        let tmp = IntermediateBlockModel::from_json(path, rodeo);
-        let res = IntermediateBlockModel::collapse_parents(tmp, rodeo);
-        res
-    }
 }
 
-impl From<IntermediateBlockModel> for InternedBlockModel {
-    fn from(value: IntermediateBlockModel) -> Self {
+impl InternedBlockModel {
+    pub fn try_from_intermediate(value: &IntermediateBlockModel) -> Option<Self> {
         let IntermediateBlockModel {
             parent: _,
             ambient_occlusion,
@@ -105,19 +100,19 @@ impl From<IntermediateBlockModel> for InternedBlockModel {
             elements,
         } = value;
 
-        Self {
+        Some(Self {
             ambient_occlusion: ambient_occlusion.unwrap_or(false),
-            displays: displays.unwrap_or(vec![]),
-            textures: textures.expect("didn't find textures when finalizing block model"),
-            elements: elements.unwrap_or(vec![]),
-        }
+            displays: displays.clone().unwrap_or(vec![]),
+            textures: textures.as_ref()?.clone(),
+            elements: elements.clone().unwrap_or(vec![]),
+        })
     }
 }
 
 pub const ASSET_PATH: SmolStr = SmolStr::new_static("./test_assets/assets/");
 
 impl IntermediateBlockModel {
-    fn parent_to_path(parent_str: &str) -> SmolStr {
+    pub fn parent_to_path(parent_str: &str) -> SmolStr {
         let (namespace, remaining_str) = parent_str
             .split_once(":")
             .unwrap_or(("minecraft", parent_str));
@@ -125,7 +120,7 @@ impl IntermediateBlockModel {
 
         let (model_type, remaining_str) = remaining_str
             .split_once("/")
-            .expect("invalid path for parent");
+            .unwrap_or(("block", remaining_str));
         //        dbg!(model_type, remaining_str);
         SmolStr::from(
             ASSET_PATH.to_string()
@@ -138,41 +133,11 @@ impl IntermediateBlockModel {
                 + ".json",
         )
     }
-    fn collapse_parents(
-        model: IntermediateBlockModel,
-        rodeo: &Arc<ThreadedRodeo>,
-    ) -> InternedBlockModel {
-        if model.parent.is_some() {
-            let parent = model.parent.as_ref().unwrap();
-            let parent_path = IntermediateBlockModel::parent_to_path(rodeo.resolve(parent));
-            let mut parent = IntermediateBlockModel::from_json(&parent_path, rodeo);
-            if model.elements.is_some() {
-                parent.elements = model.elements;
-            }
-            if model.textures.is_some() {
-                if parent.textures.is_some() {
-                    parent
-                        .textures
-                        .as_mut()
-                        .unwrap()
-                        .combine(model.textures.unwrap());
-                } else {
-                    parent.textures = model.textures;
-                }
-            }
-            if model.displays.is_some() {
-                parent.displays = model.displays;
-            }
 
-            return Self::collapse_parents(parent, rodeo);
-        } else {
-            return model.into();
-        }
-    }
+    pub fn from_json(path: &str, rodeo: &Arc<ThreadedRodeo>) -> Option<IntermediateBlockModel> {
+        dbg!(&path);
 
-    fn from_json(path: &str, rodeo: &Arc<ThreadedRodeo>) -> IntermediateBlockModel {
-        let json =
-            fs::read_to_string(path).expect(format!("failed to read json file: {}", path).as_str());
+        let json = fs::read_to_string(path).ok()?;
         let value: Value = serde_json::from_str(&json).expect("failed to parse json");
         let parent = value
             .get("parent")
@@ -201,6 +166,6 @@ impl IntermediateBlockModel {
             textures,
             elements,
         };
-        result
+        Some(result)
     }
 }

@@ -107,6 +107,7 @@ impl From<&LazyRegion> for LoadedRegion {
             coords,
             segments,
         } = value;
+        dbg!("loading region:", coords);
         let mut chunks: Box<[Option<Chunk>; 1024]> = Box::new([const { None }; 1024]);
         let mut reader = BufReader::new(File::open(file_path).unwrap());
         for z in 0..32 {

@@ -132,34 +132,6 @@ impl BlockPalette {
             return ind as PaletteIndex;
         }
     }
-    pub fn insert_str(&mut self, block_name: &str, properties: &str) -> PaletteIndex {
-        if self.interner.contains(block_name) {
-            let (index, _) = self
-                .block_states
-                .iter()
-                .enumerate()
-                .find(|(_, block_internal)| {
-                    let name_str = self.interner.resolve(&block_internal.block_name);
-                    if name_str == block_name {
-                        return true;
-                    } else {
-                        return false;
-                    }
-                })
-                .unwrap();
-            return index as PaletteIndex;
-        } else {
-            let block_name_spur = self.interner.get_or_intern(block_name);
-            let block_state = InternedBlockState::from_str(properties, &mut self.interner);
-            let block = InternedBlock {
-                block_name: block_name_spur,
-                properties: block_state,
-            };
-            let index = self.block_states.len();
-            self.block_states.push(block);
-            return index as PaletteIndex;
-        }
-    }
 
     pub fn get(&self, ind: PaletteIndex) -> Option<&InternedBlock> {
         self.block_states.get(ind as usize)

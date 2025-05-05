@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use lasso::ThreadedRodeo;
 
-use crate::loaded_world::InternedBlockName;
+use crate::{loaded_world::InternedBlockName, MCResourceLoader};
 
 use super::block_states::{BlockState, InternedBlockState};
 
@@ -13,10 +13,11 @@ pub struct InternedBlock {
 }
 
 impl InternedBlock {
-    pub fn resolve<'a>(&'a self, interner: &'a ThreadedRodeo) -> ResolvedBlock<'a> {
+    pub fn resolve<'a>(&'a self, loader: &'a MCResourceLoader) -> ResolvedBlock<'a> {
+        let interner = &loader.rodeo;
         let name = interner.resolve(&self.block_name);
 
-        let properties = self.properties.resolve(interner);
+        let properties = self.properties.resolve(loader);
 
         ResolvedBlock {
             block_name: name,
