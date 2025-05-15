@@ -1,5 +1,6 @@
 use std::{fs, hash::Hash, sync::Arc};
 
+use anyhow::Context;
 use dashmap::DashMap;
 use fxhash::FxBuildHasher;
 use hashbrown::HashMap;
@@ -87,7 +88,7 @@ pub struct World {
 }
 
 impl World {
-    pub(crate) fn new(folder_path: &str, interner: &Arc<ThreadedRodeo>) -> Self {
+    pub(crate) fn new(folder_path: &str, interner: &Arc<ThreadedRodeo>) -> anyhow::Result<World> {
         let palette = BlockPalette::new_inner(interner);
         let mut temp = Self {
             interner: InternerType::External(interner.clone()),
@@ -96,18 +97,24 @@ impl World {
             chunk_cache: DashMap::with_hasher(FxBuildHasher::default()),
         };
 
-        let read_dir = fs::read_dir(folder_path).expect("could not find folder");
+        let read_dir = fs::read_dir(folder_path)
+            .context(format!("Folder path {folder_path} did not exist"))?;
         for dir in read_dir {
-            let entry = dir.unwrap();
-
-            let path = entry.path();
-            if path.is_file() && path.extension().unwrap() == "mca" {
-                if let Ok(region) = LazyRegion::new(path.to_str().unwrap(), interner) {
-                    temp.regions.insert(region.coords, region);
+            if let Ok(entry) = dir {
+                let path = entry.path();
+                if path.is_file() && path.extension().is_some_and(|extension| extension == "mca") {
+                    let region = LazyRegion::new(
+                        path.to_str()
+                            .context(format!("Path: {path:?} could not be converted to string"))?,
+                        interner,
+                    );
+                    if let Ok(region) = region {
+                        temp.regions.insert(region.coords, region);
+                    }
                 }
             }
         }
-        temp
+        Ok(temp)
     }
 
     pub fn get_region_lazy(&self, region_coords: RegionCoords) -> Option<&LazyRegion> {
@@ -153,7 +160,7 @@ pub fn modulo(a: i64, b: i64) -> i64 {
 pub fn world_loading() {
     let loader = MCResourceLoader::new();
     let interner = &loader.rodeo;
-    let world = loader.open_world("./test_world");
+    let world = loader.open_world("./test_world").unwrap();
     for z in 0..32 {
         for x in 0..32 {
             let block = world.get_block(&WorldCoords { x: x, y: -63, z: z });

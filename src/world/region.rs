@@ -8,7 +8,7 @@ use crate::chunk::Chunk;
 use crate::nbt::compression::{CompressionData, CompressionScheme};
 use crate::nbt_compound::NBTCompound;
 
-use anyhow::{anyhow, Ok};
+use anyhow::{anyhow, Context, Ok};
 use bytes::Bytes;
 use lasso::ThreadedRodeo;
 
@@ -42,7 +42,7 @@ impl LazyRegion {
         }; 1024];
 
         let mut reader =
-            BufReader::new(File::open(&path).expect("not a valid file path for region"));
+            BufReader::new(File::open(&path).context("Region file {path} does not exist")?);
         for z in 0..32 {
             for x in 0..32 {
                 let segment = read_chunk_segment(x, z, &mut reader);
@@ -107,7 +107,6 @@ impl From<&LazyRegion> for LoadedRegion {
             coords,
             segments,
         } = value;
-        dbg!("loading region:", coords);
         let mut chunks: Box<[Option<Chunk>; 1024]> = Box::new([const { None }; 1024]);
         let mut reader = BufReader::new(File::open(file_path).unwrap());
         for z in 0..32 {

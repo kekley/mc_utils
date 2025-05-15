@@ -125,7 +125,7 @@ impl MCResourceLoader {
         };
         variants
     }
-    pub fn open_world(&self, region_folder: &str) -> World {
+    pub fn open_world(&self, region_folder: &str) -> anyhow::Result<World> {
         World::new(region_folder, &self.rodeo)
     }
 

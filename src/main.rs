@@ -6,7 +6,7 @@ extern crate spider_eye;
 
 fn main() -> Result<(), SpiderEyeError> {
     let loader = MCResourceLoader::new();
-    let world = loader.open_world("./test_world");
+    let world = loader.open_world("./test_world").unwrap();
     let block = world
         .get_block(&WorldCoords { x: 0, y: -64, z: 0 })
         .unwrap();

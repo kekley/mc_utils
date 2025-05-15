@@ -109,7 +109,8 @@ impl InternedBlockModel {
     }
 }
 
-pub const ASSET_PATH: SmolStr = SmolStr::new_static("./test_assets/assets/");
+pub const ASSET_PATH: SmolStr =
+    SmolStr::new_static("/mnt/860evo/Rust/ray_tracing/test_assets/assets/");
 
 impl IntermediateBlockModel {
     pub fn parent_to_path(parent_str: &str) -> SmolStr {
@@ -135,7 +136,7 @@ impl IntermediateBlockModel {
     }
 
     pub fn from_json(path: &str, rodeo: &Arc<ThreadedRodeo>) -> Option<IntermediateBlockModel> {
-        dbg!(&path);
+        //dbg!(&path);
 
         let json = fs::read_to_string(path).ok()?;
         let value: Value = serde_json::from_str(&json).expect("failed to parse json");
