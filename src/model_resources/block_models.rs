@@ -109,8 +109,7 @@ impl InternedBlockModel {
     }
 }
 
-pub const ASSET_PATH: SmolStr =
-    SmolStr::new_static("/mnt/860evo/Rust/ray_tracing/test_assets/assets/");
+pub const ASSET_PATH: SmolStr = SmolStr::new_static("./test_assets/assets/");
 
 impl IntermediateBlockModel {
     pub fn parent_to_path(parent_str: &str) -> SmolStr {

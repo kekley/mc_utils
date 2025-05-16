@@ -122,6 +122,7 @@ impl World {
     }
 
     pub fn load_region(&self, region_coords: RegionCoords) -> Option<LoadedRegion> {
+        println!("loading region: {:?}", region_coords);
         self.get_region_lazy(region_coords).map(|f| f.into())
     }
 
