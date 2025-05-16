@@ -53,8 +53,8 @@ impl From<ChunkCoords> for RegionCoords {
 impl From<WorldCoords> for RegionCoords {
     fn from(value: WorldCoords) -> Self {
         Self {
-            x: value.x >> 9,
-            z: value.z >> 9,
+            x: value.x >> 10,
+            z: value.z >> 10,
         }
     }
 }
