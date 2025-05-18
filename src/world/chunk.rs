@@ -2,22 +2,20 @@ use std::{fmt::Debug, sync::Arc, u32};
 
 use bytes::Bytes;
 use lasso::ThreadedRodeo;
-use smol_str::SmolStr;
 
 use crate::{
     block::{self, InternedBlock},
     block_states::InternedBlockState,
     nbt::{nbt_compound::NBTCompound, nbt_tag::NBTTag},
-    palette::BlockPalette,
+    palette::{BlockPalette, Palette},
 };
 
-use super::loaded_world::{modulo, ChunkCoords, WorldCoords};
+use super::loaded_world::{ChunkCoords, WorldCoords};
 
 #[derive(Clone)]
 pub struct Chunk {
     data_version: i32,
     pub coords: ChunkCoords,
-    pub status: SmolStr,
     pub sections: SectionTower,
 }
 impl Debug for Chunk {
@@ -25,7 +23,6 @@ impl Debug for Chunk {
         f.debug_struct("Chunk")
             .field("data_version", &self.data_version)
             .field("coords", &self.coords)
-            .field("status", &self.status)
             .finish()
     }
 }
@@ -74,8 +71,6 @@ impl Chunk {
         let xpos = chunk.get_tag("xPos").expect("Not a Chunk NBT").get_int();
         let zpos = chunk.get_tag("zPos").expect("Not a Chunk NBT").get_int();
 
-        let status = SmolStr::from(chunk.get_tag("Status").unwrap().get_string());
-
         let sections = chunk.get_tag("sections").unwrap().get_list();
 
         let section_array: Vec<ChunkSection> = sections
@@ -122,11 +117,10 @@ impl Chunk {
         Self {
             coords,
             data_version,
-            status: status,
             sections: sec_tower,
         }
     }
-
+    #[inline(always)]
     pub fn get_local_block(&self, x: usize, y: isize, z: usize) -> Option<&InternedBlock> {
         let sections = &self.sections;
         if y > self.sections.y_max() || y < self.sections.y_min() {
@@ -136,20 +130,76 @@ impl Chunk {
         let sec_y = (y - sec.ypos as isize * 16) as usize;
         sec.get_block(x, sec_y, z)
     }
+    #[inline]
     pub fn get_world_block(&self, world_coords: WorldCoords) -> Option<&InternedBlock> {
-        let local_block_x: i16 = modulo(world_coords.x, 16) as i16;
-        let local_block_z: i16 = modulo(world_coords.z, 16) as i16;
-        let block = self.get_local_block(
-            local_block_x.try_into().unwrap(),
-            world_coords.y.try_into().unwrap(),
-            local_block_z.try_into().unwrap(),
-        );
+        // Assuming world_coords.x and world_coords.z are integer types (e.g., i64, i32).
+        // The operation `& 15` computes `value % 16` correctly for both positive and negative values,
+        // resulting in a value in the range [0, 15].
+        // This is much faster than a division-based modulo.
 
-        block
+        // If world_coords.x is i64, (world_coords.x & 15) is an i64 in [0, 15].
+        // Casting this to i16 is safe and preserves the value.
+        let local_block_x: i16 = (world_coords.x & 15) as i16;
+        let local_block_z: i16 = (world_coords.z & 15) as i16;
+
+        // The .try_into().unwrap() calls:
+        // For local_block_x and local_block_z (which are 0..15):
+        // If the target type for get_local_block (e.g., usize) can hold 0..15,
+        // this conversion is safe and typically well-optimized.
+        let final_local_x = match local_block_x.try_into() {
+            Ok(val) => val,
+            Err(_) => {
+                // This path should ideally not be hit if the target type is usize or similar.
+                // If it can, panicking via unwrap() is costly. Consider returning None.
+                // For now, let's assume it matches the original unwrap() behavior if types are compatible.
+                unreachable!("local_block_x (0-15) should always convert to target type");
+            }
+        };
+
+        // For world_coords.y:
+        // This conversion's safety and performance depend on the type of world_coords.y
+        // and the type expected by get_local_block. If world_coords.y can be out of range
+        // for the target type, .unwrap() will panic, which is slow.
+        // Consider returning None earlier if y can be invalid.
+        let final_local_y = match world_coords.y.try_into() {
+            Ok(val) => val,
+            Err(_) => {
+                // If invalid y values are possible and not exceptional, handle them gracefully.
+                // For example, return None instead of panicking:
+                // return None;
+                // For this optimization, we assume current .unwrap() behavior is intended for valid inputs.
+                panic!("world_coords.y out of range for target type"); // or keep .unwrap()
+            }
+        };
+
+        let final_local_z = match local_block_z.try_into() {
+            Ok(val) => val,
+            Err(_) => {
+                unreachable!("local_block_z (0-15) should always convert to target type");
+            }
+        };
+
+        // If you are certain the try_into() calls will not fail (i.e., the values always fit),
+        // the original .unwrap() is fine. For local_block_x and local_block_z, if the target
+        // type in get_local_block is usize, you could even do `as usize` directly:
+        // let final_local_x = (world_coords.x & 15) as usize;
+        // let final_local_z = (world_coords.z & 15) as usize;
+        // let final_local_y = world_coords.y.try_into().unwrap(); // Keep as is or adapt based on Y's type & constraints
+
+        self.get_local_block(final_local_x, final_local_y, final_local_z)
     }
+
+    // Make sure your WorldCoords struct field types are appropriate.
+    // For example:
+    // pub struct WorldCoords {
+    //     pub x: i64, // or i32, etc.
+    //     pub y: i64, // or i32, u16, etc. This type is important for try_into()
+    //     pub z: i64, // or i32, etc.
+    // }
 }
 
-impl ChunkSection {
+impl<T: Palette<InternedBlock>> ChunkSection<T> {
+    #[inline(always)]
     pub fn get_block(&self, x: usize, sec_y: usize, z: usize) -> Option<&InternedBlock> {
         let num = self
             .block_data
@@ -160,14 +210,17 @@ impl ChunkSection {
 }
 
 #[derive(Debug, Clone)]
-pub struct ChunkSection {
+pub struct ChunkSection<T> {
     pub ypos: i8,
-    pub(crate) block_palette: BlockPalette,
+    pub(crate) block_palette: T,
     pub block_data: [u32; 4096],
     pub biome_data: [u32; 4096],
 }
 
-impl ChunkSection {
+impl<T> ChunkSection<T> {
+    pub(crate) fn with_palette_from_compound(interner: &Arc<ThreadedRodeo>) -> Self {
+        unimplemented!()
+    }
     pub(crate) fn from_compound_internal(
         compound: &NBTCompound,
         interner: &Arc<ThreadedRodeo>,
@@ -214,7 +267,7 @@ impl ChunkSection {
                 let block = f.get_compound();
                 let block_name = block.get_tag("Name").unwrap().get_string();
                 let block_name_spur = interner.get_or_intern(block_name);
-                let mut props = vec![];
+                let mut props = Vec::with_capacity(2);
                 let block_states: InternedBlockState = block
                     .get_tag("Properties")
                     .map(|properties| {
@@ -244,21 +297,14 @@ impl ChunkSection {
 
         let bit_size = (f32::log2(block_states.len() as f32 - 1.0)).floor() + 1.0;
 
+        palette.block_states = block_states;
+
         let block_data: [u32; 4096] = std::array::from_fn(|i| {
             let ind = Self::extract_index(&data[..], i as u32, bit_size as u32);
             ind
         });
 
         let biome_data = [0u32; 4096];
-
-        block_states.into_iter().for_each(|state| {
-            /*             let resolved_block = state.resolve(interner);
-            if resolved_block.block_name != "minecraft:air" {
-                dbg!(resolved_block);
-            } */
-
-            palette.insert_block(state);
-        });
 
         Self {
             block_palette: palette,

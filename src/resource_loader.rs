@@ -1,11 +1,9 @@
 use std::sync::Arc;
 
-use aovec::Aovec;
 use bytes::Bytes;
-use dashmap::DashMap;
+use dashmap::{DashMap, RwLock};
 use fxhash::FxBuildHasher;
 use lasso::{Spur, ThreadedRodeo};
-use smol_str::{SmolStr, SmolStrBuilder};
 
 use crate::{
     block::InternedBlock,
@@ -20,9 +18,9 @@ use super::{block_models::ASSET_PATH, resource::BlockStates};
 pub type BlockStateIndex = usize;
 pub struct MCResourceLoader {
     pub rodeo: Arc<ThreadedRodeo>,
-    cached_block_models: Aovec<IntermediateBlockModel>,
+    cached_block_models: RwLock<Vec<IntermediateBlockModel>>,
     block_model_map: DashMap<Spur, Option<usize>, FxBuildHasher>,
-    cached_block_states: Aovec<BlockStates>,
+    cached_block_states: RwLock<Vec<BlockStates>>,
     block_state_map: DashMap<InternedBlockName, Option<BlockStateIndex>, FxBuildHasher>,
 }
 
@@ -146,7 +144,7 @@ impl MCResourceLoader {
             block_model_map: Default::default(),
         }
     }
-    pub fn get_texture_path(&self, resource_path: &str) -> SmolStr {
+    pub fn get_texture_path(&self, resource_path: &str) -> String {
         let (namespace, remaining_str) = resource_path
             .split_once(":")
             .unwrap_or(("minecraft", resource_path));
@@ -156,7 +154,7 @@ impl MCResourceLoader {
             .split_once("/")
             .expect("invalid path for parent");
         //dbg!(model_type, remaining_str);
-        SmolStr::from(
+        String::from(
             ASSET_PATH.to_string()
                 + namespace
                 + "/"

@@ -1,7 +1,6 @@
-use glam::Vec3;
 use serde_json::Value;
 
-use super::utils::parse_vec3;
+use super::utils::{parse_array, parse_f32_3};
 
 #[derive(Debug, Clone)]
 enum DisplayPosition {
@@ -33,28 +32,25 @@ impl From<&str> for DisplayPosition {
 #[derive(Debug, Clone)]
 pub struct BlockDisplay {
     position: DisplayPosition,
-    rotation: Vec3,
-    translation: Vec3,
-    scale: Vec3,
+    rotation: [f32; 3],
+    translation: [f32; 3],
+    scale: [f32; 3],
 }
 
 impl TryFrom<(&str, &Value)> for BlockDisplay {
     type Error = anyhow::Error;
 
-    fn try_from(value: (&str, &Value)) -> Result<Self, Self::Error> {
+    fn try_from(value: (&str, &Value)) -> anyhow::Result<Self> {
         let position = value.0;
         let data = value.1;
-        let rotation = data
-            .get("rotation")
-            .map(|f| parse_vec3(f))
-            .unwrap_or(Vec3::ZERO);
+        let rotation = data.get("rotation").map(|f| parse_array::<f64, 3>(value))?;
         let translation = data
             .get("translation")
-            .map(|f| parse_vec3(f))
+            .map(|f| parse_f32_3(f))
             .unwrap_or(Vec3::ZERO);
         let scale = data
             .get("scale")
-            .map(|f| parse_vec3(f))
+            .map(|f| parse_f32_3(f))
             .unwrap_or(Vec3::ZERO);
         let res = BlockDisplay {
             position: position.try_into()?,

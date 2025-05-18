@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use lasso::ThreadedRodeo;
 use serde_json::Value;
-use smol_str::SmolStr;
 
 use crate::MCResourceLoader;
 
@@ -60,13 +59,13 @@ impl Variants {
         }
         a
     }
-    pub fn parse_path(model_path: &str) -> SmolStr {
+    pub fn parse_path(model_path: &str) -> String {
         let (namespace, remaining_str) = model_path.split_once(":").unwrap_or(("", model_path));
 
         let (model_type, remaining_str) = remaining_str
             .split_once("/")
             .unwrap_or(("block", remaining_str));
-        SmolStr::from(
+        String::from(
             ASSET_PATH.to_string()
                 + namespace
                 + "/"

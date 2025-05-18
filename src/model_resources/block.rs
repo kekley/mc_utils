@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{hash::Hash, sync::Arc};
 
 use lasso::ThreadedRodeo;
 
@@ -6,10 +6,17 @@ use crate::{loaded_world::InternedBlockName, MCResourceLoader};
 
 use super::block_states::{BlockState, InternedBlockState};
 
-#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct InternedBlock {
     pub block_name: InternedBlockName,
     pub properties: InternedBlockState,
+}
+
+impl Hash for InternedBlock {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.block_name.hash(state);
+        self.properties.hash(state);
+    }
 }
 
 impl InternedBlock {

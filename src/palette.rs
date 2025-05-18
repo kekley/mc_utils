@@ -94,6 +94,11 @@ pub enum InternerType {
     External(Arc<ThreadedRodeo>),
 }
 
+pub trait Palette<T> {
+    fn contains(&self, value: T) -> bool;
+    fn insert() {}
+}
+
 #[derive(Debug, Clone)]
 pub struct BlockPalette {
     pub interner: Arc<ThreadedRodeo>,

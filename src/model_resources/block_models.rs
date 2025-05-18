@@ -135,7 +135,7 @@ impl IntermediateBlockModel {
     }
 
     pub fn from_json(path: &str, rodeo: &Arc<ThreadedRodeo>) -> Option<IntermediateBlockModel> {
-        //dbg!(&path);
+        dbg!(&path);
 
         let json = fs::read_to_string(path).ok()?;
         let value: Value = serde_json::from_str(&json).expect("failed to parse json");

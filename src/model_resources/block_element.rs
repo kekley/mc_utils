@@ -4,7 +4,7 @@ use glam::{Affine3A, Mat3A, Mat4, Quat, Vec2, Vec3, Vec3A};
 use lasso::ThreadedRodeo;
 use serde_json::Value;
 
-use super::{block_face::InternedFace, utils::parse_vec3};
+use super::{block_face::InternedFace, utils::parse_f32_3};
 pub type Shade = bool;
 #[derive(Debug, Clone)]
 pub struct InternedBlockElement {
@@ -29,12 +29,12 @@ impl InternedBlockElement {
         }
     }
     pub fn from_json_value(value: &Value, rodeo: &Arc<ThreadedRodeo>) -> Self {
-        let from = parse_vec3(
+        let from = parse_f32_3(
             value
                 .get("from")
                 .expect("from does not exist in block element"),
         );
-        let to = parse_vec3(value.get("to").expect("to does not exist in block element"));
+        let to = parse_f32_3(value.get("to").expect("to does not exist in block element"));
         let rotation = value
             .get("rotation")
             .map(|value| ElementRotation::from(value));
@@ -76,7 +76,7 @@ impl From<&Value> for ElementAxis {
 
 impl From<&Value> for ElementRotation {
     fn from(value: &Value) -> Self {
-        let origin = parse_vec3(value.get("origin").expect("rotation missing origin"));
+        let origin = parse_f32_3(value.get("origin").expect("rotation missing origin"));
         let axis = ElementAxis::from(value.get("axis").expect("rotation missing axis"));
         let angle = value
             .get("angle")

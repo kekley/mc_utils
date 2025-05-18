@@ -15,7 +15,7 @@ pub enum BlockStates {
 
 impl BlockStates {
     pub fn new(path: &str, loader: &MCResourceLoader) -> Option<BlockStates> {
-        //dbg!(path);
+        dbg!(path);
         let file = fs::read_to_string(path).ok();
         if file.is_none() {
             dbg!("blockstate file not found", path);

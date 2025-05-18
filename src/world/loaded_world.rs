@@ -1,10 +1,17 @@
-use std::{fs, hash::Hash, sync::Arc};
+use std::{
+    fs::{self, File},
+    hash::Hash,
+    ops::Deref,
+    sync::Arc,
+    time::Instant,
+};
 
 use anyhow::Context;
 use dashmap::DashMap;
 use fxhash::FxBuildHasher;
 use hashbrown::HashMap;
 use lasso::{Spur, ThreadedRodeo};
+use log::info;
 
 use crate::{
     block::InternedBlock,
@@ -81,96 +88,39 @@ impl From<ChunkCoords> for WorldCoords {
 pub type InternedBlockName = Spur;
 #[derive(Debug)]
 pub struct World {
-    interner: InternerType,
-    pub regions: HashMap<RegionCoords, LazyRegion, FxBuildHasher>,
+    interner: Arc<ThreadedRodeo>,
+    path: String,
     chunk_cache: DashMap<ChunkCoords, Option<Chunk>, FxBuildHasher>,
     pub global_palette: BlockPalette,
 }
 
 impl World {
     pub(crate) fn new(folder_path: &str, interner: &Arc<ThreadedRodeo>) -> anyhow::Result<World> {
+        info!("Opening world folder");
+        let start = Instant::now();
         let palette = BlockPalette::new_inner(interner);
         let mut temp = Self {
-            interner: InternerType::External(interner.clone()),
-            regions: HashMap::with_hasher(FxBuildHasher::default()),
+            path: folder_path.to_owned(),
+            interner: interner.clone(),
             global_palette: palette,
             chunk_cache: DashMap::with_hasher(FxBuildHasher::default()),
         };
-
-        let read_dir = fs::read_dir(folder_path)
-            .context(format!("Folder path {folder_path} did not exist"))?;
-        for dir in read_dir {
-            if let Ok(entry) = dir {
-                let path = entry.path();
-                if path.is_file() && path.extension().is_some_and(|extension| extension == "mca") {
-                    let region = LazyRegion::new(
-                        path.to_str()
-                            .context(format!("Path: {path:?} could not be converted to string"))?,
-                        interner,
-                    );
-                    if let Ok(region) = region {
-                        temp.regions.insert(region.coords, region);
-                    }
-                }
-            }
-        }
+        dbg!(folder_path);
+        let time = Instant::now().duration_since(start);
         Ok(temp)
     }
 
-    pub fn get_region_lazy(&self, region_coords: RegionCoords) -> Option<&LazyRegion> {
-        self.regions.get(&region_coords)
+    pub fn get_region_lazy(&self, region_coords: RegionCoords) -> Option<LazyRegion> {
+        let x = region_coords.x;
+        let z = region_coords.z;
+        let mut path_str = SmolStrBuilder::new();
+        path_str.push_str(&self.path);
+        path_str.push_str(&format!("/r.{x}.{z}.mca"));
+        let file_path = path_str.finish();
+        LazyRegion::new(&file_path, &self.interner).ok()
     }
 
     pub fn load_region(&self, region_coords: RegionCoords) -> Option<LoadedRegion> {
-        println!("loading region: {:?}", region_coords);
-        self.get_region_lazy(region_coords).map(|f| f.into())
-    }
-
-    pub fn get_block(&self, block_coords: &WorldCoords) -> Option<InternedBlock> {
-        let chunk_coords = ChunkCoords::from(*block_coords);
-        if let Some(chunk) = self.chunk_cache.get(&chunk_coords) {
-            return chunk.as_ref()?.get_world_block(*block_coords).cloned();
-        } else {
-            let region_coords = RegionCoords::from(*block_coords);
-            let region = self.regions.get(&region_coords)?;
-            let loaded = LoadedRegion::from(region);
-            let mut chunks = loaded.get_all_chunks();
-            for z in 0..32 {
-                for x in 0..32 {
-                    let coords =
-                        ChunkCoords::new((region_coords.x * 32) + x, (region_coords.z * 32) + z);
-                    let chunk = chunks[(x + 32 * z) as usize].take();
-                    self.chunk_cache.insert(coords, chunk);
-                }
-            }
-            return self.get_block(block_coords);
-        }
-    }
-}
-pub fn modulo(a: i64, b: i64) -> i64 {
-    let r = a % b;
-    if r < 0 {
-        r + b
-    } else {
-        r
-    }
-}
-
-#[test]
-
-pub fn world_loading() {
-    let loader = MCResourceLoader::new();
-    let interner = &loader.rodeo;
-    let world = loader.open_world("./test_world").unwrap();
-    for z in 0..32 {
-        for x in 0..32 {
-            let block = world.get_block(&WorldCoords { x: x, y: -63, z: z });
-            if let Some(block) = block {
-                let InternedBlock {
-                    block_name,
-                    properties,
-                } = block;
-            }
-        }
+        self.get_region_lazy(region_coords).map(|f| (&f).into())
     }
 }
