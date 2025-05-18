@@ -111,12 +111,13 @@ impl World {
     }
 
     pub fn get_region_lazy(&self, region_coords: RegionCoords) -> Option<LazyRegion> {
+        info!()
         let x = region_coords.x;
         let z = region_coords.z;
-        let mut path_str = SmolStrBuilder::new();
+        let mut path_str = String::new();
         path_str.push_str(&self.path);
         path_str.push_str(&format!("/r.{x}.{z}.mca"));
-        let file_path = path_str.finish();
+        let file_path = path_str;
         LazyRegion::new(&file_path, &self.interner).ok()
     }
 
