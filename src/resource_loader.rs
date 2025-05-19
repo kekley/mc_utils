@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use anyhow::anyhow;
+use aovec::Aovec;
 use bytes::Bytes;
 use dashmap::{DashMap, RwLock};
 use fxhash::FxBuildHasher;
@@ -7,7 +9,7 @@ use lasso::{Spur, ThreadedRodeo};
 
 use crate::{
     block::InternedBlock,
-    block_models::{IntermediateBlockModel, InternedBlockModel},
+    block_models::{BlockModelParent, IntermediateBlockModel, InternedBlockModel},
     chunk::Chunk,
     loaded_world::{InternedBlockName, World},
     nbt_compound::NBTCompound,
@@ -18,37 +20,45 @@ use super::{block_models::ASSET_PATH, resource::BlockStates};
 pub type BlockStateIndex = usize;
 pub struct MCResourceLoader {
     pub rodeo: Arc<ThreadedRodeo>,
-    cached_block_models: RwLock<Vec<IntermediateBlockModel>>,
+    cached_block_models: Aovec<IntermediateBlockModel>,
     block_model_map: DashMap<Spur, Option<usize>, FxBuildHasher>,
-    cached_block_states: RwLock<Vec<BlockStates>>,
+    cached_block_states: Aovec<BlockStates>,
     block_state_map: DashMap<InternedBlockName, Option<BlockStateIndex>, FxBuildHasher>,
 }
 
 impl MCResourceLoader {
-    fn load_model_file_cached(&self, resource_path: Spur) -> Option<&IntermediateBlockModel> {
-        if let Some(index) = self.block_model_map.get(&resource_path) {
-            return Some(&self.cached_block_models[index.clone()?]);
+    fn load_model_for_parent_cached(
+        &self,
+        parent_model: BlockModelParent,
+    ) -> anyhow::Result<&IntermediateBlockModel> {
+        if let Some(index) = self.block_model_map.get((&parent_model).into()) {
+            return Ok(&self.cached_block_models[index.clone().unwrap()]);
         }
-        let str = self.rodeo.resolve(&resource_path);
+        let str = self.rodeo.resolve((&parent_model).into());
         let path = IntermediateBlockModel::parent_to_path(str);
         let tmp = IntermediateBlockModel::from_json(&path, &self.rodeo);
-        if let Some(model) = tmp {
+        if let Ok(model) = tmp {
             let index = self.cached_block_models.push(model);
-            self.block_model_map.insert(resource_path, Some(index));
-            self.cached_block_models.get(index)
+            self.block_model_map.insert(parent_model.0, Some(index));
+            Ok(self.cached_block_models.get(index).unwrap())
         } else {
-            self.block_model_map.insert(resource_path, None);
-            return None;
+            self.block_model_map.insert(parent_model.0, None);
+            return Err(anyhow!("todo"));
         }
     }
-    pub fn load_block_model(&self, resource_path: Spur) -> Option<InternedBlockModel> {
-        let intermediate = self.load_model_file_cached(resource_path)?;
+    pub fn load_block_model(&self, resource_path: Spur) -> anyhow::Result<InternedBlockModel> {
+        let intermediate = self.load_model_for_parent_cached(resource_path.into())?;
+
         self.collapse_parents(intermediate)
     }
-    pub fn collapse_parents(&self, model: &IntermediateBlockModel) -> Option<InternedBlockModel> {
+    pub fn collapse_parents(
+        &self,
+        model: &IntermediateBlockModel,
+    ) -> anyhow::Result<InternedBlockModel> {
         if model.parent.is_some() {
             let parent = model.parent.as_ref().unwrap();
-            let mut parent: IntermediateBlockModel = self.load_model_file_cached(*parent)?.clone();
+            let mut parent: IntermediateBlockModel =
+                self.load_model_for_parent_cached(*parent)?.clone();
             if model.elements.is_some() {
                 parent.elements = model.elements.clone();
             }
@@ -69,7 +79,7 @@ impl MCResourceLoader {
 
             return self.collapse_parents(&parent);
         } else {
-            return InternedBlockModel::try_from_intermediate(model);
+            return Ok(InternedBlockModel::try_from_intermediate(model).unwrap());
         }
     }
     pub fn load_block_states_str(&self, block_name: &str) -> Option<&BlockStates> {
@@ -89,7 +99,7 @@ impl MCResourceLoader {
             .unwrap_or(("minecraft", block_name_str));
         let namespace = split.0;
         let block_name_split = split.1;
-        let mut path = SmolStrBuilder::new();
+        let mut path = String::new();
         path.push_str(&ASSET_PATH);
         path.push_str(namespace);
         path.push_str("/");
@@ -97,10 +107,9 @@ impl MCResourceLoader {
 
         path.push_str(block_name_split);
         path.push_str(".json");
-        let path = path.finish();
 
         let new_state = BlockStates::new(&path, &self);
-        if let Some(state) = new_state {
+        if let Ok(state) = new_state {
             let index = self.cached_block_states.len();
             self.cached_block_states.push(state);
             self.block_state_map.insert(block_name, Some(index));
@@ -119,7 +128,7 @@ impl MCResourceLoader {
             BlockStates::MultiPart(multipart) => {
                 multipart.load_models(&block.properties, &self.rodeo)
             }
-            BlockStates::Variants(variants) => variants.get_model(&block.properties),
+            BlockStates::Variants(variants) => variants.get_model_variants(&block.properties),
         };
         variants
     }

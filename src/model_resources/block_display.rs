@@ -1,6 +1,7 @@
+use anyhow::{Context, Ok};
 use serde_json::Value;
 
-use super::utils::{parse_array, parse_f32_3};
+use super::utils::parse_array;
 
 #[derive(Debug, Clone)]
 enum DisplayPosition {
@@ -43,20 +44,17 @@ impl TryFrom<(&str, &Value)> for BlockDisplay {
     fn try_from(value: (&str, &Value)) -> anyhow::Result<Self> {
         let position = value.0;
         let data = value.1;
-        let rotation = data.get("rotation").map(|f| parse_array::<f64, 3>(value))?;
-        let translation = data
-            .get("translation")
-            .map(|f| parse_f32_3(f))
-            .unwrap_or(Vec3::ZERO);
-        let scale = data
-            .get("scale")
-            .map(|f| parse_f32_3(f))
-            .unwrap_or(Vec3::ZERO);
+        let rotation: Option<Result<[f32; 3], anyhow::Error>> =
+            data.get("rotation").map(|f| parse_array::<f32, 3>(f));
+        let translation: Option<Result<[f32; 3], anyhow::Error>> =
+            data.get("translation").map(|f| parse_array::<f32, 3>(f));
+        let scale: Option<Result<[f32; 3], anyhow::Error>> =
+            data.get("scale").map(|f| parse_array::<f32, 3>(f));
         let res = BlockDisplay {
-            position: position.try_into()?,
-            rotation,
-            translation,
-            scale,
+            position: position.into(),
+            rotation: rotation.unwrap_or(Ok([0f32; 3]))?,
+            translation: translation.unwrap_or(Ok([0f32; 3]))?,
+            scale: scale.unwrap_or(Ok([1f32; 3]))?,
         };
 
         Ok(res)
@@ -64,12 +62,12 @@ impl TryFrom<(&str, &Value)> for BlockDisplay {
 }
 
 impl BlockDisplay {
-    pub fn parse_display(value: &Value) -> Vec<BlockDisplay> {
-        value
+    pub fn parse_display(value: &Value) -> anyhow::Result<Vec<BlockDisplay>> {
+        Ok(value
             .as_object()
-            .expect("display was not object")
+            .context("Attempted to parse a block display that wasn't an object")?
             .iter()
-            .map(|(name, value)| BlockDisplay::try_from((name.as_str(), value)).unwrap())
-            .collect::<Vec<BlockDisplay>>()
+            .map(|(name, value)| BlockDisplay::try_from((name.as_str(), value)))
+            .collect::<anyhow::Result<Vec<BlockDisplay>>>())?
     }
 }

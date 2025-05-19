@@ -4,10 +4,10 @@ use bytes::Bytes;
 use lasso::ThreadedRodeo;
 
 use crate::{
-    block::{self, InternedBlock},
+    block::InternedBlock,
     block_states::InternedBlockState,
     nbt::{nbt_compound::NBTCompound, nbt_tag::NBTTag},
-    palette::{BlockPalette, Palette},
+    palette::BlockPalette,
 };
 
 use super::loaded_world::{ChunkCoords, WorldCoords};
@@ -198,26 +198,15 @@ impl Chunk {
     // }
 }
 
-impl<T: Palette<InternedBlock>> ChunkSection<T> {
-    #[inline(always)]
-    pub fn get_block(&self, x: usize, sec_y: usize, z: usize) -> Option<&InternedBlock> {
-        let num = self
-            .block_data
-            .get((sec_y * 16 * 16 + z * 16 + x) as usize)
-            .expect("invalid index");
-        self.block_palette.get(*num)
-    }
-}
-
 #[derive(Debug, Clone)]
-pub struct ChunkSection<T> {
+pub struct ChunkSection {
     pub ypos: i8,
-    pub(crate) block_palette: T,
+    pub(crate) block_palette: BlockPalette,
     pub block_data: [u32; 4096],
     pub biome_data: [u32; 4096],
 }
 
-impl<T> ChunkSection<T> {
+impl ChunkSection {
     pub(crate) fn with_palette_from_compound(interner: &Arc<ThreadedRodeo>) -> Self {
         unimplemented!()
     }
@@ -333,7 +322,14 @@ impl<T> ChunkSection<T> {
         let mask = (1 << bits_per_index) - 1;
         ((packed_array[element_index as usize] >> bit_position) & mask) as u32
     }
-
+    #[inline(always)]
+    pub fn get_block(&self, x: usize, sec_y: usize, z: usize) -> Option<&InternedBlock> {
+        let num = self
+            .block_data
+            .get((sec_y * 16 * 16 + z * 16 + x) as usize)
+            .expect("invalid index");
+        self.block_palette.get(*num)
+    }
     fn pp(data: &[i64], x: u16, y: u16, z: u16) -> u32 {
         let bits_per_block = 4;
         let idx = Self::extract_index(data, (256 * y + 16 * z + x).into(), bits_per_block);

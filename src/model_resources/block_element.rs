@@ -1,15 +1,28 @@
-use std::sync::Arc;
+use std::{any, sync::Arc};
 
-use glam::{Affine3A, Mat3A, Mat4, Quat, Vec2, Vec3, Vec3A};
+use anyhow::{anyhow, Context, Error};
 use lasso::ThreadedRodeo;
 use serde_json::Value;
 
-use super::{block_face::InternedFace, utils::parse_f32_3};
-pub type Shade = bool;
+use super::{block_face::InternedFace, utils::parse_array};
+
+#[derive(Debug, Clone, Copy)]
+pub struct Shade(bool);
+impl From<bool> for Shade {
+    fn from(value: bool) -> Self {
+        Self(value)
+    }
+}
+impl From<&bool> for Shade {
+    fn from(value: &bool) -> Self {
+        Self(*value)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct InternedBlockElement {
-    pub from: Vec3,
-    pub to: Vec3,
+    pub from: [f32; 3],
+    pub to: [f32; 3],
     pub rotation: Option<ElementRotation>,
     shade: Option<Shade>,
     pub faces: [Option<InternedFace>; 6],
@@ -19,114 +32,195 @@ impl InternedBlockElement {
     pub fn is_cube(&self) -> bool {
         !self.faces.iter().any(|f| f.is_none())
             && self.rotation.is_none()
-            && self.from == Vec3::ZERO
-            && self.to == Vec3::splat(16.0)
+            && self.from == [0f32; 3]
+            && self.to == [16.0f32; 3]
     }
     pub fn is_axis_aligned(&self) -> bool {
         match &self.rotation {
-            Some(rotation) => rotation.angle == 0.0,
+            Some(rotation) => rotation.angle.0 == 0.0,
             None => true,
         }
     }
-    pub fn from_json_value(value: &Value, rodeo: &Arc<ThreadedRodeo>) -> Self {
-        let from = parse_f32_3(
+    pub fn from_json_value(value: &Value, rodeo: &Arc<ThreadedRodeo>) -> anyhow::Result<Self> {
+        let from = parse_array::<f32, 3>(
             value
                 .get("from")
-                .expect("from does not exist in block element"),
-        );
-        let to = parse_f32_3(value.get("to").expect("to does not exist in block element"));
-        let rotation = value
+                .context("\"from\" field did not exist in block element")?,
+        )?;
+        let to = parse_array::<f32, 3>(
+            value
+                .get("to")
+                .expect("\"to\" field did not exist for block element"),
+        )?;
+        let rotation: Option<ElementRotation> = value
             .get("rotation")
-            .map(|value| ElementRotation::from(value));
-        let shade = value
+            .map(|value| ElementRotation::try_from(value))
+            .transpose()?;
+        let shade: Option<Shade> = value
             .get("shade")
-            .map(|value| value.as_bool().expect("shade existed but was not bool"));
-        let faces =
-            InternedFace::parse_faces(value.get("faces").expect("faces not defined"), rodeo);
-        InternedBlockElement {
+            .map(|value| value.as_bool().context("shade existed but was not bool"))
+            .transpose()?
+            .map(|bool| bool.into());
+
+        let faces: [Option<InternedFace>; 6] = InternedFace::parse_faces(
+            value
+                .get("faces")
+                .context("\"faces\" field not defined for block element")?,
+            rodeo,
+        )?;
+        Ok(InternedBlockElement {
             from,
             to,
             rotation,
             shade,
             faces,
-        }
+        })
     }
-    pub fn parse_elements(value: &Value, rodeo: &Arc<ThreadedRodeo>) -> Vec<InternedBlockElement> {
+    pub fn parse_elements(
+        value: &Value,
+        rodeo: &Arc<ThreadedRodeo>,
+    ) -> anyhow::Result<Vec<InternedBlockElement>> {
         value
             .as_array()
-            .expect("elements was not an array")
+            .context("Attempted to parse block elements that were not in an array")?
             .iter()
             .map(|value| InternedBlockElement::from_json_value(value, rodeo))
-            .collect::<Vec<_>>()
+            .collect::<anyhow::Result<Vec<_>>>()
     }
 }
 
-impl From<&Value> for ElementAxis {
-    fn from(value: &Value) -> Self {
-        match value.as_str().expect("axis was not str") {
-            "x" => ElementAxis::X,
-            "y" => ElementAxis::Y,
-            "z" => ElementAxis::Z,
-            _ => {
-                panic!("invalid axis for element")
-            }
+impl TryFrom<&Value> for ElementAxis {
+    type Error = anyhow::Error;
+    fn try_from(value: &Value) -> Result<Self, Error> {
+        match value.as_str().context(format!(
+            "Element axis value must be a string, json value : {}",
+            value.to_string()
+        ))? {
+            "x" => Ok(ElementAxis::X),
+            "y" => Ok(ElementAxis::Y),
+            "z" => Ok(ElementAxis::Z),
+            "X" => Ok(ElementAxis::X),
+            "Y" => Ok(ElementAxis::Y),
+            "Z" => Ok(ElementAxis::Z),
+            _ => Err(anyhow!("Element axis value must be x, y or z")),
         }
     }
 }
 
-impl From<&Value> for ElementRotation {
-    fn from(value: &Value) -> Self {
-        let origin = parse_f32_3(value.get("origin").expect("rotation missing origin"));
-        let axis = ElementAxis::from(value.get("axis").expect("rotation missing axis"));
+impl TryFrom<&Value> for ElementRotation {
+    type Error = anyhow::Error;
+    fn try_from(value: &Value) -> Result<Self, Error> {
+        let origin = parse_array::<f32, 3>(
+            value
+                .get("origin")
+                .context("Element rotation was missing \"origin\" field ")?,
+        )?;
+        let axis = ElementAxis::try_from(
+            value
+                .get("axis")
+                .context("Element rotation was missing \"axis\" field")?,
+        )?;
         let angle = value
             .get("angle")
-            .expect("rotation missing angle")
+            .context("Element rotation was missing \"angle\" field")?
             .as_f64()
-            .expect("angle was not number") as f32;
-        let rescale = value
-            .get("rescale")
-            .map(|value| value.as_bool().expect("rescale was not bool"));
-        ElementRotation {
+            .context("\"angle\"field was not a number")? as f32;
+        let rescale = value.get("rescale");
+        let rescale: Option<Rescale> = match rescale {
+            Some(value) => Some(
+                value
+                    .as_bool()
+                    .context("\"rescale\" value was not a boolean")?
+                    .into(),
+            ),
+            None => None,
+        };
+        Ok(ElementRotation {
             origin,
             axis,
-            angle,
-            rescale,
-        }
+            angle: angle.try_into()?,
+            rescale: rescale,
+        })
     }
 }
 
 #[derive(Debug, Clone, Copy)]
-enum ElementAxis {
+pub enum ElementAxis {
     X,
     Y,
     Z,
 }
-pub type Angle = f32;
-pub type Rescale = bool;
-#[derive(Debug, Clone)]
-pub struct ElementRotation {
-    origin: Vec3,
-    axis: ElementAxis,
-    angle: Angle,
-    rescale: Option<Rescale>,
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Angle(f32);
+
+impl TryFrom<f32> for Angle {
+    type Error = anyhow::Error;
+
+    fn try_from(value: f32) -> Result<Self, Self::Error> {
+        match value.is_finite() {
+            true => Ok(Angle(value)),
+            false => Err(anyhow!("Infinite or NaN angle value")),
+        }
+    }
+}
+impl TryFrom<&f32> for Angle {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &f32) -> Result<Self, Self::Error> {
+        match value.is_finite() {
+            true => Ok(Angle(*value)),
+            false => Err(anyhow!("Infinite or NaN angle value")),
+        }
+    }
+}
+impl TryFrom<f64> for Angle {
+    type Error = anyhow::Error;
+
+    fn try_from(value: f64) -> Result<Self, Self::Error> {
+        match value.is_finite() {
+            true => Ok(Angle(value as f32)),
+            false => Err(anyhow!("Infinite or NaN angle value")),
+        }
+    }
+}
+impl TryFrom<&f64> for Angle {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &f64) -> Result<Self, Self::Error> {
+        match value.is_finite() {
+            true => Ok(Angle(*value as f32)),
+            false => Err(anyhow!("Infinite or NaN angle value")),
+        }
+    }
+}
+impl Into<f32> for Angle {
+    fn into(self) -> f32 {
+        self.0
+    }
 }
 
-impl ElementRotation {
-    pub fn to_matrix(&self) -> Affine3A {
-        let origin = self.origin;
-        let radians = self.angle.to_radians();
-        let rotation_axis = match self.axis {
-            ElementAxis::X => Vec3::X,
-            ElementAxis::Y => Vec3::Y,
-            ElementAxis::Z => Vec3::Z,
-        };
-        let matrix = Affine3A::from_scale_rotation_translation(
-            Vec3::ONE,
-            Quat::from_axis_angle(rotation_axis, radians),
-            -origin,
-        );
-
-        if self.rescale.unwrap_or(false) {}
-        matrix
+impl<'a> Into<&'a f32> for &'a Angle {
+    fn into(self) -> &'a f32 {
+        &self.0
     }
+}
+#[derive(Debug, Clone, Copy)]
+pub struct Rescale(bool);
+impl From<bool> for Rescale {
+    fn from(value: bool) -> Self {
+        Self(value)
+    }
+}
+impl From<&bool> for Rescale {
+    fn from(value: &bool) -> Self {
+        Self(*value)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ElementRotation {
+    pub origin: [f32; 3],
+    pub axis: ElementAxis,
+    pub angle: Angle,
+    pub rescale: Option<Rescale>,
 }

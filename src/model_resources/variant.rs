@@ -1,11 +1,14 @@
-use std::sync::Arc;
+use std::{any, sync::Arc};
 
+use anyhow::{anyhow, Context, Error};
 use lasso::ThreadedRodeo;
+use log::error;
 use serde_json::Value;
 
 use crate::MCResourceLoader;
 
 use super::{
+    block::InternedBlock,
     block_models::{BlockRotation, InternedBlockModel, ASSET_PATH},
     block_states::InternedBlockState,
 };
@@ -13,9 +16,91 @@ use super::{
 
 pub struct Weight(f32);
 
+impl TryFrom<f32> for Weight {
+    type Error = anyhow::Error;
+
+    fn try_from(value: f32) -> Result<Self, Self::Error> {
+        if value.is_finite() {
+            Ok(Self(value))
+        } else {
+            return Err(anyhow!("NaN or infinite value for weight"));
+        }
+    }
+}
+
+impl TryFrom<&f32> for Weight {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &f32) -> Result<Self, Self::Error> {
+        if value.is_finite() {
+            Ok(Self(*value))
+        } else {
+            return Err(anyhow!("NaN or infinite value for weight"));
+        }
+    }
+}
+
+impl TryFrom<f64> for Weight {
+    type Error = anyhow::Error;
+
+    fn try_from(value: f64) -> Result<Self, Self::Error> {
+        if value.is_finite() {
+            Ok(Self(value as f32))
+        } else {
+            return Err(anyhow!("NaN or infinite value for weight"));
+        }
+    }
+}
+
+impl TryFrom<&f64> for Weight {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &f64) -> Result<Self, Self::Error> {
+        if value.is_finite() {
+            Ok(Self(*value as f32))
+        } else {
+            return Err(anyhow!("NaN or infinite value for weight"));
+        }
+    }
+}
+
+impl TryFrom<&Value> for Weight {
+    type Error = anyhow::Error;
+    fn try_from(value: &Value) -> Result<Self, Error> {
+        Ok(value
+            .as_f64()
+            .context("\"weight\" field was not a number")?
+            .try_into()?)
+    }
+}
+
 #[derive(Debug, Clone)]
 
 pub struct UvLock(bool);
+
+impl From<bool> for UvLock {
+    fn from(value: bool) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&bool> for UvLock {
+    fn from(value: &bool) -> Self {
+        Self(*value)
+    }
+}
+
+impl TryFrom<&Value> for UvLock {
+    type Error = anyhow::Error;
+    fn try_from(value: &Value) -> Result<Self, Error> {
+        Ok(UvLock(
+            value
+                .as_bool()
+                .context("\"uvlock\" field was not bool")?
+                .into(),
+        ))
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum ModelVariant {
@@ -39,7 +124,7 @@ pub struct VariantEntry {
 }
 
 impl Variants {
-    pub fn get_model(&self, block_state: &InternedBlockState) -> Vec<ModelVariant> {
+    pub fn get_model_variants(&self, block_state: &InternedBlockState) -> Vec<ModelVariant> {
         //dbg!(&block_state);
 
         let mut a: Vec<_> = self
@@ -79,47 +164,49 @@ impl Variants {
 }
 
 impl ModelVariant {
-    pub fn from_json_value(value: &Value, loader: &MCResourceLoader) -> Option<Self> {
+    pub fn from_json_value(value: &Value, loader: &MCResourceLoader) -> anyhow::Result<Self> {
         match value.is_array() {
             true => {
-                let entries = value
+                let entries: Vec<VariantEntry> = value
                     .as_array()
                     .unwrap()
                     .iter()
-                    .filter_map(|entry| VariantEntry::from_json_value(entry, loader))
-                    .collect::<Vec<_>>();
-                Some(ModelVariant::ModelArray(entries))
+                    .map(|entry| VariantEntry::from_json_value(entry, loader))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(ModelVariant::ModelArray(entries))
             }
-            false => Some(ModelVariant::SingleModel(VariantEntry::from_json_value(
+            false => Ok(ModelVariant::SingleModel(VariantEntry::from_json_value(
                 value, loader,
             )?)),
         }
     }
 }
 impl Variants {
-    pub(crate) fn from_json_value(value: &Value, loader: &MCResourceLoader) -> Self {
-        let variants = value
+    pub(crate) fn from_json_value(
+        value: &Value,
+        loader: &MCResourceLoader,
+    ) -> anyhow::Result<Self> {
+        let model_variants: Result<Vec<(InternedBlockState, ModelVariant)>, anyhow::Error> = value
             .as_object()
-            .expect("variants was not object")
+            .context("variants was not object")?
             .iter()
-            .filter_map(|(variant_properties, variant_entry)| {
-                let variant_entry = ModelVariant::from_json_value(variant_entry, loader);
-                if variant_entry.is_none() {
-                    None
-                } else {
-                    Some((
-                        InternedBlockState::from_str(&variant_properties, loader),
-                        variant_entry.unwrap(),
-                    ))
-                }
+            .map(|(variant_properties, variant_entry)| {
+                let variant_entry = ModelVariant::from_json_value(variant_entry, loader)?;
+                Ok((
+                    InternedBlockState::from_str(&variant_properties, loader),
+                    variant_entry,
+                ))
             })
-            .collect();
-        return Variants { variants };
+            .collect::<Result<Vec<_>, _>>();
+
+        return Ok(Variants {
+            variants: model_variants?,
+        });
     }
 }
 
 impl VariantEntry {
-    fn from_json_value(value: &Value, loader: &MCResourceLoader) -> Option<Self> {
+    fn from_json_value(value: &Value, loader: &MCResourceLoader) -> anyhow::Result<Self> {
         let model = value
             .get("model")
             .expect("variant did not have model")
@@ -127,28 +214,28 @@ impl VariantEntry {
             .expect("model was not str");
         let spur = loader.rodeo.get_or_intern(model);
         let block_model = loader.load_block_model(spur)?;
-        let y_rotation = value.get("y").map(|value| BlockRotation::from(value));
-        let x_rotation = value.get("x").map(|value| BlockRotation::from(value));
-        let uv_lock = value.get("uvlock").map(|value| UvLock::from(value));
-        let weight = value.get("weight").map(|value| Weight::from(value));
-        Some(VariantEntry {
+        let y_rotation = value
+            .get("y")
+            .map(|value| BlockRotation::try_from(value))
+            .transpose()?;
+        let x_rotation = value
+            .get("x")
+            .map(|value| BlockRotation::try_from(value))
+            .transpose()?;
+        let uv_lock = value
+            .get("uvlock")
+            .map(|value| UvLock::try_from(value))
+            .transpose()?;
+        let weight = value
+            .get("weight")
+            .map(|value| Weight::try_from(value))
+            .transpose()?;
+        Ok(VariantEntry {
             model: block_model,
             rotation_x: x_rotation,
             rotation_y: y_rotation,
             uv_lock: uv_lock,
             weight,
         })
-    }
-}
-
-impl From<&Value> for UvLock {
-    fn from(value: &Value) -> Self {
-        UvLock(value.as_bool().expect("uvlock was not bool"))
-    }
-}
-
-impl From<&Value> for Weight {
-    fn from(value: &Value) -> Self {
-        Weight(value.as_f64().expect("weight was not a number") as f32)
     }
 }

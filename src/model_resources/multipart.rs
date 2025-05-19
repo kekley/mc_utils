@@ -1,5 +1,6 @@
 use std::{slice, sync::Arc};
 
+use anyhow::{Context, Ok};
 use lasso::{Spur, ThreadedRodeo};
 use serde_json::Value;
 
@@ -141,70 +142,78 @@ impl When {
 }
 
 impl Multipart {
-    pub fn new(value: &Value, loader: &MCResourceLoader) -> Self {
+    pub fn new(value: &Value, loader: &MCResourceLoader) -> anyhow::Result<Self> {
         let cases = value
             .as_array()
-            .expect("multipart was not array of cases")
+            .context("\"multipart\" field was not an array")?
             .iter()
-            .filter_map(|value| Case::new(value, &loader))
-            .collect::<Vec<_>>();
-        Multipart { cases: cases }
+            .map(|value| Case::new(value, &loader))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Multipart { cases: cases })
     }
 }
 
 impl Case {
-    pub fn new(value: &Value, loader: &MCResourceLoader) -> Option<Self> {
-        let when = value.get("when").map(|value| {
-            if let Some(value) = value.get("OR") {
-                let array = value.as_array().expect("OR case was not array");
-                let block_states = collect_blockstates(array, loader);
-                When::OrCase(block_states)
-            } else if let Some(value) = value.get("AND") {
-                let array = value.as_array().expect("AND case was not array");
-                let block_states = collect_blockstates(array, loader);
-                When::AndCase(block_states)
-            } else {
-                let a = collect_blockstates(slice::from_ref(&value), loader);
-                let a = a[0].clone();
-                let block_state = a;
-                When::SingleCase(block_state)
-            }
-        });
+    pub fn new(value: &Value, loader: &MCResourceLoader) -> anyhow::Result<Self> {
+        let when = value
+            .get("when")
+            .map(|value| {
+                if let Some(value) = value.get("OR") {
+                    let array = value.as_array().context("OR case was not array")?;
+                    let block_states = collect_blockstates(array, loader)?;
+                    Ok(When::OrCase(block_states))
+                } else if let Some(value) = value.get("AND") {
+                    let array = value.as_array().context("AND case was not array")?;
+                    let block_states = collect_blockstates(array, loader)?;
+                    Ok(When::AndCase(block_states))
+                } else {
+                    let a = collect_blockstates(slice::from_ref(&value), loader)?;
+                    let a = a[0].clone();
+                    let block_state = a;
+                    Ok(When::SingleCase(block_state))
+                }
+            })
+            .transpose()?;
 
         let variant = ModelVariant::from_json_value(
             value
                 .get("apply")
-                .expect("no model specified for apply field in multipart"),
+                .context("no model specified for apply field in multipart")?,
             loader,
         )?;
         let apply = Apply { variant: variant };
 
-        Some(Case { when, apply: apply })
+        Ok(Case { when, apply: apply })
     }
 }
 
-fn collect_blockstates(value: &[Value], loader: &MCResourceLoader) -> Vec<InternedBlockState> {
+fn collect_blockstates(
+    value: &[Value],
+    loader: &MCResourceLoader,
+) -> anyhow::Result<Vec<InternedBlockState>> {
     let rodeo = &loader.rodeo;
     value
         .iter()
         .map(|block_state_entry| {
             let properties: Vec<(Spur, Spur)> = block_state_entry
                 .as_object()
-                .expect("or case entry was not obj")
+                .context("or case entry was not obj")?
                 .iter()
                 .map(|(name, field)| {
                     let name_spur = rodeo.get_or_intern(name);
                     let field_spur = rodeo.get_or_intern(
-                        field.as_str().expect("field in multipart case was not str"),
+                        field
+                            .as_str()
+                            .context("field in multipart case was not str")?,
                     );
-                    (name_spur, field_spur)
+                    Ok((name_spur, field_spur))
                 })
-                .collect();
+                .collect::<Result<Vec<_>, _>>()?;
 
             let r = InternedBlockState {
                 properties: properties,
             };
-            r
+            Ok(r)
         })
-        .collect::<Vec<_>>()
+        .collect::<Result<Vec<_>, _>>()
 }

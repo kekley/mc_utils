@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, Context};
 use serde_json::Value;
-use std::mem::MaybeUninit;
+use std::{error::Error, mem::MaybeUninit};
 /*
 pub fn parse_f32_3(value: &Value) -> anyhow::Result<[f32; 3]> {
     let values = value.as_array().context("Value was not an array")?;
@@ -21,31 +21,19 @@ pub fn parse_vec4(value: &Value) -> Vec4 {
     Vec4::from_array(result)
 } */
 
-pub fn parse_array<
-    'a,
-    T: TryFrom<&'a serde_json::Value, Error = serde_json::Error>,
-    const N: usize,
->(
-    value: &'a Value,
+pub fn parse_array<T: for<'a> serde::de::Deserialize<'a>, const N: usize>(
+    value: &Value,
 ) -> anyhow::Result<[T; N]> {
-    let values = value
+    let values: &Vec<Value> = value
         .as_array()
         .context("Attempted to parse a non array value as an array")?;
     if values.len() != N {
         bail!("Expected array length of {N}, got {} instead", values.len())
     }
-    let mut array: [MaybeUninit<T>; N] = [const { MaybeUninit::uninit() }; N];
+    let mut uninit_array: [MaybeUninit<T>; N] = [const { MaybeUninit::uninit() }; N];
 
-    for i in 0..N {
-        match T::try_from(&values[i]) {
-            Ok(value) => {
-                array[i].write(value);
-            }
-            Err(err) => {
-                return Err(anyhow!(err));
-            }
-        }
+    for (i, value) in values.iter().enumerate() {
+        uninit_array[i].write(T::deserialize(value)?);
     }
-    let init: [T; N] = array.map(|uninit| unsafe { uninit.assume_init() });
-    Ok(init)
+    Ok(uninit_array.map(|uninit| unsafe { uninit.assume_init() }))
 }

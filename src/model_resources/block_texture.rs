@@ -1,12 +1,11 @@
-use std::sync::Arc;
+use std::{array, sync::Arc};
 
-use glam::Vec4;
 use lasso::{Spur, ThreadedRodeo};
 use serde_json::Value;
-use smol_str::SmolStr;
 
-use super::{block_models::ASSET_PATH, utils::parse_vec4};
+use super::{block_models::ASSET_PATH, utils::parse_array};
 
+#[repr(C)]
 #[derive(Debug, Clone)]
 pub struct Uv {
     pub x1: f32,
@@ -19,15 +18,22 @@ impl Uv {
     pub fn new(x1: f32, x2: f32, y1: f32, y2: f32) -> Self {
         Self { x1, y1, x2, y2 }
     }
-    pub fn to_vec4(&self) -> Vec4 {
-        let Uv { x1, y1, x2, y2 } = self;
-        Vec4::new(*x1, *y1, *x2, *y2)
+    pub fn into_array(self) -> [f32; 4] {
+        let ptr = &self as *const Uv;
+        unsafe { *ptr.cast::<f32>().cast::<[f32; 4]>() }
+    }
+    pub fn as_slice(&self) -> &[f32] {
+        let ptr = self as *const Uv;
+        unsafe { &*ptr.cast::<f32>().cast::<&[f32]>() }
     }
 }
 
-impl From<&Value> for Uv {
-    fn from(value: &Value) -> Uv {
-        Uv::from(parse_vec4(value).to_array())
+impl TryFrom<&Value> for Uv {
+    type Error = anyhow::Error;
+    //expects an array of f32 of length 4
+    fn try_from(value: &Value) -> Result<Self, Self::Error> {
+        let a = parse_array::<f32, 4>(value)?;
+        Ok(Uv::from(a))
     }
 }
 impl From<[f32; 4]> for Uv {
@@ -77,14 +83,14 @@ impl BlockTextures {
         self.textures.iter().map(|entry| entry.0).collect()
     }
 
-    fn path_inner(variable: &InternedTextureVariable, rodeo: &ThreadedRodeo) -> SmolStr {
+    fn path_inner(variable: &InternedTextureVariable, rodeo: &ThreadedRodeo) -> String {
         let path_str = rodeo.resolve(&variable.get_inner());
         let (namespace, remaining_str) = path_str.split_once(":").unwrap_or(("", path_str));
 
         let (texture_type, remaining_str) = remaining_str
             .split_once("/")
             .expect("invalid path for texture");
-        SmolStr::new(
+        String::from(
             ASSET_PATH.to_string()
                 + namespace
                 + "/"

@@ -1,10 +1,4 @@
-use std::{
-    fs::{self, File},
-    hash::Hash,
-    ops::Deref,
-    sync::Arc,
-    time::Instant,
-};
+use std::{hash::Hash, ops::Deref, sync::Arc, time::Instant};
 
 use anyhow::Context;
 use dashmap::DashMap;
@@ -97,21 +91,20 @@ pub struct World {
 impl World {
     pub(crate) fn new(folder_path: &str, interner: &Arc<ThreadedRodeo>) -> anyhow::Result<World> {
         info!("Opening world folder");
-        let start = Instant::now();
         let palette = BlockPalette::new_inner(interner);
-        let mut temp = Self {
+        let temp = Self {
             path: folder_path.to_owned(),
             interner: interner.clone(),
             global_palette: palette,
             chunk_cache: DashMap::with_hasher(FxBuildHasher::default()),
         };
         dbg!(folder_path);
-        let time = Instant::now().duration_since(start);
+
         Ok(temp)
     }
 
     pub fn get_region_lazy(&self, region_coords: RegionCoords) -> Option<LazyRegion> {
-        info!()
+        info!("Creating lazy region loader for region {region_coords:?}");
         let x = region_coords.x;
         let z = region_coords.z;
         let mut path_str = String::new();
@@ -122,6 +115,7 @@ impl World {
     }
 
     pub fn load_region(&self, region_coords: RegionCoords) -> Option<LoadedRegion> {
+        info!("Creating loaded region for: {region_coords:?}");
         self.get_region_lazy(region_coords).map(|f| (&f).into())
     }
 }
