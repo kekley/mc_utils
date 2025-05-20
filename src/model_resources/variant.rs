@@ -142,6 +142,9 @@ impl Variants {
         if a.len() == 0 && self.variants.len() != 0 {
             a.push(self.variants[0].1.clone());
         }
+        if a.len() == 0 {
+            error!("uh");
+        }
         a
     }
     pub fn parse_path(model_path: &str) -> String {
@@ -209,9 +212,9 @@ impl VariantEntry {
     fn from_json_value(value: &Value, loader: &MCResourceLoader) -> anyhow::Result<Self> {
         let model = value
             .get("model")
-            .expect("variant did not have model")
+            .context("variant did not have model")?
             .as_str()
-            .expect("model was not str");
+            .context("model was not str")?;
         let spur = loader.rodeo.get_or_intern(model);
         let block_model = loader.load_block_model(spur)?;
         let y_rotation = value

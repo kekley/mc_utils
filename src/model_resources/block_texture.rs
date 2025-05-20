@@ -18,14 +18,6 @@ impl Uv {
     pub fn new(x1: f32, x2: f32, y1: f32, y2: f32) -> Self {
         Self { x1, y1, x2, y2 }
     }
-    pub fn into_array(self) -> [f32; 4] {
-        let ptr = &self as *const Uv;
-        unsafe { *ptr.cast::<f32>().cast::<[f32; 4]>() }
-    }
-    pub fn as_slice(&self) -> &[f32] {
-        let ptr = self as *const Uv;
-        unsafe { &*ptr.cast::<f32>().cast::<&[f32]>() }
-    }
 }
 
 impl TryFrom<&Value> for Uv {

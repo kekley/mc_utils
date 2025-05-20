@@ -38,6 +38,8 @@ impl InternedFace {
             .collect::<Result<Vec<_>>>()?;
 
         let mut array = [NONE_VALUE; 6];
+        vec.iter()
+            .for_each(|face| array[face.name as usize] = Some(face.clone()));
         Ok(array)
     }
 }

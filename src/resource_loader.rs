@@ -6,6 +6,7 @@ use bytes::Bytes;
 use dashmap::{DashMap, RwLock};
 use fxhash::FxBuildHasher;
 use lasso::{Spur, ThreadedRodeo};
+use log::debug;
 
 use crate::{
     block::InternedBlock,
@@ -34,7 +35,9 @@ impl MCResourceLoader {
         if let Some(index) = self.block_model_map.get((&parent_model).into()) {
             return Ok(&self.cached_block_models[index.clone().unwrap()]);
         }
+
         let str = self.rodeo.resolve((&parent_model).into());
+
         let path = IntermediateBlockModel::parent_to_path(str);
         let tmp = IntermediateBlockModel::from_json(&path, &self.rodeo);
         if let Ok(model) = tmp {
@@ -79,7 +82,7 @@ impl MCResourceLoader {
 
             return self.collapse_parents(&parent);
         } else {
-            return Ok(InternedBlockModel::try_from_intermediate(model).unwrap());
+            return InternedBlockModel::try_from_intermediate(model).ok_or(anyhow!("umm"));
         }
     }
     pub fn load_block_states_str(&self, block_name: &str) -> Option<&BlockStates> {
