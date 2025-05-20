@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use lasso::{Interner, Reader, Resolver, Rodeo, Spur, ThreadedRodeo};
 
-use crate::{block::InternedBlock, block_states::InternedBlockState};
+use crate::block::InternedBlock;
 pub type PaletteIndex = u32;
 
 impl Resolver for InternerType {

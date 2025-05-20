@@ -1,6 +1,6 @@
-use std::{hash::Hash, sync::Arc};
+use std::hash::Hash;
 
-use lasso::{Interner, Spur, ThreadedRodeo};
+use lasso::{Interner, Spur};
 
 use crate::MCResourceLoader;
 

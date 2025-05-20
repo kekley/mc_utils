@@ -7,7 +7,7 @@ use serde_json::Value;
 use crate::MCResourceLoader;
 
 use super::{
-    block_states::{InternedBlockState, State, StateName},
+    block_states::InternedBlockState,
     variant::ModelVariant,
 };
 

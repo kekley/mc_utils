@@ -1,17 +1,11 @@
-use std::{hash::Hash, ops::Deref, sync::Arc, time::Instant};
+use std::{hash::Hash, sync::Arc};
 
-use anyhow::Context;
 use dashmap::DashMap;
 use fxhash::FxBuildHasher;
-use hashbrown::HashMap;
 use lasso::{Spur, ThreadedRodeo};
 use log::info;
 
-use crate::{
-    block::InternedBlock,
-    palette::{BlockPalette, InternerType},
-    MCResourceLoader,
-};
+use crate::palette::BlockPalette;
 
 use super::{
     chunk::Chunk,

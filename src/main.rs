@@ -1,5 +1,5 @@
 use spider_eye::{
-    loaded_world::WorldCoords, resource::BlockStates, MCResourceLoader, SpiderEyeError,
+    MCResourceLoader, SpiderEyeError,
 };
 
 extern crate spider_eye;

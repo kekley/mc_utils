@@ -1,8 +1,7 @@
-use std::{fs, sync::Arc};
+use std::fs;
 
 use anyhow::{anyhow, Context};
-use lasso::ThreadedRodeo;
-use log::{debug, error, info};
+use log::{error, info};
 use serde_json::Value;
 
 use crate::MCResourceLoader;

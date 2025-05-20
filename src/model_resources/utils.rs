@@ -1,6 +1,6 @@
-use anyhow::{anyhow, bail, Context};
+use anyhow::{bail, Context};
 use serde_json::Value;
-use std::{error::Error, mem::MaybeUninit};
+use std::mem::MaybeUninit;
 /*
 pub fn parse_f32_3(value: &Value) -> anyhow::Result<[f32; 3]> {
     let values = value.as_array().context("Value was not an array")?;

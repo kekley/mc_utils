@@ -1,6 +1,5 @@
-use std::{hash::Hash, sync::Arc};
+use std::hash::Hash;
 
-use lasso::ThreadedRodeo;
 
 use crate::{loaded_world::InternedBlockName, MCResourceLoader};
 

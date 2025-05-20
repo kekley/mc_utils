@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Error, Result};
 use lasso::ThreadedRodeo;
-use log::error;
 use serde_json::Value;
 
 use super::{

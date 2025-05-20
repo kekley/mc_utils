@@ -3,10 +3,9 @@ use std::sync::Arc;
 use anyhow::anyhow;
 use aovec::Aovec;
 use bytes::Bytes;
-use dashmap::{DashMap, RwLock};
+use dashmap::DashMap;
 use fxhash::FxBuildHasher;
 use lasso::{Spur, ThreadedRodeo};
-use log::debug;
 
 use crate::{
     block::InternedBlock,

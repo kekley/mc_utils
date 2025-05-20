@@ -1,5 +1,5 @@
-use std::fs::{self, File};
-use std::io::{self, BufReader, Cursor, Read, Seek};
+use std::fs::{File};
+use std::io::{self, Cursor, Read, Seek};
 use std::os::unix::fs::MetadataExt;
 use std::sync::Arc;
 use std::{usize, vec};
@@ -9,7 +9,7 @@ use crate::chunk::Chunk;
 use crate::nbt::compression::{CompressionData, CompressionScheme};
 use crate::nbt_compound::NBTCompound;
 
-use anyhow::{anyhow, Context, Ok};
+use anyhow::Ok;
 use bytes::Bytes;
 use lasso::ThreadedRodeo;
 

@@ -1,4 +1,4 @@
-use std::{array, sync::Arc};
+use std::sync::Arc;
 
 use lasso::{Spur, ThreadedRodeo};
 use serde_json::Value;

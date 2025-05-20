@@ -1,5 +1,5 @@
 use core::str;
-use std::{borrow::Cow, fmt::Debug, mem::transmute_copy, ptr::slice_from_raw_parts, sync::Arc};
+use std::{borrow::Cow, fmt::Debug, sync::Arc};
 
 use anyhow::anyhow;
 use bytes::{Buf, Bytes};

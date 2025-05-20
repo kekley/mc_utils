@@ -1,14 +1,11 @@
-use std::{any, sync::Arc};
 
 use anyhow::{anyhow, Context, Error};
-use lasso::ThreadedRodeo;
 use log::error;
 use serde_json::Value;
 
 use crate::MCResourceLoader;
 
 use super::{
-    block::InternedBlock,
     block_models::{BlockRotation, InternedBlockModel, ASSET_PATH},
     block_states::InternedBlockState,
 };
