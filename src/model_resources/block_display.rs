@@ -1,4 +1,4 @@
-use bumpalo::Bump;
+use bumpalo::{collections::CollectIn, Bump};
 use serde_json::Value;
 
 use super::{resource_error::ResourceErrorKind, utils::parse_array};
@@ -70,8 +70,8 @@ impl BlockDisplay {
             Some(object) => {
                 let obj_iter = object
                     .iter()
-                    .map(|(name, value)| BlockDisplay::try_from((name.as_str(), value)));
-                Ok(bumpalo::collections::Vec::from_iter_in(obj_iter, bump))
+                    .map(|(name, value)| BlockDisplay::try_from((name.as_str(), value)))
+                    .collect_in::<Result<Vec<_>, ResourceErrorKind>>(bump);
             }
             None => Err(ResourceErrorKind::InvalidField(format!(
                 "Block display field must be a json object. json value: {}",
