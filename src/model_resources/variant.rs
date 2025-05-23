@@ -1,13 +1,14 @@
-
-use anyhow::{anyhow, Context, Error};
+use bumpalo::Bump;
 use log::error;
 use serde_json::Value;
 
 use crate::MCResourceLoader;
 
 use super::{
-    block_models::{BlockRotation, InternedBlockModel, ASSET_PATH},
+    block_models::{BlockModel, BlockRotation, ASSET_PATH},
     block_states::InternedBlockState,
+    resource::ResourcePath,
+    resource_error::ResourceErrorKind,
 };
 #[derive(Debug, Clone)]
 
@@ -112,8 +113,8 @@ pub struct Variants {
 }
 
 #[derive(Debug, Clone)]
-pub struct VariantEntry {
-    pub model: InternedBlockModel,
+pub struct VariantEntry<'a> {
+    pub model_path: ResourcePath,
     pub rotation_x: Option<BlockRotation>,
     pub rotation_y: Option<BlockRotation>,
     pub uv_lock: Option<UvLock>,
@@ -164,7 +165,7 @@ impl Variants {
 }
 
 impl ModelVariant {
-    pub fn from_json_value(value: &Value, loader: &MCResourceLoader) -> anyhow::Result<Self> {
+    pub fn from_json_value(value: &Value, bump: &mut Bump) -> anyhow::Result<Self> {
         match value.is_array() {
             true => {
                 let entries: Vec<VariantEntry> = value
@@ -184,20 +185,21 @@ impl ModelVariant {
 impl Variants {
     pub(crate) fn from_json_value(
         value: &Value,
-        loader: &MCResourceLoader,
-    ) -> anyhow::Result<Self> {
-        let model_variants: Result<Vec<(InternedBlockState, ModelVariant)>, anyhow::Error> = value
-            .as_object()
-            .context("variants was not object")?
-            .iter()
-            .map(|(variant_properties, variant_entry)| {
-                let variant_entry = ModelVariant::from_json_value(variant_entry, loader)?;
-                Ok((
-                    InternedBlockState::from_str(&variant_properties, loader),
-                    variant_entry,
-                ))
-            })
-            .collect::<Result<Vec<_>, _>>();
+        bump: &mut Bump,
+    ) -> Result<Self, ResourceErrorKind> {
+        let model_variants: Result<Vec<(InternedBlockState, ModelVariant)>, ResourceErrorKind> =
+            value
+                .as_object()
+                .context("variants was not object")?
+                .iter()
+                .map(|(variant_properties, variant_entry)| {
+                    let variant_entry = ModelVariant::from_json_value(variant_entry, loader)?;
+                    Ok((
+                        InternedBlockState::from_str(&variant_properties, loader),
+                        variant_entry,
+                    ))
+                })
+                .collect::<Result<Vec<_>, _>>();
 
         return Ok(Variants {
             variants: model_variants?,
@@ -206,7 +208,7 @@ impl Variants {
 }
 
 impl VariantEntry {
-    fn from_json_value(value: &Value, loader: &MCResourceLoader) -> anyhow::Result<Self> {
+    fn from_json_value(value: &Value, bump: &mut Bump) -> Result<Self, ResourceErrorKind> {
         let model = value
             .get("model")
             .context("variant did not have model")?

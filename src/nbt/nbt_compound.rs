@@ -1,7 +1,6 @@
 use bytes::{Buf, Bytes};
 use cesu8::from_java_cesu8;
 use core::str;
-use lasso::{Interner, Reader, Spur, ThreadedRodeo};
 use num_enum::TryFromPrimitive;
 use std::{fmt::Debug, sync::Arc};
 
@@ -11,8 +10,6 @@ use super::{
     nbt_ids::NBTId,
     nbt_tag::{get_nbt_string, NBTTag},
 };
-
-pub type NBTTagName = Spur;
 
 #[derive(Clone)]
 pub struct NBTCompound {

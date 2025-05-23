@@ -1,17 +1,14 @@
-use std::{
-    fs,
-    sync::Arc,
-};
+use std::{fs, sync::Arc};
 
-use anyhow::{anyhow, Context, Error};
-use lasso::{Spur, ThreadedRodeo};
+use bumpalo::Bump;
 use log::debug;
 use serde_json::Value;
 
 use super::{
     block_display::BlockDisplay,
-    block_element::InternedBlockElement,
-    block_texture::{BlockTextures, InternedTextureVariable, TexVar},
+    block_element::BlockElement,
+    block_texture::{BlockTextureMap, TextureVariableEnum},
+    resource_error::{ResourceError, ResourceErrorKind},
 };
 #[derive(Debug, Clone, Copy, Default)]
 pub struct AmbientOcclusion(bool);
@@ -28,28 +25,9 @@ impl From<&bool> for AmbientOcclusion {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct BlockModelParent(pub Spur);
-impl From<Spur> for BlockModelParent {
-    fn from(value: Spur) -> Self {
-        BlockModelParent(value)
-    }
-}
-impl From<&Spur> for BlockModelParent {
-    fn from(value: &Spur) -> Self {
-        BlockModelParent(*value)
-    }
-}
-
-impl Into<Spur> for BlockModelParent {
-    fn into(self) -> Spur {
-        self.0 as Spur
-    }
-}
-impl<'a> Into<&'a Spur> for &'a BlockModelParent {
-    fn into(self) -> &'a Spur {
-        &(self.0) as &Spur
-    }
+#[derive(Debug, Clone)]
+pub struct BlockModelParent<'a> {
+    value: bumpalo::collections::String<'a>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -59,22 +37,26 @@ pub enum BlockRotation {
     OneEighty,
     TwoSeventy,
 }
-
 impl TryFrom<&Value> for BlockRotation {
-    type Error = anyhow::Error;
-    fn try_from(value: &Value) -> Result<Self, Error> {
-        match value.as_i64().context(format!(
-            "Expected int value for block rotation, json value: {}",
-            value.to_string()
-        ))? {
-            0 => Ok(BlockRotation::Zero),
-            90 => Ok(BlockRotation::Ninety),
-            180 => Ok(BlockRotation::OneEighty),
-            270 => Ok(BlockRotation::TwoSeventy),
-            _ => Err(anyhow!(format!(
-                "Block rotations must be 0, 90, 180, or 270. Got {}",
-                value.as_i64().unwrap()
-            ))),
+    type Error = ResourceErrorKind;
+    fn try_from(value: &Value) -> Result<Self, Self::Error> {
+        match value.as_i64() {
+            Some(int) => match int {
+                0 => Ok(BlockRotation::Zero),
+                90 => Ok(BlockRotation::Ninety),
+                180 => Ok(BlockRotation::OneEighty),
+                270 => Ok(BlockRotation::TwoSeventy),
+                _ => Err(format!(
+                    "Block rotations must be 0, 90, 180, or 270. Got {}",
+                    value.as_i64().unwrap()
+                )),
+            },
+            None => {
+                return Err(format!(
+                    "Expected int value for block rotation, json value: {}",
+                    value.to_string()
+                ))
+            }
         }
     }
 }
@@ -89,24 +71,24 @@ impl BlockRotation {
     }
 }
 #[derive(Debug, Clone)]
-pub struct IntermediateBlockModel {
-    pub parent: Option<BlockModelParent>,
+pub struct IntermediateBlockModel<'a> {
+    pub parent: Option<BlockModelParent<'a>>,
     pub ambient_occlusion: Option<AmbientOcclusion>,
-    pub displays: Option<Vec<BlockDisplay>>,
-    pub textures: Option<BlockTextures>,
-    pub elements: Option<Vec<InternedBlockElement>>,
+    pub displays: Option<bumpalo::collections::Vec<'a, BlockDisplay>>,
+    pub textures: Option<BlockTextureMap<'a>>,
+    pub elements: Option<bumpalo::collections::Vec<'a, BlockElement<'a>>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct InternedBlockModel {
+pub struct BlockModel<'a> {
     pub ambient_occlusion: AmbientOcclusion,
-    pub displays: Vec<BlockDisplay>,
-    textures: BlockTextures,
-    pub elements: Vec<InternedBlockElement>,
+    pub displays: bumpalo::collections::Vec<'a, BlockDisplay>,
+    textures: BlockTextureMap<'a>,
+    pub elements: bumpalo::collections::Vec<'a, BlockElement<'a>>,
 }
-impl InternedBlockModel {
-    pub fn get_textures(&self) -> &[(TexVar, InternedTextureVariable)] {
-        self.textures.get_all()
+impl<'a> BlockModel<'a> {
+    pub fn get_textures(&self) -> &BlockTextureMap {
+        &self.textures
     }
     pub fn is_axis_aligned(&self) -> bool {
         self.elements
@@ -118,7 +100,7 @@ impl InternedBlockModel {
     }
 }
 
-impl InternedBlockModel {
+impl<'a> BlockModel<'a> {
     pub fn try_from_intermediate(value: &IntermediateBlockModel) -> Option<Self> {
         let IntermediateBlockModel {
             parent: _,
@@ -139,7 +121,7 @@ impl InternedBlockModel {
 
 pub const ASSET_PATH: &str = "./test_assets/assets/";
 
-impl IntermediateBlockModel {
+impl<'a> IntermediateBlockModel<'a> {
     pub fn parent_to_path(parent_str: &str) -> String {
         let (namespace, remaining_str) = parent_str
             .split_once(":")
@@ -164,39 +146,40 @@ impl IntermediateBlockModel {
 
     pub fn from_json(
         path: &str,
-        rodeo: &Arc<ThreadedRodeo>,
-    ) -> anyhow::Result<IntermediateBlockModel> {
+        bump: &'a mut Bump,
+    ) -> Result<IntermediateBlockModel<'a>, ResourceError> {
         debug!("loading block model from file:{}", &path);
-
         let json = fs::read_to_string(path)?;
         let value: Value = serde_json::from_str(&json).context("invalid json")?;
-        let parent: Option<Result<BlockModelParent, anyhow::Error>> =
-            value.get("parent").map(|value| {
-                Ok(rodeo
-                    .get_or_intern(value.as_str().context("parent was not str")?)
-                    .into())
+        let parent: Option<Result<BlockModelParent, ResourceErrorKind>> =
+            value.get("parent").map(|value| match value.as_str() {
+                Some(str) => bumpalo::collections::String::from_str_in(str, bump),
+                None => Err(ResourceErrorKind::InvalidField(format!(
+                    "Parent field must be a string. json value: {}",
+                    value.to_string()
+                ))),
             });
         let parent = parent.transpose()?;
 
-        let ambient_occlusion = value.get("ambientocclusion").map(|value| {
-            value
-                .as_bool()
-                .expect("ambient occlusion was not bool")
-                .into()
-        });
+        let ambient_occlusion = value
+            .get("ambientocclusion")
+            .map(|value| match value.as_bool() {
+                Some(bool) => {}
+                None => todo!(),
+            });
 
         let displays = value
             .get("display")
-            .map(|value| BlockDisplay::parse_display(value))
+            .map(|value| BlockDisplay::parse_display(value, bump))
             .transpose()?;
 
         let textures = value
             .get("textures")
-            .map(|value| BlockTextures::parse_from_json(value, rodeo));
+            .map(|value| BlockTextureMap::parse_from_json(value, bump));
 
         let elements = value
             .get("elements")
-            .map(|value| InternedBlockElement::parse_elements(value, rodeo))
+            .map(|value| BlockElement::parse_elements(value, bump))
             .transpose()?;
 
         let result = IntermediateBlockModel {

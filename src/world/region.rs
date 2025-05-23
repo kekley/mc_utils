@@ -1,4 +1,4 @@
-use std::fs::{File};
+use std::fs::File;
 use std::io::{self, Cursor, Read, Seek};
 use std::os::unix::fs::MetadataExt;
 use std::sync::Arc;
@@ -9,9 +9,7 @@ use crate::chunk::Chunk;
 use crate::nbt::compression::{CompressionData, CompressionScheme};
 use crate::nbt_compound::NBTCompound;
 
-use anyhow::Ok;
 use bytes::Bytes;
-use lasso::ThreadedRodeo;
 
 use super::loaded_world::{ChunkCoords, RegionCoords};
 
@@ -27,8 +25,7 @@ pub(crate) const CHUNK_HEADER_SIZE: usize = 5;
 
 #[derive(Debug, Clone)]
 pub struct LazyRegion {
-    interner: Arc<ThreadedRodeo>,
-    bytes: Arc<[u8]>,
+    data: Arc<[u8]>,
     pub coords: RegionCoords,
 }
 
@@ -54,13 +51,13 @@ impl LazyRegion {
         let bytes: Arc<[u8]> = Arc::from(bytes);
         let value = LazyRegion {
             interner: interner.clone(),
-            bytes,
+            data: bytes,
             coords: region,
         };
         Ok(value)
     }
     pub fn get_chunk(&self, chunk_coords: ChunkCoords) -> Option<Chunk> {
-        let mut cursor = Cursor::new(&self.bytes);
+        let mut cursor = Cursor::new(&self.data);
         let segment = read_chunk_segment(
             (chunk_coords.x.abs() % 32) as u32,
             (chunk_coords.z.abs() % 32) as u32,
@@ -101,7 +98,7 @@ impl From<&LazyRegion> for LoadedRegion {
         let LazyRegion {
             interner,
             coords,
-            bytes,
+            data: bytes,
         } = value;
         let mut segments: [FileSegment; 1024] = [const {
             FileSegment {

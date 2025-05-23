@@ -1,15 +1,11 @@
 use std::{slice, sync::Arc};
 
 use anyhow::{Context, Ok};
-use lasso::{Spur, ThreadedRodeo};
 use serde_json::Value;
 
 use crate::MCResourceLoader;
 
-use super::{
-    block_states::InternedBlockState,
-    variant::ModelVariant,
-};
+use super::{block_states::InternedBlockState, variant::ModelVariant};
 
 #[derive(Debug, Clone)]
 pub struct Multipart {

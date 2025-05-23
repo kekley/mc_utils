@@ -1,10 +1,11 @@
-use std::sync::Arc;
-
-use anyhow::{anyhow, Context, Error};
-use lasso::ThreadedRodeo;
+use bumpalo::Bump;
 use serde_json::Value;
 
-use super::{block_face::InternedFace, utils::parse_array};
+use super::{
+    block_face::BlockFace,
+    resource_error::{ResourceError, ResourceErrorKind},
+    utils::parse_array,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Shade(bool);
@@ -20,15 +21,15 @@ impl From<&bool> for Shade {
 }
 
 #[derive(Debug, Clone)]
-pub struct InternedBlockElement {
+pub struct BlockElement<'a> {
     pub from: [f32; 3],
     pub to: [f32; 3],
     pub rotation: Option<ElementRotation>,
     shade: Option<Shade>,
-    pub faces: [Option<InternedFace>; 6],
+    pub faces: [Option<BlockFace<'a>>; 6],
 }
 
-impl InternedBlockElement {
+impl<'a> BlockElement<'a> {
     pub fn is_cube(&self) -> bool {
         !self.faces.iter().any(|f| f.is_none())
             && self.rotation.is_none()
@@ -41,7 +42,7 @@ impl InternedBlockElement {
             None => true,
         }
     }
-    pub fn from_json_value(value: &Value, rodeo: &Arc<ThreadedRodeo>) -> anyhow::Result<Self> {
+    pub fn from_json_value(value: &Value, bump: &mut Bump) -> Result<Self, ResourceError> {
         let from = parse_array::<f32, 3>(
             value
                 .get("from")
@@ -62,13 +63,13 @@ impl InternedBlockElement {
             .transpose()?
             .map(|bool| bool.into());
 
-        let faces: [Option<InternedFace>; 6] = InternedFace::parse_faces(
+        let faces: [Option<BlockFace>; 6] = BlockFace::parse_faces(
             value
                 .get("faces")
                 .context("\"faces\" field not defined for block element")?,
-            rodeo,
+            bump,
         )?;
-        Ok(InternedBlockElement {
+        Ok(BlockElement {
             from,
             to,
             rotation,
@@ -78,38 +79,46 @@ impl InternedBlockElement {
     }
     pub fn parse_elements(
         value: &Value,
-        rodeo: &Arc<ThreadedRodeo>,
-    ) -> anyhow::Result<Vec<InternedBlockElement>> {
+        bump: &'a mut Bump,
+    ) -> Result<bumpalo::collections::Vec<'a, BlockElement<'a>>, ResourceError> {
         value
             .as_array()
             .context("Attempted to parse block elements that were not in an array")?
             .iter()
-            .map(|value| InternedBlockElement::from_json_value(value, rodeo))
-            .collect::<anyhow::Result<Vec<_>>>()
+            .map(|value| BlockElement::from_json_value(value, bump))
+            .collect::<Result<bumpalo::collections::Vec<_>, ResourceError>>()
     }
 }
 
 impl TryFrom<&Value> for ElementAxis {
-    type Error = anyhow::Error;
-    fn try_from(value: &Value) -> Result<Self, Error> {
-        match value.as_str().context(format!(
-            "Element axis value must be a string, json value : {}",
-            value.to_string()
-        ))? {
-            "x" => Ok(ElementAxis::X),
-            "y" => Ok(ElementAxis::Y),
-            "z" => Ok(ElementAxis::Z),
-            "X" => Ok(ElementAxis::X),
-            "Y" => Ok(ElementAxis::Y),
-            "Z" => Ok(ElementAxis::Z),
-            _ => Err(anyhow!("Element axis value must be x, y or z")),
+    type Error = ResourceErrorKind;
+    fn try_from(value: &Value) -> Result<Self, Self::Error> {
+        match value.as_str() {
+            Some(str) => match str {
+                "x" => Ok(ElementAxis::X),
+                "y" => Ok(ElementAxis::Y),
+                "z" => Ok(ElementAxis::Z),
+                "X" => Ok(ElementAxis::X),
+                "Y" => Ok(ElementAxis::Y),
+                "Z" => Ok(ElementAxis::Z),
+                _ => Err(ResourceErrorKind::InvalidField(format!(
+                    "Expected x,y, or z for element axis, got {}",
+                    str
+                ))),
+            },
+            None => {
+                return Err(ResourceErrorKind::InvalidField(format!(
+                    "Wrong data type for element axis. Value:{}",
+                    value.as_str()
+                )))
+            }
         }
     }
 }
 
 impl TryFrom<&Value> for ElementRotation {
-    type Error = anyhow::Error;
-    fn try_from(value: &Value) -> Result<Self, Error> {
+    type Error = ResourceErrorKind;
+    fn try_from(value: &Value) -> Result<Self, Self::Error> {
         let origin = parse_array::<f32, 3>(
             value
                 .get("origin")
@@ -154,42 +163,50 @@ pub enum ElementAxis {
 pub struct Angle(f32);
 
 impl TryFrom<f32> for Angle {
-    type Error = anyhow::Error;
+    type Error = ResourceErrorKind;
 
     fn try_from(value: f32) -> Result<Self, Self::Error> {
         match value.is_finite() {
             true => Ok(Angle(value)),
-            false => Err(anyhow!("Infinite or NaN angle value")),
+            false => Err(ResourceErrorKind::InvalidField(format!(
+                "Infinite or NaN angle value"
+            ))),
         }
     }
 }
 impl TryFrom<&f32> for Angle {
-    type Error = anyhow::Error;
+    type Error = ResourceErrorKind;
 
     fn try_from(value: &f32) -> Result<Self, Self::Error> {
         match value.is_finite() {
             true => Ok(Angle(*value)),
-            false => Err(anyhow!("Infinite or NaN angle value")),
+            false => Err(ResourceErrorKind::InvalidField(format!(
+                "Infinite or NaN angle value"
+            ))),
         }
     }
 }
 impl TryFrom<f64> for Angle {
-    type Error = anyhow::Error;
+    type Error = ResourceErrorKind;
 
     fn try_from(value: f64) -> Result<Self, Self::Error> {
         match value.is_finite() {
             true => Ok(Angle(value as f32)),
-            false => Err(anyhow!("Infinite or NaN angle value")),
+            false => Err(ResourceErrorKind::InvalidField(format!(
+                "Infinite or NaN angle value"
+            ))),
         }
     }
 }
 impl TryFrom<&f64> for Angle {
-    type Error = anyhow::Error;
+    type Error = ResourceErrorKind;
 
     fn try_from(value: &f64) -> Result<Self, Self::Error> {
         match value.is_finite() {
             true => Ok(Angle(*value as f32)),
-            false => Err(anyhow!("Infinite or NaN angle value")),
+            false => Err(ResourceErrorKind::InvalidField(format!(
+                "Infinite or NaN angle value"
+            ))),
         }
     }
 }

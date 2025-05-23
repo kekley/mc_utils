@@ -1,40 +1,40 @@
 use std::sync::Arc;
 
-use anyhow::{anyhow, Context, Error, Result};
-use lasso::ThreadedRodeo;
+use bumpalo::Bump;
 use serde_json::Value;
 
 use super::{
     block_models::BlockRotation,
-    block_texture::{InternedTextureVariable, Uv},
+    block_texture::{TextureVariableEnum, Uv},
+    resource_error::ResourceErrorKind,
 };
 
 #[derive(Debug, Clone, Copy)]
 pub struct TintIndex(i64);
 
 #[derive(Debug, Clone)]
-pub struct InternedFace {
+pub struct BlockFace<'a> {
     pub name: FaceName,
     pub uv: Option<Uv>,
-    pub texture: InternedTextureVariable,
+    pub texture: TextureVariableEnum<'a>,
     cullface: Option<FaceName>,
     pub texture_rotation: Option<BlockRotation>,
     pub tint_index: Option<TintIndex>,
 }
 
-impl InternedFace {
+impl<'a> BlockFace<'a> {
     pub fn parse_faces(
         value: &Value,
-        rodeo: &Arc<ThreadedRodeo>,
-    ) -> anyhow::Result<[Option<InternedFace>; 6]> {
-        const NONE_VALUE: Option<InternedFace> = None;
+        bump: &'a mut Bump,
+    ) -> Result<[Option<BlockFace<'a>>; 6], ResourceErrorKind> {
+        const NONE_VALUE: Option<BlockFace> = None;
         let vec = value
             .as_object()
             .context("\"faces\" field was not a json object")?
             .iter()
             .enumerate()
-            .map(|(i, (name, value))| InternedFace::parse_from_json_value(name, value, rodeo))
-            .collect::<Result<Vec<_>>>()?;
+            .map(|(i, (name, value))| BlockFace::parse_from_json_value(name, value, bump))
+            .collect::<Result<bumpalo::collections::Vec<'a, _>, ResourceErrorKind>>()?;
 
         let mut array = [NONE_VALUE; 6];
         vec.iter()
@@ -53,8 +53,8 @@ pub enum FaceName {
     East = 1,
 }
 impl TryFrom<&str> for FaceName {
-    type Error = anyhow::Error;
-    fn try_from(value: &str) -> Result<Self, Error> {
+    type Error = ResourceErrorKind;
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
             "down" => Ok(FaceName::Down),
             "up" => Ok(FaceName::Up),
@@ -62,25 +62,25 @@ impl TryFrom<&str> for FaceName {
             "south" => Ok(FaceName::South),
             "west" => Ok(FaceName::West),
             "east" => Ok(FaceName::East),
-            _ => Err(anyhow!(format!("Invalid value {value} for \"facename\""))),
+            _ => Err(format!("Invalid value {value} for \"facename\"")),
         }
     }
 }
 
-impl InternedFace {
+impl<'a> BlockFace<'a> {
     pub fn parse_from_json_value(
         face_name: &str,
         value: &Value,
-        rodeo: &Arc<ThreadedRodeo>,
-    ) -> anyhow::Result<Self> {
+        bump: &'a mut Bump,
+    ) -> Result<Self, ResourceErrorKind> {
         let name = FaceName::try_from(face_name)?;
         let uv = value
             .get("uv")
             .map(|value| Uv::try_from(value))
             .transpose()?;
-        let texture = InternedTextureVariable::parse_from_json_value(
+        let texture = TextureVariableEnum::parse_from_json_value(
             value.get("texture").expect("no texture for face"),
-            rodeo,
+            bump,
         );
         let cullface = value
             .get("cullface")
@@ -102,7 +102,7 @@ impl InternedFace {
             .transpose()?
             .map(|ind| TintIndex(ind));
 
-        Ok(InternedFace {
+        Ok(BlockFace {
             name,
             uv,
             texture,

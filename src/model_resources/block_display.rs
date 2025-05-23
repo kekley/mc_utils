@@ -1,7 +1,7 @@
-use anyhow::{Context, Ok};
+use bumpalo::Bump;
 use serde_json::Value;
 
-use super::utils::parse_array;
+use super::{resource_error::ResourceErrorKind, utils::parse_array};
 
 #[derive(Debug, Clone)]
 enum DisplayPosition {
@@ -39,16 +39,16 @@ pub struct BlockDisplay {
 }
 
 impl TryFrom<(&str, &Value)> for BlockDisplay {
-    type Error = anyhow::Error;
+    type Error = ResourceErrorKind;
 
-    fn try_from(value: (&str, &Value)) -> anyhow::Result<Self> {
+    fn try_from(value: (&str, &Value)) -> Result<Self, Self::Error> {
         let position = value.0;
         let data = value.1;
-        let rotation: Option<Result<[f32; 3], anyhow::Error>> =
+        let rotation: Option<Result<[f32; 3], _>> =
             data.get("rotation").map(|f| parse_array::<f32, 3>(f));
-        let translation: Option<Result<[f32; 3], anyhow::Error>> =
+        let translation: Option<Result<[f32; 3], ResourceErrorKind>> =
             data.get("translation").map(|f| parse_array::<f32, 3>(f));
-        let scale: Option<Result<[f32; 3], anyhow::Error>> =
+        let scale: Option<Result<[f32; 3], ResourceErrorKind>> =
             data.get("scale").map(|f| parse_array::<f32, 3>(f));
         let res = BlockDisplay {
             position: position.into(),
@@ -62,12 +62,21 @@ impl TryFrom<(&str, &Value)> for BlockDisplay {
 }
 
 impl BlockDisplay {
-    pub fn parse_display(value: &Value) -> anyhow::Result<Vec<BlockDisplay>> {
-        Ok(value
-            .as_object()
-            .context("Attempted to parse a block display that wasn't an object")?
-            .iter()
-            .map(|(name, value)| BlockDisplay::try_from((name.as_str(), value)))
-            .collect::<anyhow::Result<Vec<BlockDisplay>>>())?
+    pub fn parse_display<'a>(
+        value: &Value,
+        bump: &'a mut Bump,
+    ) -> Result<bumpalo::collections::Vec<'a, BlockDisplay>, ResourceErrorKind> {
+        match value.as_object() {
+            Some(object) => {
+                let obj_iter = object
+                    .iter()
+                    .map(|(name, value)| BlockDisplay::try_from((name.as_str(), value)));
+                Ok(bumpalo::collections::Vec::from_iter_in(obj_iter, bump))
+            }
+            None => Err(ResourceErrorKind::InvalidField(format!(
+                "Block display field must be a json object. json value: {}",
+                value.to_string()
+            ))),
+        }
     }
 }

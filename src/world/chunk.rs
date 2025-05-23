@@ -120,7 +120,6 @@ impl Chunk {
             sections: sec_tower,
         }
     }
-    #[inline(always)]
     pub fn get_local_block(&self, x: usize, y: isize, z: usize) -> Option<&InternedBlock> {
         let sections = &self.sections;
         if y > self.sections.y_max() || y < self.sections.y_min() {
@@ -130,7 +129,6 @@ impl Chunk {
         let sec_y = (y - sec.ypos as isize * 16) as usize;
         sec.get_block(x, sec_y, z)
     }
-    #[inline]
     pub fn get_world_block(&self, world_coords: WorldCoords) -> Option<&InternedBlock> {
         // Assuming world_coords.x and world_coords.z are integer types (e.g., i64, i32).
         // The operation `& 15` computes `value % 16` correctly for both positive and negative values,

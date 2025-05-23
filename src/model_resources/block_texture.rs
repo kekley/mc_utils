@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
-use lasso::{Spur, ThreadedRodeo};
+use bumpalo::Bump;
 use serde_json::Value;
+use smol_str::SmolStr;
 
 use super::{block_models::ASSET_PATH, utils::parse_array};
 
@@ -38,51 +39,51 @@ impl From<[f32; 4]> for Uv {
         }
     }
 }
-pub type TexVar = Spur;
-pub type TexPath = Spur;
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub enum InternedTextureVariable {
-    Variable(TexVar),
-    ResourcePath(TexPath),
+struct TextureVariable<'a> {
+    pub value: bumpalo::collections::String<'a>,
 }
 
-impl InternedTextureVariable {
-    pub fn get_inner(&self) -> Spur {
-        match self {
-            InternedTextureVariable::Variable(key) => *key,
-            InternedTextureVariable::ResourcePath(key) => *key,
-        }
-    }
+struct TexturePath<'a> {
+    pub value: bumpalo::collections::String<'a>,
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub enum TextureVariableEnum<'a> {
+    Variable(TextureVariable<'a>),
+    ResourcePath(TexturePath<'a>),
 }
 
 #[derive(Debug, Clone)]
-pub struct BlockTextures {
-    pub textures: Vec<(TexVar, InternedTextureVariable)>,
+pub struct BlockTextureMap<'a> {
+    pub texture_variables: bumpalo::collections::Vec<'a, TextureVariable<'a>>,
 }
 
-impl BlockTextures {
-    pub fn get_all(&self) -> &[(TexVar, InternedTextureVariable)] {
-        &self.textures
-    }
-    pub fn combine(&mut self, textures: BlockTextures) {
+impl<'a> BlockTextureMap<'a> {
+    pub fn combine(&mut self, textures: BlockTextureMap) {
         for texture in &textures.textures {
             if !self.textures.contains(&texture) {
                 self.textures.push(texture.clone());
             }
         }
     }
-    pub fn get_keys(&self) -> Vec<TexVar> {
+    pub fn get_variables(&self) -> Vec<TextureVariable> {
         self.textures.iter().map(|entry| entry.0).collect()
     }
 
-    fn path_inner(variable: &InternedTextureVariable, rodeo: &ThreadedRodeo) -> String {
-        let path_str = rodeo.resolve(&variable.get_inner());
-        let (namespace, remaining_str) = path_str.split_once(":").unwrap_or(("", path_str));
+    fn to_path(variable: &TextureVariableEnum) -> SmolStr {
+        let inner_str = match variable {
+            TextureVariableEnum::Variable(texture_variable) => {
+                panic!("cannot resolve a texture variable to a path")
+            }
+            TextureVariableEnum::ResourcePath(texture_path) => texture_path.value.as_str(),
+        };
+
+        let (namespace, remaining_str) = inner_str.split_once(":").unwrap_or(("", inner_str));
 
         let (texture_type, remaining_str) = remaining_str
             .split_once("/")
             .expect("invalid path for texture");
-        String::from(
+        SmolStr::from(
             ASSET_PATH.to_string()
                 + namespace
                 + "/"
@@ -94,21 +95,21 @@ impl BlockTextures {
         )
     }
 
-    pub fn parse_from_json(value: &Value, rodeo: &Arc<ThreadedRodeo>) -> Self {
+    pub fn parse_from_json(value: &Value, bump: &mut Bump) -> Result<Self> {
         let json_object = value.as_object().expect("textures was not object");
         let textures = json_object
             .iter()
             .map(|(var1, var2)| {
                 let name = rodeo.get_or_intern(var1);
-                let texture = InternedTextureVariable::parse_from_json_value(var2, rodeo);
+                let texture = TextureVariableEnum::parse_from_json_value(var2, rodeo);
                 (name, texture)
             })
             .collect();
-        BlockTextures { textures }
+        BlockTextureMap { textures }
     }
 }
 
-impl InternedTextureVariable {
+impl TextureVariableEnum {
     pub(crate) fn parse_from_json_value(value: &Value, rodeo: &Arc<ThreadedRodeo>) -> Self {
         let val = value.as_str().expect("texture value was not string");
         let first_char = val.chars().nth(0).expect("texture string had length of 0");
@@ -116,11 +117,11 @@ impl InternedTextureVariable {
             panic!("invalid texture variable length")
         }
         if first_char == '#' {
-            return InternedTextureVariable::Variable(
+            return TextureVariableEnum::Variable(
                 rodeo.get_or_intern(val.strip_prefix('#').unwrap()),
             );
         } else {
-            return InternedTextureVariable::ResourcePath(rodeo.get_or_intern(val));
+            return TextureVariableEnum::ResourcePath(rodeo.get_or_intern(val));
         }
     }
 }

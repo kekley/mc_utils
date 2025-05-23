@@ -1,6 +1,7 @@
-use anyhow::{bail, Context};
 use serde_json::Value;
 use std::mem::MaybeUninit;
+
+use super::resource_error::ResourceErrorKind;
 /*
 pub fn parse_f32_3(value: &Value) -> anyhow::Result<[f32; 3]> {
     let values = value.as_array().context("Value was not an array")?;
@@ -23,12 +24,20 @@ pub fn parse_vec4(value: &Value) -> Vec4 {
 
 pub fn parse_array<T: for<'a> serde::de::Deserialize<'a>, const N: usize>(
     value: &Value,
-) -> anyhow::Result<[T; N]> {
-    let values: &Vec<Value> = value
-        .as_array()
-        .context("Attempted to parse a non array value as an array")?;
+) -> Result<[T; N], ResourceErrorKind> {
+    let values: &Vec<Value> = match value.as_array() {
+        Some(vec) => todo!(),
+        None => {
+            return Err(ResourceErrorKind::InvalidField(format!(
+                "Attempted to parse a non array value as an array"
+            )))
+        }
+    };
     if values.len() != N {
-        bail!("Expected array length of {N}, got {} instead", values.len())
+        return Err(format!(
+            "Expected array length of {N}, got {} instead",
+            values.len()
+        ));
     }
     let mut uninit_array: [MaybeUninit<T>; N] = [const { MaybeUninit::uninit() }; N];
 

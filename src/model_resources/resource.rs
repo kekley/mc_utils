@@ -1,29 +1,44 @@
 use std::fs;
 
-use anyhow::{anyhow, Context};
+use bumpalo::Bump;
 use log::{error, info};
 use serde_json::Value;
 
-use crate::MCResourceLoader;
+use super::{multipart::Multipart, resource_error::ResourceError, variant::Variants};
 
-use super::{multipart::Multipart, variant::Variants};
+pub enum ResourcePath<'a> {
+    BlockModel(bumpalo::collections::String<'a>),
+    Texture(bumpalo::collections::String<'a>),
+    BlockState(bumpalo::collections::String<'a>),
+}
 
 #[derive(Debug, Clone)]
-pub enum BlockStates {
+pub enum BlockStates<'a> {
     MultiPart(Multipart),
     Variants(Variants),
 }
 
-impl BlockStates {
-    pub fn new(path: &str, loader: &MCResourceLoader) -> anyhow::Result<BlockStates> {
+impl<'a> BlockStates<'a> {
+    pub fn load_from_json(path: &str, bump: &mut Bump) -> Result<BlockStates<'a>, ResourceError> {
         info!("loading block state from disk: {}", path);
         let file = fs::read_to_string(path);
         let Ok(file) = file else {
-            error!("could not find file {}", path);
-            return Err(anyhow!("file not found"));
+            return Err(ResourceError {
+                file: path.to_string(),
+                kind: crate::resource_error::ResourceErrorKind::FileNotFound,
+            });
         };
 
-        let value: Value = serde_json::from_str(&file).context("invalid json")?;
+        let value: Value = match serde_json::from_str(&file) {
+            Ok(value) => value,
+            Err(err) => {
+                return Err(ResourceError {
+                    file: path.to_string(),
+                    kind: crate::resource_error::ResourceErrorKind::InvalidJSON(err),
+                })
+            }
+        };
+
         if let Some(value) = value.get("variants") {
             Ok(BlockStates::Variants(Variants::from_json_value(
                 value, &loader,
