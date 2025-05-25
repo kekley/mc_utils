@@ -1,7 +1,7 @@
 use serde_json::Value;
-use std::mem::MaybeUninit;
+use std::{any::type_name, mem::MaybeUninit};
 
-use super::resource_error::ResourceErrorKind;
+use super::resource_error::{ResourceError, ResourceErrorKind};
 /*
 pub fn parse_f32_3(value: &Value) -> anyhow::Result<[f32; 3]> {
     let values = value.as_array().context("Value was not an array")?;
@@ -26,7 +26,7 @@ pub fn parse_array<T: for<'a> serde::de::Deserialize<'a>, const N: usize>(
     value: &Value,
 ) -> Result<[T; N], ResourceErrorKind> {
     let values: &Vec<Value> = match value.as_array() {
-        Some(vec) => todo!(),
+        Some(vec) => vec,
         None => {
             return Err(ResourceErrorKind::InvalidField(format!(
                 "Attempted to parse a non array value as an array"
@@ -34,15 +34,57 @@ pub fn parse_array<T: for<'a> serde::de::Deserialize<'a>, const N: usize>(
         }
     };
     if values.len() != N {
-        return Err(format!(
+        return Err(ResourceErrorKind::InvalidField(format!(
             "Expected array length of {N}, got {} instead",
             values.len()
-        ));
+        )));
     }
     let mut uninit_array: [MaybeUninit<T>; N] = [const { MaybeUninit::uninit() }; N];
 
     for (i, value) in values.iter().enumerate() {
-        uninit_array[i].write(T::deserialize(value)?);
+        uninit_array[i].write(match T::deserialize(value) {
+            Ok(t) => t,
+            Err(err) => {
+                return Err(ResourceErrorKind::InvalidField(format!(
+                    "Could not deserialize values in array: json error {}",
+                    err
+                )))
+            }
+        });
     }
     Ok(uninit_array.map(|uninit| unsafe { uninit.assume_init() }))
 }
+
+pub fn try_get_field<'a>(
+    value: &'a Value,
+    field_name: &str,
+) -> Result<&'a Value, ResourceErrorKind> {
+    match value.get(field_name) {
+        Some(field) => Ok(field),
+        None => Err(ResourceErrorKind::MissingField(format!(
+            "Field name \"{}\" was missing",
+            field_name
+        ))),
+    }
+}
+
+pub fn get_optional_field<'a>(value: &'a Value, field_name: &str) -> Option<&'a Value> {
+    match value.get(field_name) {
+        Some(field) => Some(field),
+        None => None,
+    }
+}
+
+pub fn parse_type<'a, T: serde::de::Deserialize<'a>>(
+    value: &'a Value,
+) -> Result<T, ResourceErrorKind> {
+    match T::deserialize(value) {
+        Ok(t) => Ok(t),
+        Err(err) => Err(ResourceErrorKind::InvalidField(format!(
+            "Error parsing {}, json error: {}",
+            type_name::<T>(),
+            err
+        ))),
+    }
+}
+

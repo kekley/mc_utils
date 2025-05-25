@@ -1,17 +1,22 @@
+use bumpalo::collections::String as BumpString;
+use bumpalo::collections::Vec as BumpVec;
+use bumpalo::Bump;
+use bytes::Buf;
+use bytes::Bytes;
+use cesu8::from_java_cesu8;
 use core::str;
+use num_enum::TryFromPrimitive;
+use std::io::Read;
 use std::{borrow::Cow, fmt::Debug, sync::Arc};
 
-use anyhow::anyhow;
-use bytes::{Buf, Bytes};
-use cesu8::from_java_cesu8;
-use lasso::ThreadedRodeo;
-use num_enum::TryFromPrimitive;
-
+use super::java_string::JavaString;
+use super::nbt_error::NBTError;
+use super::nbt_error::NBTErrorKind;
 use super::{nbt_compound::NBTCompound, nbt_ids::*};
 
 #[repr(u8)]
 #[derive(Clone, Debug)]
-pub enum NBTTag {
+pub enum NBTTag<'a> {
     End = END_ID,
     Byte(i8) = BYTE_ID,
     Short(i16) = SHORT_ID,
@@ -19,25 +24,27 @@ pub enum NBTTag {
     Long(i64) = LONG_ID,
     Float(f32) = FLOAT_ID,
     Double(f64) = DOUBLE_ID,
-    ByteArray(Bytes) = BYTE_ARRAY_ID,
-    String(Bytes) = STRING_ID,
-    List(Vec<NBTTag>) = LIST_ID,
-    Compound(NBTCompound) = COMPOUND_ID,
-    IntArray(Bytes) = INT_ARRAY_ID,
-    LongArray(Bytes) = LONG_ARRAY_ID,
+    ByteArray(&'a [u8]) = BYTE_ARRAY_ID,
+    String(JavaString<'a>) = STRING_ID,
+    List(BumpVec<'a, NBTTag<'a>>) = LIST_ID,
+    Compound(NBTCompound<'a>) = COMPOUND_ID,
+    IntArray(&'a [u8]) = INT_ARRAY_ID,
+    LongArray(&'a [u8]) = LONG_ARRAY_ID,
 }
 
-impl NBTTag {
+impl<'a> NBTTag<'a> {
     /// Returns the numeric id associated with the data type.
     pub const fn get_type_id(&self) -> u8 {
         // See https://doc.rust-lang.org/reference/items/enumerations.html#pointer-casting
         unsafe { *(self as *const Self as *const u8) }
     }
-    pub fn read_tag(
-        stream: &mut Bytes,
-        id: NBTId,
-        interner: &Arc<ThreadedRodeo>,
-    ) -> anyhow::Result<NBTTag> {
+    pub fn read_tag<'b>(stream: &mut &'b [u8], bump: &'a Bump) -> Result<NBTTag<'a>, NBTError>
+    where
+        'b: 'a,
+    {
+        let (id, right) = stream.split_at(1);
+        *stream = right;
+        let id = NBTId::try_from_primitive(id[0])?;
         match id {
             NBTId::EndId => Ok(NBTTag::End),
             NBTId::ByteId => Ok(NBTTag::Byte(stream.get_i8())),
@@ -48,49 +55,47 @@ impl NBTTag {
             NBTId::DoubleId => Ok(NBTTag::Double(stream.get_f64())),
             NBTId::ByteArrayId => {
                 let len = stream.get_i32() as usize;
-                let data = stream.slice(0..len);
-                stream.advance(len);
-                Ok(NBTTag::ByteArray(data))
+                let (data, right) = stream.split_at(len);
+                *stream = right;
+                Ok(NBTTag::ByteArray(&data))
             }
-            NBTId::StringId => Ok(NBTTag::String(get_nbt_string(stream)?)),
+            NBTId::StringId => Ok(NBTTag::String(JavaString::new(get_nbt_string_bytes(
+                stream,
+            ))?)),
             NBTId::ListId => {
                 let tag_id = NBTId::try_from_primitive(stream.get_u8())?;
-                let len = stream.get_i32();
-                let mut list = Vec::with_capacity(len as usize);
+                let len = stream.get_i32() as usize;
+                let mut list = BumpVec::with_capacity_in(len, bump);
                 for _ in 0..len {
-                    let tag = Self::read_tag(stream, tag_id, interner)?;
+                    let tag = Self::read_tag(stream, bump)?;
                     if tag.get_type_id() != tag_id as u8 {
-                        return Err(anyhow!(
-                            "type of item in NBT list did not match declared list type"
-                        ));
+                        return Err(NBTError {
+                            kind: NBTErrorKind::ListError(format!("")),
+                        });
                     } else {
                         list.push(tag);
                     }
                 }
                 Ok(NBTTag::List(list))
             }
-            NBTId::CompoundId => Ok(NBTTag::Compound(NBTCompound::internal_nbt(
-                stream, interner,
-            )?)),
+            NBTId::CompoundId => Ok(NBTTag::Compound(NBTCompound::new(stream, bump)?)),
             NBTId::IntArrayId => {
                 let len = stream.get_i32() as usize;
-                let bytes = stream.slice(0..len * 4);
-                stream.advance(len * 4);
+                let (array, right) = stream.split_at(len * 4);
 
-                Ok(NBTTag::IntArray(bytes))
+                Ok(NBTTag::IntArray(array))
             }
             NBTId::LongArrayId => {
                 let len = stream.get_i32() as usize;
-                let bytes = stream.slice(0..len * 8);
-                stream.advance(len * 8);
+                let (array, right) = stream.split_at(len * 8);
 
-                Ok(NBTTag::LongArray(bytes))
+                Ok(NBTTag::LongArray(array))
             }
         }
     }
 }
 
-impl NBTTag {
+impl<'a> NBTTag<'a> {
     #[inline]
     pub fn get_byte(&self) -> i8 {
         if let NBTTag::Byte(value) = self {
@@ -140,7 +145,7 @@ impl NBTTag {
         }
     }
     #[inline]
-    pub fn get_byte_array(&self) -> &Bytes {
+    pub fn get_byte_array(&self) -> &[u8] {
         if let NBTTag::ByteArray(value) = self {
             value
         } else {
@@ -150,14 +155,14 @@ impl NBTTag {
     #[inline]
     pub fn get_string(&self) -> Cow<'_, str> {
         if let NBTTag::String(value) = self {
-            let str = from_java_cesu8(value).expect("invalid java string in the NBT file");
+            let str = value.to_str();
             str
         } else {
             panic!("Tried to read a string from a {:?}", self);
         }
     }
     #[inline]
-    pub fn get_list(&self) -> &Vec<NBTTag> {
+    pub fn get_list(&self) -> &[NBTTag] {
         if let NBTTag::List(value) = self {
             value
         } else {
@@ -211,9 +216,18 @@ impl NBTTag {
 }
 
 #[inline]
-pub fn get_nbt_string(stream: &mut Bytes) -> anyhow::Result<Bytes> {
+pub fn get_nbt_string_bytes<'a>(stream: &mut &'a [u8]) -> &'a [u8] {
     let len = stream.get_i16() as usize;
-    let bytes = stream.slice(0..len);
-    stream.advance(len);
-    Ok(bytes)
+    let (left, right) = stream.split_at(len);
+    *stream = right;
+    left
+}
+
+// "takes" four bytes from the front of the slice, mutating it and produces an i32
+pub fn take_from_slice<T>(slice: &mut &[u8]) -> T {
+    let t_size = size_of::<T>();
+    let value = &slice[0..t_size];
+    let new_slice = &slice[t_size..];
+    *slice = &new_slice;
+    todo!()
 }

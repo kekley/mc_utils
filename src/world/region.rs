@@ -65,8 +65,8 @@ impl LazyRegion {
         );
         let compressed_bytes = LoadedRegion::get_compressed_chunk(&mut cursor, &segment);
         let mut chunk_bytes = Bytes::from(LoadedRegion::decompress_chunk(&compressed_bytes));
-        let nbt = NBTCompound::internal_nbt(&mut chunk_bytes, &self.interner).ok()?;
-        let chunk = Chunk::from_nbt_internal(nbt, &self.interner);
+        let nbt = NBTCompound::new(&mut chunk_bytes, &self.interner).ok()?;
+        let chunk = Chunk::from_nbt_in(nbt, &self.interner);
         Some(chunk)
     }
 }
@@ -122,9 +122,9 @@ impl From<&LazyRegion> for LoadedRegion {
                     let compressed_chunk_data = Self::get_compressed_chunk(&mut reader, &segment);
                     let chunk_bytes = Self::decompress_chunk(&compressed_chunk_data);
                     let mut bytes = Bytes::from(chunk_bytes);
-                    let chunk_nbt = NBTCompound::internal_nbt(&mut bytes, &interner)
-                        .expect("Chunk NBT was invalid");
-                    let chunk = Chunk::from_nbt_internal(chunk_nbt, &interner);
+                    let chunk_nbt =
+                        NBTCompound::new(&mut bytes, &interner).expect("Chunk NBT was invalid");
+                    let chunk = Chunk::from_nbt_in(chunk_nbt, &interner);
                     chunks[(x + z * 32) as usize] = Some(chunk);
                 }
             }

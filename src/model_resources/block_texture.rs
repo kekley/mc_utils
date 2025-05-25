@@ -1,10 +1,21 @@
-use std::sync::Arc;
-
-use bumpalo::Bump;
-use serde_json::Value;
+#![warn(
+    clippy::all,
+    clippy::restriction,
+    clippy::pedantic,
+    clippy::nursery,
+    clippy::cargo
+)]
+use bumpalo::collections::String as BumpString;
+use bumpalo::collections::Vec as BumpVec;
+use bumpalo::{collections::CollectIn, Bump};
+use serde_json::{Map, Value};
 use smol_str::SmolStr;
 
-use super::{block_models::ASSET_PATH, utils::parse_array};
+use super::{
+    block_models::ASSET_PATH,
+    resource_error::ResourceErrorKind,
+    utils::{parse_array, parse_type},
+};
 
 #[repr(C)]
 #[derive(Debug, Clone)]
@@ -22,7 +33,7 @@ impl Uv {
 }
 
 impl TryFrom<&Value> for Uv {
-    type Error = anyhow::Error;
+    type Error = ResourceErrorKind;
     //expects an array of f32 of length 4
     fn try_from(value: &Value) -> Result<Self, Self::Error> {
         let a = parse_array::<f32, 4>(value)?;
@@ -39,12 +50,14 @@ impl From<[f32; 4]> for Uv {
         }
     }
 }
-struct TextureVariable<'a> {
-    pub value: bumpalo::collections::String<'a>,
-}
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 
+struct TextureVariable<'a> {
+    pub value: BumpString<'a>,
+}
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct TexturePath<'a> {
-    pub value: bumpalo::collections::String<'a>,
+    pub value: BumpString<'a>,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -55,19 +68,19 @@ pub enum TextureVariableEnum<'a> {
 
 #[derive(Debug, Clone)]
 pub struct BlockTextureMap<'a> {
-    pub texture_variables: bumpalo::collections::Vec<'a, TextureVariable<'a>>,
+    pub texture_variables: BumpVec<'a, (TextureVariable<'a>, TextureVariableEnum<'a>)>,
 }
 
 impl<'a> BlockTextureMap<'a> {
-    pub fn combine(&mut self, textures: BlockTextureMap) {
-        for texture in &textures.textures {
-            if !self.textures.contains(&texture) {
-                self.textures.push(texture.clone());
+    pub fn combine(&mut self, other: BlockTextureMap<'a>) {
+        for texture in &other.texture_variables {
+            if !self.texture_variables.contains(&texture) {
+                self.texture_variables.push(texture.clone());
             }
         }
     }
-    pub fn get_variables(&self) -> Vec<TextureVariable> {
-        self.textures.iter().map(|entry| entry.0).collect()
+    pub fn as_slice(&self) -> &[(TextureVariable, TextureVariableEnum)] {
+        self.texture_variables.as_slice()
     }
 
     fn to_path(variable: &TextureVariableEnum) -> SmolStr {
@@ -95,33 +108,45 @@ impl<'a> BlockTextureMap<'a> {
         )
     }
 
-    pub fn parse_from_json(value: &Value, bump: &mut Bump) -> Result<Self> {
-        let json_object = value.as_object().expect("textures was not object");
-        let textures = json_object
+    pub fn try_from_json(value: &Value, bump: &'a Bump) -> Result<Self, ResourceErrorKind> {
+        let json_object = parse_type::<Map<_, _>>(value)?;
+        let a = json_object
             .iter()
             .map(|(var1, var2)| {
-                let name = rodeo.get_or_intern(var1);
-                let texture = TextureVariableEnum::parse_from_json_value(var2, rodeo);
-                (name, texture)
+                let var = TextureVariable {
+                    value: BumpString::from_str_in(&var1, bump),
+                };
+
+                let texture = TextureVariableEnum::try_from_in(var2, bump)?;
+                Ok((var, texture))
             })
-            .collect();
-        BlockTextureMap { textures }
+            .collect_in::<Result<BumpVec<'a, _>, ResourceErrorKind>>(bump)?;
+
+        Ok(BlockTextureMap {
+            texture_variables: a,
+        })
     }
 }
 
-impl TextureVariableEnum {
-    pub(crate) fn parse_from_json_value(value: &Value, rodeo: &Arc<ThreadedRodeo>) -> Self {
-        let val = value.as_str().expect("texture value was not string");
-        let first_char = val.chars().nth(0).expect("texture string had length of 0");
-        if val.len() == 1 {
-            panic!("invalid texture variable length")
-        }
+impl<'a> TextureVariableEnum<'a> {
+    pub(crate) fn try_from_in(value: &Value, bump: &'a Bump) -> Result<Self, ResourceErrorKind> {
+        let val = parse_type::<&str>(value)?;
+
+        let first_char = val
+            .chars()
+            .nth(0)
+            .ok_or(ResourceErrorKind::InvalidField(format!(
+                "Empty str for texture"
+            )))?;
+
         if first_char == '#' {
-            return TextureVariableEnum::Variable(
-                rodeo.get_or_intern(val.strip_prefix('#').unwrap()),
-            );
+            return Ok(TextureVariableEnum::Variable(TextureVariable {
+                value: BumpString::from_str_in(val.strip_prefix('#').unwrap(), bump),
+            }));
         } else {
-            return TextureVariableEnum::ResourcePath(rodeo.get_or_intern(val));
+            return Ok(TextureVariableEnum::ResourcePath(TexturePath {
+                value: BumpString::from_str_in(val, bump),
+            }));
         }
     }
 }

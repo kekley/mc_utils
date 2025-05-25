@@ -6,22 +6,22 @@ use log::error;
 use palette::ConcurrentPalette;
 
 use crate::{
-    block::InternedBlock,
+    block::Block,
     block_models::{BlockModel, BlockModelParent, IntermediateBlockModel},
     chunk::Chunk,
-    loaded_world::{InternedBlockName, World},
+    loaded_world::World,
     nbt_compound::NBTCompound,
     variant::ModelVariant,
 };
 
-use super::{block_models::ASSET_PATH, resource::BlockStates};
+use super::{block_models::ASSET_PATH, resource::ModelVariants};
 pub type BlockStateIndex = usize;
 pub struct MCResourceLoader {
     arena: Bump,
 }
 
 impl MCResourceLoader {
-    pub fn load_block_states_interned(&self, block_name: &str) -> Option<BlockStates> {
+    pub fn load_block_states_interned(&self, block_name: &str) -> Option<ModelVariants> {
         let split = block_name
             .split_once(":")
             .unwrap_or(("minecraft", block_name));
@@ -36,31 +36,33 @@ impl MCResourceLoader {
         path.push_str(block_name_split);
         path.push_str(".json");
 
-        let new_state = BlockStates::load_from_json(&path, &self);
+        let new_state = ModelVariants::load_from_json(&path, &self.arena);
     }
     pub fn load_variants_for(
         &self,
-        block: &InternedBlock,
-        block_states: &BlockStates,
+        block: &Block,
+        block_states: &ModelVariants,
     ) -> Vec<ModelVariant> {
         let variants = match block_states {
-            BlockStates::MultiPart(multipart) => {
+            ModelVariants::MultipartVariant(multipart) => {
                 multipart.load_models(&block.properties, &self.rodeo)
             }
-            BlockStates::Variants(variants) => variants.get_model_variants(&block.properties),
+            ModelVariants::StandardVariant(variants) => {
+                variants.get_model_variants(&block.properties)
+            }
         };
         variants
     }
-    pub fn open_world(&self, region_folder: &str) -> anyhow::Result<World> {
+    pub fn open_world(&self, region_folder: &str) -> Result<World> {
         World::new(region_folder, &self.rodeo)
     }
 
     pub fn nbt_from_bytes(&self, bytes: &mut Bytes) -> anyhow::Result<NBTCompound> {
-        NBTCompound::internal_nbt(bytes, &self.rodeo)
+        NBTCompound::new(bytes, &self.rodeo)
     }
 
     pub(crate) fn chunk_from_nbt(&self, chunk_nbt: NBTCompound) -> Option<Chunk> {
-        Some(Chunk::from_nbt_internal(chunk_nbt, &self.rodeo))
+        Some(Chunk::from_nbt_in(chunk_nbt, &self.rodeo))
     }
 
     pub fn new() -> Self {

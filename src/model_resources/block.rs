@@ -1,39 +1,30 @@
+#![warn(
+    clippy::all,
+    clippy::restriction,
+    clippy::pedantic,
+    clippy::nursery,
+    clippy::cargo
+)]
+use bumpalo::collections::String as BumpString;
+use bumpalo::collections::Vec as BumpVec;
 use std::hash::Hash;
 
+use super::block_states::BlockState;
 
-use crate::{loaded_world::InternedBlockName, MCResourceLoader};
-
-use super::block_states::{BlockState, InternedBlockState};
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct InternedBlock {
-    pub block_name: InternedBlockName,
-    pub properties: InternedBlockState,
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+pub struct BlockName<'a> {
+    value: BumpString<'a>,
 }
 
-impl Hash for InternedBlock {
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Block<'a> {
+    pub block_name: BlockName<'a>,
+    pub properties: BlockState<'a>,
+}
+
+impl<'a> Hash for Block<'a> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.block_name.hash(state);
         self.properties.hash(state);
     }
-}
-
-impl InternedBlock {
-    pub fn resolve<'a>(&'a self, loader: &'a MCResourceLoader) -> ResolvedBlock<'a> {
-        let interner = &loader.rodeo;
-        let name = interner.resolve(&self.block_name);
-
-        let properties = self.properties.resolve(loader);
-
-        ResolvedBlock {
-            block_name: name,
-            properties: properties,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct ResolvedBlock<'a> {
-    pub block_name: &'a str,
-    pub properties: BlockState<'a>,
 }

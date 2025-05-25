@@ -1,4 +1,14 @@
+#![warn(
+    clippy::all,
+    clippy::restriction,
+    clippy::pedantic,
+    clippy::nursery,
+    clippy::cargo
+)]
+use bumpalo::collections::String as BumpString;
+use bumpalo::collections::Vec as BumpVec;
 use bumpalo::{collections::CollectIn, Bump};
+
 use serde_json::Value;
 
 use super::{resource_error::ResourceErrorKind, utils::parse_array};
@@ -64,15 +74,13 @@ impl TryFrom<(&str, &Value)> for BlockDisplay {
 impl BlockDisplay {
     pub fn parse_display<'a>(
         value: &Value,
-        bump: &'a mut Bump,
-    ) -> Result<bumpalo::collections::Vec<'a, BlockDisplay>, ResourceErrorKind> {
+        bump: &'a Bump,
+    ) -> Result<BumpVec<'a, BlockDisplay>, ResourceErrorKind> {
         match value.as_object() {
-            Some(object) => {
-                let obj_iter = object
-                    .iter()
-                    .map(|(name, value)| BlockDisplay::try_from((name.as_str(), value)))
-                    .collect_in::<Result<Vec<_>, ResourceErrorKind>>(bump);
-            }
+            Some(object) => object
+                .iter()
+                .map(|(name, value)| BlockDisplay::try_from((name.as_str(), value)))
+                .collect_in::<Result<BumpVec<'a, _>, ResourceErrorKind>>(bump),
             None => Err(ResourceErrorKind::InvalidField(format!(
                 "Block display field must be a json object. json value: {}",
                 value.to_string()

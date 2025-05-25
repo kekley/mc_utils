@@ -1,10 +1,12 @@
-use bumpalo::Bump;
+use bumpalo::collections::String as BumpString;
+use bumpalo::collections::Vec as BumpVec;
+use bumpalo::{collections::CollectIn, Bump};
 use serde_json::Value;
 
 use super::{
     block_face::BlockFace,
-    resource_error::{ResourceError, ResourceErrorKind},
-    utils::parse_array,
+    resource_error::ResourceErrorKind,
+    utils::{get_optional_field, parse_array, parse_type, try_get_field},
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -42,33 +44,25 @@ impl<'a> BlockElement<'a> {
             None => true,
         }
     }
-    pub fn from_json_value(value: &Value, bump: &mut Bump) -> Result<Self, ResourceError> {
-        let from = parse_array::<f32, 3>(
-            value
-                .get("from")
-                .context("\"from\" field did not exist in block element")?,
-        )?;
-        let to = parse_array::<f32, 3>(
-            value
-                .get("to")
-                .expect("\"to\" field did not exist for block element"),
-        )?;
-        let rotation: Option<ElementRotation> = value
-            .get("rotation")
-            .map(|value| ElementRotation::try_from(value))
-            .transpose()?;
-        let shade: Option<Shade> = value
-            .get("shade")
-            .map(|value| value.as_bool().context("shade existed but was not bool"))
-            .transpose()?
-            .map(|bool| bool.into());
+    pub fn from_json_value(value: &Value, bump: &'a Bump) -> Result<Self, ResourceErrorKind> {
+        let from = parse_array::<f32, 3>(try_get_field(value, "from")?)?;
+        let to = parse_array::<f32, 3>(try_get_field(value, "to")?)?;
+        let rotation_field = get_optional_field(value, "rotation");
 
-        let faces: [Option<BlockFace>; 6] = BlockFace::parse_faces(
-            value
-                .get("faces")
-                .context("\"faces\" field not defined for block element")?,
-            bump,
-        )?;
+        let rotation = match rotation_field {
+            Some(field) => Some(ElementRotation::try_from(field)?),
+            None => None,
+        };
+
+        let shade_field = get_optional_field(value, "shade");
+
+        let shade = match shade_field {
+            Some(field) => Some(parse_type::<bool>(field)?.into()),
+            None => None,
+        };
+
+        let faces = BlockFace::parse_faces(try_get_field(value, "faces")?, bump)?;
+
         Ok(BlockElement {
             from,
             to,
@@ -79,14 +73,14 @@ impl<'a> BlockElement<'a> {
     }
     pub fn parse_elements(
         value: &Value,
-        bump: &'a mut Bump,
-    ) -> Result<bumpalo::collections::Vec<'a, BlockElement<'a>>, ResourceError> {
-        value
-            .as_array()
-            .context("Attempted to parse block elements that were not in an array")?
+        bump: &'a Bump,
+    ) -> Result<BumpVec<'a, BlockElement<'a>>, ResourceErrorKind> {
+        let vec = parse_type::<Vec<_>>(value)?;
+        let iter = vec
             .iter()
-            .map(|value| BlockElement::from_json_value(value, bump))
-            .collect::<Result<bumpalo::collections::Vec<_>, ResourceError>>()
+            .map(|value| BlockElement::from_json_value(value, bump));
+        let a = iter.collect_in(bump);
+        a
     }
 }
 
@@ -109,7 +103,7 @@ impl TryFrom<&Value> for ElementAxis {
             None => {
                 return Err(ResourceErrorKind::InvalidField(format!(
                     "Wrong data type for element axis. Value:{}",
-                    value.as_str()
+                    value.to_string()
                 )))
             }
         }
@@ -119,29 +113,15 @@ impl TryFrom<&Value> for ElementAxis {
 impl TryFrom<&Value> for ElementRotation {
     type Error = ResourceErrorKind;
     fn try_from(value: &Value) -> Result<Self, Self::Error> {
-        let origin = parse_array::<f32, 3>(
-            value
-                .get("origin")
-                .context("Element rotation was missing \"origin\" field ")?,
-        )?;
-        let axis = ElementAxis::try_from(
-            value
-                .get("axis")
-                .context("Element rotation was missing \"axis\" field")?,
-        )?;
-        let angle = value
-            .get("angle")
-            .context("Element rotation was missing \"angle\" field")?
-            .as_f64()
-            .context("\"angle\"field was not a number")? as f32;
-        let rescale = value.get("rescale");
-        let rescale: Option<Rescale> = match rescale {
-            Some(value) => Some(
-                value
-                    .as_bool()
-                    .context("\"rescale\" value was not a boolean")?
-                    .into(),
-            ),
+        let origin_field = try_get_field(value, "origin")?;
+        let origin = parse_array::<f32, 3>(origin_field)?;
+        let axis_field = try_get_field(value, "axis")?;
+        let axis = ElementAxis::try_from(axis_field)?;
+        let angle_field = try_get_field(value, "angle")?;
+        let angle = parse_type::<f32>(angle_field)?;
+        let rescale_field = get_optional_field(value, "rescale");
+        let rescale = match rescale_field {
+            Some(field) => Some(parse_type::<bool>(field)?.into()),
             None => None,
         };
         Ok(ElementRotation {

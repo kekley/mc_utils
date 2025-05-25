@@ -1,47 +1,39 @@
+#![warn(
+    clippy::all,
+    clippy::restriction,
+    clippy::pedantic,
+    clippy::nursery,
+    clippy::cargo
+)]
+use bumpalo::collections::String as BumpString;
+use bumpalo::collections::Vec as BumpVec;
+use bumpalo::{collections::CollectIn, Bump};
+use serde_json::{Map, Value};
 use std::{slice, sync::Arc};
 
-use anyhow::{Context, Ok};
-use serde_json::Value;
-
-use crate::MCResourceLoader;
-
-use super::{block_states::InternedBlockState, variant::ModelVariant};
+use super::utils::try_get_field;
+use super::{
+    block_states::BlockState, resource_error::ResourceErrorKind, utils::parse_type,
+    variant::ModelVariant,
+};
 
 #[derive(Debug, Clone)]
-pub struct Multipart {
-    cases: Vec<Case>,
+pub struct Multipart<'a> {
+    cases: BumpVec<'a, Case<'a>>,
 }
 
-impl Multipart {
-    pub fn load_models(
-        &self,
-        block_state: &InternedBlockState,
-        rodeo: &Arc<ThreadedRodeo>,
-    ) -> Vec<ModelVariant> {
-        self.cases
-            .iter()
-            .filter_map(|case| {
-                if case.check(block_state, rodeo) {
-                    Some(case.apply.variant.clone())
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-}
 #[derive(Debug, Clone)]
 
-pub struct Case {
-    when: Option<When>,
-    apply: Apply,
+pub struct Case<'a> {
+    when: Option<When<'a>>,
+    apply: Apply<'a>,
 }
-impl Case {
-    pub fn check(&self, block_state: &InternedBlockState, rodeo: &Arc<ThreadedRodeo>) -> bool {
+impl<'a> Case<'a> {
+    pub fn check(&self, block_state: &BlockState) -> bool {
         if self
             .when
             .as_ref()
-            .is_none_or(|when| when.check(block_state, rodeo))
+            .is_none_or(|when| when.check(block_state))
         {
             return true;
         } else {
@@ -51,165 +43,98 @@ impl Case {
 }
 #[derive(Debug, Clone)]
 
-pub struct Apply {
-    variant: ModelVariant,
+pub struct Apply<'a> {
+    variant: ModelVariant<'a>,
 }
 
 #[derive(Debug, Clone)]
-pub enum When {
-    OrCase(Vec<InternedBlockState>),
-    AndCase(Vec<InternedBlockState>),
-    SingleCase(InternedBlockState),
+pub struct TestStates<'a> {
+    pub names_values: BumpVec<'a, (BumpString<'a>, BumpString<'a>)>,
 }
-impl When {
-    pub fn check(&self, block_state: &InternedBlockState, rodeo: &Arc<ThreadedRodeo>) -> bool {
+
+#[derive(Debug, Clone)]
+pub enum When<'a> {
+    OrCase(BumpVec<'a, TestStates<'a>>),
+    AndCase(BumpVec<'a, TestStates<'a>>),
+    SingleCase(TestStates<'a>),
+}
+impl<'a> When<'a> {
+    pub fn check(&self, block_state: &BlockState<'a>) -> bool {
         match self {
             When::OrCase(test_block_states) => {
-                test_block_states
-                    .iter()
-                    .enumerate()
-                    .any(|(index, case_block_state)| {
-                        case_block_state
-                            .properties
-                            .iter()
-                            .all(|(case_state_name, case_state)| {
-                                block_state.properties.iter().any(|(state_name, state)| {
-                                    state_name == case_state_name
-                                        && rodeo.resolve(case_state).split("|").any(
-                                            |case_state_str| {
-                                                let val = rodeo.get(case_state_str).is_some_and(
-                                                    |case_state_spur| case_state_spur == *state,
-                                                );
-                                                val
-                                            },
-                                        )
-                                })
-                            })
-                    })
+                todo!()
             }
             When::AndCase(test_states) => {
-                test_states
-                    .iter()
-                    .enumerate()
-                    .all(|(index, case_block_state)| {
-                        case_block_state
-                            .properties
-                            .iter()
-                            .all(|(case_state_name, case_state)| {
-                                block_state.properties.iter().any(|(state_name, state)| {
-                                    state_name == case_state_name && {
-                                        rodeo.resolve(case_state).split("|").any(|case_state_str| {
-                                            let val = rodeo.get(case_state_str).is_some_and(
-                                                |case_state_spur| case_state_spur == *state,
-                                            );
-                                            val
-                                        })
-                                    }
-                                })
-                            })
-                    })
+                todo!()
             }
             When::SingleCase(test_block_state) => {
-                test_block_state
-                    .properties
-                    .iter()
-                    .all(|(test_state_name, test_state)| {
-                        block_state
-                            .properties
-                            .iter()
-                            .any(|(tested_state_name, tested_state)| {
-                                if tested_state_name == test_state_name {
-                                    let mut split = rodeo.resolve(test_state).split("|");
-                                    split.any(|case_state_str| {
-                                        let val = rodeo.get(case_state_str).is_some_and(
-                                            |case_state_spur| case_state_spur == *tested_state,
-                                        );
-
-                                        val
-                                    })
-                                } else {
-                                    false
-                                }
-                            })
-                    })
+                todo!()
             }
         }
     }
 }
 
-impl Multipart {
-    pub fn new(value: &Value, loader: &MCResourceLoader) -> anyhow::Result<Self> {
-        let cases = value
-            .as_array()
-            .context("\"multipart\" field was not an array")?
+impl<'a> Multipart<'a> {
+    pub fn try_from_json(value: &Value, bump: &'a Bump) -> Result<Self, ResourceErrorKind> {
+        let cases = parse_type::<Vec<Value>>(value)?
             .iter()
-            .map(|value| Case::new(value, &loader))
-            .collect::<Result<Vec<_>, _>>()?;
+            .map(|value| Case::try_from_json(value, bump))
+            .collect_in::<Result<BumpVec<'a, _>, ResourceErrorKind>>(bump)?;
+
         Ok(Multipart { cases: cases })
     }
 }
 
-impl Case {
-    pub fn new(value: &Value, loader: &MCResourceLoader) -> anyhow::Result<Self> {
+impl<'a> Case<'a> {
+    pub fn try_from_json(value: &Value, bump: &'a Bump) -> Result<Self, ResourceErrorKind> {
         let when = value
             .get("when")
             .map(|value| {
                 if let Some(value) = value.get("OR") {
-                    let array = value.as_array().context("OR case was not array")?;
-                    let block_states = collect_blockstates(array, loader)?;
-                    Ok(When::OrCase(block_states))
+                    //"Or" and "And" case are a list of test states, which are a json object containing an indeterminate number of fields in the format "state name" : "state_value(s)"
+                    let test_states = Case::collect_test_states(value, bump)?;
+                    Ok(When::OrCase(test_states))
                 } else if let Some(value) = value.get("AND") {
-                    let array = value.as_array().context("AND case was not array")?;
-                    let block_states = collect_blockstates(array, loader)?;
-                    Ok(When::AndCase(block_states))
+                    let test_states = Case::collect_test_states(value, bump)?;
+                    Ok(When::AndCase(test_states))
                 } else {
-                    let a = collect_blockstates(slice::from_ref(&value), loader)?;
-                    let a = a[0].clone();
-                    let block_state = a;
-                    Ok(When::SingleCase(block_state))
+                    let test_states = Case::collect_test_states(value, bump)?;
+                    if test_states.len() > 0 {
+                        return Err(ResourceErrorKind::InvalidField(
+                            "Error parsing Case, empty single case".to_owned(),
+                        ));
+                    }
+                    let test_state = test_states.into_iter().nth(0).take().unwrap();
+                    Ok(When::SingleCase(test_state))
                 }
             })
             .transpose()?;
 
-        let variant = ModelVariant::from_json_value(
-            value
-                .get("apply")
-                .context("no model specified for apply field in multipart")?,
-            loader,
-        )?;
+        let variant = ModelVariant::from_json_value(try_get_field(value, "apply")?, bump)?;
         let apply = Apply { variant: variant };
 
         Ok(Case { when, apply: apply })
     }
-}
 
-fn collect_blockstates(
-    value: &[Value],
-    loader: &MCResourceLoader,
-) -> anyhow::Result<Vec<InternedBlockState>> {
-    let rodeo = &loader.rodeo;
-    value
-        .iter()
-        .map(|block_state_entry| {
-            let properties: Vec<(Spur, Spur)> = block_state_entry
-                .as_object()
-                .context("or case entry was not obj")?
-                .iter()
-                .map(|(name, field)| {
-                    let name_spur = rodeo.get_or_intern(name);
-                    let field_spur = rodeo.get_or_intern(
-                        field
-                            .as_str()
-                            .context("field in multipart case was not str")?,
-                    );
-                    Ok((name_spur, field_spur))
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-
-            let r = InternedBlockState {
-                properties: properties,
-            };
-            Ok(r)
-        })
-        .collect::<Result<Vec<_>, _>>()
+    pub fn collect_test_states(
+        value: &Value,
+        bump: &'a Bump,
+    ) -> Result<BumpVec<'a, TestStates<'a>>, ResourceErrorKind> {
+        parse_type::<Vec<Value>>(value)?
+            .iter()
+            .map(|value| {
+                let names_values = parse_type::<Map<String, Value>>(value)?
+                    .iter()
+                    .map(|(state_name, values)| {
+                        let values_str = parse_type::<&str>(values)?;
+                        Ok((
+                            BumpString::from_str_in(&state_name, bump),
+                            BumpString::from_str_in(values_str, bump),
+                        ))
+                    })
+                    .collect_in::<Result<BumpVec<_>, ResourceErrorKind>>(bump)?; // if we fail parsing at any point we want to just return an error for the whole thing
+                Ok(TestStates { names_values })
+            })
+            .collect_in::<Result<BumpVec<'a, _>, ResourceErrorKind>>(bump)
+    }
 }

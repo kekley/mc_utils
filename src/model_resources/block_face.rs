@@ -1,16 +1,41 @@
-use std::sync::Arc;
+#![warn(
+    clippy::all,
+    clippy::restriction,
+    clippy::pedantic,
+    clippy::nursery,
+    clippy::cargo
+)]
+use bumpalo::collections::String as BumpString;
+use bumpalo::collections::Vec as BumpVec;
+use bumpalo::{collections::CollectIn, Bump};
+use serde_json::{Map, Value};
 
-use bumpalo::Bump;
-use serde_json::Value;
+use crate::utils::parse_type;
 
 use super::{
     block_models::BlockRotation,
     block_texture::{TextureVariableEnum, Uv},
     resource_error::ResourceErrorKind,
+    utils::{get_optional_field, try_get_field},
 };
 
 #[derive(Debug, Clone, Copy)]
-pub struct TintIndex(i64);
+pub struct TintIndex(i32);
+
+impl From<i32> for TintIndex {
+    fn from(value: i32) -> Self {
+        TintIndex(value)
+    }
+}
+
+impl TryFrom<&Value> for TintIndex {
+    type Error = ResourceErrorKind;
+
+    fn try_from(value: &Value) -> Result<Self, Self::Error> {
+        let ind = parse_type::<i32>(value)?;
+        Ok(ind.into())
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct BlockFace<'a> {
@@ -25,16 +50,14 @@ pub struct BlockFace<'a> {
 impl<'a> BlockFace<'a> {
     pub fn parse_faces(
         value: &Value,
-        bump: &'a mut Bump,
+        bump: &'a Bump,
     ) -> Result<[Option<BlockFace<'a>>; 6], ResourceErrorKind> {
         const NONE_VALUE: Option<BlockFace> = None;
-        let vec = value
-            .as_object()
-            .context("\"faces\" field was not a json object")?
+        let obj = parse_type::<Map<_, _>>(value)?;
+        let vec = obj
             .iter()
-            .enumerate()
-            .map(|(i, (name, value))| BlockFace::parse_from_json_value(name, value, bump))
-            .collect::<Result<bumpalo::collections::Vec<'a, _>, ResourceErrorKind>>()?;
+            .map(|(name, value)| BlockFace::parse_from_json_value(name, value, bump))
+            .collect_in::<Result<BumpVec<'a, _>, ResourceErrorKind>>(bump)?;
 
         let mut array = [NONE_VALUE; 6];
         vec.iter()
@@ -62,7 +85,9 @@ impl TryFrom<&str> for FaceName {
             "south" => Ok(FaceName::South),
             "west" => Ok(FaceName::West),
             "east" => Ok(FaceName::East),
-            _ => Err(format!("Invalid value {value} for \"facename\"")),
+            _ => Err(ResourceErrorKind::InvalidField(format!(
+                "Invalid value {value} for \"facename\""
+            ))),
         }
     }
 }
@@ -71,36 +96,39 @@ impl<'a> BlockFace<'a> {
     pub fn parse_from_json_value(
         face_name: &str,
         value: &Value,
-        bump: &'a mut Bump,
+        bump: &'a Bump,
     ) -> Result<Self, ResourceErrorKind> {
         let name = FaceName::try_from(face_name)?;
-        let uv = value
-            .get("uv")
-            .map(|value| Uv::try_from(value))
-            .transpose()?;
-        let texture = TextureVariableEnum::parse_from_json_value(
-            value.get("texture").expect("no texture for face"),
-            bump,
-        );
-        let cullface = value
-            .get("cullface")
-            .map(|value| {
-                FaceName::try_from(
-                    value
-                        .as_str()
-                        .context("\"cullface\" field was not a string")?,
-                )
-            })
-            .transpose()?;
-        let rotation = value
-            .get("rotation")
-            .map(|value| BlockRotation::try_from(value))
-            .transpose()?;
-        let tint = value
-            .get("tint")
-            .map(|value| value.as_i64().context("\"tint\" field was not an integer"))
-            .transpose()?
-            .map(|ind| TintIndex(ind));
+        let uv_field = get_optional_field(value, "uv");
+        let uv = match uv_field {
+            Some(value) => Some(Uv::try_from(value)?),
+            None => None,
+        };
+
+        let texture_field = try_get_field(value, "texture")?;
+        let texture = TextureVariableEnum::try_from_in(texture_field, bump)?;
+        let cullface_field = get_optional_field(value, "cullface");
+
+        let cullface = match cullface_field {
+            Some(value) => Some(match parse_type::<&str>(value) {
+                Ok(str) => FaceName::try_from(str)?,
+                Err(err) => {
+                    return Err(err);
+                }
+            }),
+            None => None,
+        };
+
+        let rotation_field = get_optional_field(value, "rotation");
+        let rotation = match rotation_field {
+            Some(value) => Some(BlockRotation::try_from(value)?),
+            None => None,
+        };
+        let tint_field = get_optional_field(value, "tint");
+        let tint = match tint_field {
+            Some(value) => Some(TintIndex::try_from(value)?),
+            None => None,
+        };
 
         Ok(BlockFace {
             name,

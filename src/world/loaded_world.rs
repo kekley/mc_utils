@@ -73,7 +73,6 @@ impl From<ChunkCoords> for WorldCoords {
     }
 }
 
-pub type InternedBlockName = Spur;
 #[derive(Debug)]
 pub struct World {
     interner: Arc<ThreadedRodeo>,

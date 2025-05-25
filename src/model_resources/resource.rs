@@ -4,8 +4,18 @@ use bumpalo::Bump;
 use log::{error, info};
 use serde_json::Value;
 
-use super::{multipart::Multipart, resource_error::ResourceError, variant::Variants};
+use crate::{
+    resource_error::create_resource_error,
+    utils::{get_optional_field, try_get_field},
+};
 
+use super::{
+    multipart::Multipart,
+    resource_error::{ResourceError, ResourceErrorKind},
+    variant::Variants,
+};
+
+#[derive(Debug, Clone)]
 pub enum ResourcePath<'a> {
     BlockModel(bumpalo::collections::String<'a>),
     Texture(bumpalo::collections::String<'a>),
@@ -13,19 +23,19 @@ pub enum ResourcePath<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub enum BlockStates<'a> {
-    MultiPart(Multipart),
-    Variants(Variants),
+pub enum ModelVariants<'a> {
+    MultipartVariant(Multipart<'a>),
+    StandardVariant(Variants<'a>),
 }
 
-impl<'a> BlockStates<'a> {
-    pub fn load_from_json(path: &str, bump: &mut Bump) -> Result<BlockStates<'a>, ResourceError> {
+impl<'a> ModelVariants<'a> {
+    pub fn load_from_json(path: &str, bump: &'a Bump) -> Result<ModelVariants<'a>, ResourceError> {
         info!("loading block state from disk: {}", path);
         let file = fs::read_to_string(path);
         let Ok(file) = file else {
             return Err(ResourceError {
                 file: path.to_string(),
-                kind: crate::resource_error::ResourceErrorKind::FileNotFound,
+                kind: crate::resource_error::ResourceErrorKind::ErrorLoadingFile,
             });
         };
 
@@ -39,15 +49,25 @@ impl<'a> BlockStates<'a> {
             }
         };
 
-        if let Some(value) = value.get("variants") {
-            Ok(BlockStates::Variants(Variants::from_json_value(
-                value, &loader,
-            )?))
-        } else if let Some(value) = value.get("multipart") {
-            Ok(BlockStates::MultiPart(Multipart::new(value, loader)?))
-        } else {
-            error!("Not a valid variant or multipart");
-            return Err(anyhow!("failed parsing multipart"));
-        }
+        Ok(match get_optional_field(&value, "variants") {
+            Some(variants) => ModelVariants::StandardVariant(create_resource_error(path, || {
+                Variants::from_json_value(&variants, bump)
+            })?),
+            None => match get_optional_field(&value, "multipart") {
+                Some(multipart) => {
+                    ModelVariants::MultipartVariant(create_resource_error(path, || {
+                        Multipart::try_from_json(&multipart, bump)
+                    })?)
+                }
+                None => {
+                    return Err(ResourceError {
+                        file: path.to_string(),
+                        kind: ResourceErrorKind::MissingField(format!(
+                            "No variant or multipart field"
+                        )),
+                    })
+                }
+            },
+        })
     }
 }
