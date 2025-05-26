@@ -1,5 +1,6 @@
 use std::{fmt::Debug, sync::Arc, u32};
 
+use bumpalo::Bump;
 use bytes::Bytes;
 
 use crate::{
@@ -56,7 +57,7 @@ impl SectionTower {
     }
 }
 impl Chunk {
-    pub(crate) fn from_nbt_in(nbt_compound: NBTCompound, interner: &Arc<ThreadedRodeo>) -> Chunk {
+    pub(crate) fn from_nbt_in(nbt_compound: NBTCompound, bump: &Bump) -> Chunk {
         let binding = nbt_compound.get_tag("").expect("Not a Chunk NBT");
         let chunk = binding.get_compound();
         let data_version = chunk
@@ -72,7 +73,7 @@ impl Chunk {
             .iter()
             .filter_map(|section| {
                 let section_compound = section.get_compound();
-                let section = ChunkSection::from_compound_internal(&section_compound, interner);
+                let section = ChunkSection::from_compound_internal(&section_compound);
                 if section.ypos >= -4 {
                     Some(section)
                 } else {
@@ -203,10 +204,7 @@ impl ChunkSection {
     pub(crate) fn with_palette_from_compound(interner: &Arc<ThreadedRodeo>) -> Self {
         unimplemented!()
     }
-    pub(crate) fn from_compound_internal(
-        compound: &NBTCompound,
-        interner: &Arc<ThreadedRodeo>,
-    ) -> Self {
+    pub(crate) fn from_compound_internal(compound: &NBTCompound) -> Self {
         let mut palette = BlockPalette::new_inner(interner);
         let y = compound.get_tag("Y").unwrap().get_byte();
         //ignore non-vanilla world heights for now

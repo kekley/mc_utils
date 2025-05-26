@@ -17,6 +17,8 @@ use super::{
     variant::ModelVariant,
 };
 
+struct MultipartInner {}
+
 #[derive(Debug, Clone)]
 pub struct Multipart<'a> {
     cases: BumpVec<'a, Case<'a>>,

@@ -1,6 +1,5 @@
-use spider_eye::{
-    MCResourceLoader, SpiderEyeError,
-};
+use bumpalo::Bump;
+use spider_eye::{MCResourceLoader, SpiderEyeError};
 
 extern crate spider_eye;
 

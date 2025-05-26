@@ -1,8 +1,6 @@
 use std::{hash::Hash, sync::Arc};
 
-use dashmap::DashMap;
 use fxhash::FxBuildHasher;
-use lasso::{Spur, ThreadedRodeo};
 use log::info;
 
 use crate::palette::BlockPalette;
@@ -10,6 +8,7 @@ use crate::palette::BlockPalette;
 use super::{
     chunk::Chunk,
     region::{LazyRegion, LoadedRegion},
+    world_error::WorldError,
 };
 #[derive(Debug, Default, Hash, PartialEq, Eq, Clone, Copy)]
 pub struct WorldCoords {
@@ -75,21 +74,14 @@ impl From<ChunkCoords> for WorldCoords {
 
 #[derive(Debug)]
 pub struct World {
-    interner: Arc<ThreadedRodeo>,
-    path: String,
-    chunk_cache: DashMap<ChunkCoords, Option<Chunk>, FxBuildHasher>,
-    pub global_palette: BlockPalette,
+    region_folder: String,
 }
 
 impl World {
-    pub(crate) fn new(folder_path: &str, interner: &Arc<ThreadedRodeo>) -> anyhow::Result<World> {
+    pub(crate) fn new(folder_path: &str) -> Result<World, WorldError> {
         info!("Opening world folder");
-        let palette = BlockPalette::new_inner(interner);
         let temp = Self {
-            path: folder_path.to_owned(),
-            interner: interner.clone(),
-            global_palette: palette,
-            chunk_cache: DashMap::with_hasher(FxBuildHasher::default()),
+            region_folder: folder_path.to_owned(),
         };
         dbg!(folder_path);
 
@@ -101,7 +93,7 @@ impl World {
         let x = region_coords.x;
         let z = region_coords.z;
         let mut path_str = String::new();
-        path_str.push_str(&self.path);
+        path_str.push_str(&self.region_folder);
         path_str.push_str(&format!("/r.{x}.{z}.mca"));
         let file_path = path_str;
         LazyRegion::new(&file_path, &self.interner).ok()

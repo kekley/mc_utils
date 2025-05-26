@@ -22,14 +22,17 @@ pub enum ResourcePath<'a> {
     BlockState(bumpalo::collections::String<'a>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum ModelVariants<'a> {
     MultipartVariant(Multipart<'a>),
     StandardVariant(Variants<'a>),
 }
 
 impl<'a> ModelVariants<'a> {
-    pub fn load_from_json(path: &str, bump: &'a Bump) -> Result<ModelVariants<'a>, ResourceError> {
+    pub(crate) fn load_from_json_in(
+        path: &str,
+        bump: &'a Bump,
+    ) -> Result<ModelVariants<'a>, ResourceError> {
         info!("loading block state from disk: {}", path);
         let file = fs::read_to_string(path);
         let Ok(file) = file else {

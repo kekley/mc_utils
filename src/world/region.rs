@@ -12,6 +12,7 @@ use crate::nbt_compound::NBTCompound;
 use bytes::Bytes;
 
 use super::loaded_world::{ChunkCoords, RegionCoords};
+use super::world_error::WorldError;
 
 //offsets are for 4KiB Sectors
 pub(crate) const CHUNKS_PER_FILE: usize = 1024;
@@ -30,7 +31,7 @@ pub struct LazyRegion {
 }
 
 impl LazyRegion {
-    pub fn new(path: &str, interner: &Arc<ThreadedRodeo>) -> anyhow::Result<Self> {
+    pub fn new(path: &str) -> Result<Self, WorldError> {
         let mut buf = [0i64; 2];
         path.split(".")
             .into_iter()
@@ -44,13 +45,12 @@ impl LazyRegion {
         let coords = ChunkCoords::new(buf[0], buf[1]);
         let region = RegionCoords::from(coords);
         dbg!(path);
-        let mut file = File::open(path)?;
+        let mut file = File::open(path).unwrap();
         let file_size = file.metadata().unwrap().size();
         let mut bytes: Vec<u8> = Vec::with_capacity(file_size as usize);
         file.read_to_end(&mut bytes);
         let bytes: Arc<[u8]> = Arc::from(bytes);
         let value = LazyRegion {
-            interner: interner.clone(),
             data: bytes,
             coords: region,
         };
@@ -73,7 +73,6 @@ impl LazyRegion {
 
 #[derive(Debug, Clone)]
 pub struct LoadedRegion {
-    interner: Arc<ThreadedRodeo>,
     pub coords: RegionCoords,
     chunks: Box<[Option<Chunk>; 1024]>,
 }

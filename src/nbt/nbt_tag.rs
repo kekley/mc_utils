@@ -38,10 +38,7 @@ impl<'a> NBTTag<'a> {
         // See https://doc.rust-lang.org/reference/items/enumerations.html#pointer-casting
         unsafe { *(self as *const Self as *const u8) }
     }
-    pub fn read_tag<'b>(stream: &mut &'b [u8], bump: &'a Bump) -> Result<NBTTag<'a>, NBTError>
-    where
-        'b: 'a,
-    {
+    pub fn read_tag(stream: &mut &'a [u8], bump: &'a Bump) -> Result<NBTTag<'a>, NBTError> {
         let (id, right) = stream.split_at(1);
         *stream = right;
         let id = NBTId::try_from_primitive(id[0])?;

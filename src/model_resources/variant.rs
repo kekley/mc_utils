@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use bumpalo::{collections::CollectIn, Bump};
 use log::error;
 use serde_json::{Map, Value};
@@ -63,13 +65,13 @@ impl TryFrom<&Value> for UvLock {
 #[derive(Debug, Clone)]
 pub enum ModelVariant<'a> {
     SingleModel(VariantEntry<'a>),
-    ModelArray(bumpalo::collections::Vec<'a, VariantEntry<'a>>),
+    ModelArray(BumpVec<'a, VariantEntry<'a>>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 
 pub struct Variants<'a> {
-    variants: bumpalo::collections::Vec<'a, (BlockState<'a>, ModelVariant<'a>)>,
+    variants: BumpVec<'a, (BlockState<'a>, ModelVariant<'a>)>,
 }
 
 #[derive(Debug, Clone)]
@@ -152,12 +154,12 @@ impl<'a> Variants<'a> {
                 .iter()
                 .map(|(properties, model)| {
                     let test_state = BlockState {
-                        properties: BumpString::from_str_in(&properties, bump),
+                        properties: BumpString::from_str_in(&properties, &bump),
                     };
-                    let model = ModelVariant::from_json_value(model, bump)?;
+                    let model = ModelVariant::from_json_value(model, &bump)?;
                     Ok((test_state, model))
                 })
-                .collect_in::<Result<BumpVec<'a, (BlockState, ModelVariant)>, _>>(bump)?;
+                .collect_in::<Result<BumpVec<'a, (BlockState, ModelVariant)>, _>>(&bump)?;
 
         return Ok(Variants {
             variants: model_variants,

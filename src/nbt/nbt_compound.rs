@@ -66,9 +66,8 @@ impl<'a> NBTCompound<'a> {
         let mut tmp = NBTCompound {
             children: BumpVec::new_in(bump),
         };
-        let len = bytes.len();
-        let cursor = 0usize;
-        while cursor < len {
+
+        while bytes.len() > 0 {
             let tag_id = NBTId::try_from_primitive(bytes.get_u8())?;
             if tag_id == NBTId::EndId {
                 break;
