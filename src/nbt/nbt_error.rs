@@ -2,10 +2,12 @@ use std::str::Utf8Error;
 
 use num_enum::{TryFromPrimitive, TryFromPrimitiveError};
 
+#[derive(Debug)]
 pub struct NBTError {
     pub kind: NBTErrorKind,
 }
 
+#[derive(Debug)]
 pub enum NBTErrorKind {
     InvalidTag(String),
     InvalidString(String),

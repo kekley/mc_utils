@@ -9,7 +9,6 @@ use crate::chunk::Chunk;
 use crate::nbt::compression::{CompressionData, CompressionScheme};
 use crate::nbt_compound::NBTCompound;
 
-use bytes::Bytes;
 
 use super::loaded_world::{ChunkCoords, RegionCoords};
 use super::world_error::WorldError;
@@ -66,7 +65,67 @@ impl LazyRegion {
         let compressed_bytes = LoadedRegion::get_compressed_chunk(&mut cursor, &segment);
         let mut chunk_bytes = Bytes::from(LoadedRegion::decompress_chunk(&compressed_bytes));
         let nbt = NBTCompound::new(&mut chunk_bytes, &self.interner).ok()?;
-        let chunk = Chunk::from_nbt_in(nbt, &self.interner);
+        let chunk = {
+            let binding = nbt
+                .get_tag("")
+                .expect_tag("Chunks must start with an empty name compound tag")?;
+            let chunk = binding.get_compound();
+            let data_version = chunk
+                .get_tag("DataVersion")
+                .expect("Not a Chunk NBT")
+                .get_int();
+            let xpos = chunk.get_tag("xPos").expect("Not a Chunk NBT").get_int();
+            let zpos = chunk.get_tag("zPos").expect("Not a Chunk NBT").get_int();
+
+            let sections = chunk.get_tag("sections").unwrap().get_list();
+
+            let section_array: Vec<ChunkSection> = sections
+                .iter()
+                .filter_map(|section| {
+                    let section_compound = section.get_compound();
+                    let section = ChunkSection::from_compound_internal(&section_compound);
+                    if section.ypos >= -4 {
+                        Some(section)
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            let lowest_section = section_array
+                .iter()
+                .min_by_key(|s| s.ypos)
+                .expect("empty section array");
+
+            let min = lowest_section.ypos as isize;
+            let max = section_array
+                .iter()
+                .max_by_key(|s| s.ypos)
+                .map(|s| s.ypos)
+                .unwrap() as isize;
+            let mut sparse_sections = vec![None; (1 + max - min) as usize];
+
+            for (i, sec) in section_array.iter().enumerate() {
+                let sec_index = (sec.ypos as isize - min) as usize;
+
+                sparse_sections[sec_index] = Some(i);
+            }
+
+            let sec_tower = SectionTower {
+                sections: section_array,
+                map: sparse_sections,
+                y_min: 16 * min,
+                y_max: 16 * (max + 1),
+            };
+
+            let coords = ChunkCoords::new(xpos.into(), zpos.into());
+
+            Chunk<'a> {
+                coords,
+                data_version,
+                sections: sec_tower,
+            }
+        };
         Some(chunk)
     }
 }
@@ -123,7 +182,67 @@ impl From<&LazyRegion> for LoadedRegion {
                     let mut bytes = Bytes::from(chunk_bytes);
                     let chunk_nbt =
                         NBTCompound::new(&mut bytes, &interner).expect("Chunk NBT was invalid");
-                    let chunk = Chunk::from_nbt_in(chunk_nbt, &interner);
+                    let chunk = {
+                        let binding = chunk_nbt
+                            .get_tag("")
+                            .expect_tag("Chunks must start with an empty name compound tag")?;
+                        let chunk = binding.get_compound();
+                        let data_version = chunk
+                            .get_tag("DataVersion")
+                            .expect("Not a Chunk NBT")
+                            .get_int();
+                        let xpos = chunk.get_tag("xPos").expect("Not a Chunk NBT").get_int();
+                        let zpos = chunk.get_tag("zPos").expect("Not a Chunk NBT").get_int();
+
+                        let sections = chunk.get_tag("sections").unwrap().get_list();
+
+                        let section_array: Vec<ChunkSection> = sections
+                            .iter()
+                            .filter_map(|section| {
+                                let section_compound = section.get_compound();
+                                let section = ChunkSection::from_compound_internal(&section_compound);
+                                if section.ypos >= -4 {
+                                    Some(section)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect::<Vec<_>>();
+
+                        let lowest_section = section_array
+                            .iter()
+                            .min_by_key(|s| s.ypos)
+                            .expect("empty section array");
+
+                        let min = lowest_section.ypos as isize;
+                        let max = section_array
+                            .iter()
+                            .max_by_key(|s| s.ypos)
+                            .map(|s| s.ypos)
+                            .unwrap() as isize;
+                        let mut sparse_sections = vec![None; (1 + max - min) as usize];
+
+                        for (i, sec) in section_array.iter().enumerate() {
+                            let sec_index = (sec.ypos as isize - min) as usize;
+
+                            sparse_sections[sec_index] = Some(i);
+                        }
+
+                        let sec_tower = SectionTower {
+                            sections: section_array,
+                            map: sparse_sections,
+                            y_min: 16 * min,
+                            y_max: 16 * (max + 1),
+                        };
+
+                        let coords = ChunkCoords::new(xpos.into(), zpos.into());
+
+                        Chunk<'a> {
+                            coords,
+                            data_version,
+                            sections: sec_tower,
+                        }
+                    };
                     chunks[(x + z * 32) as usize] = Some(chunk);
                 }
             }

@@ -62,7 +62,67 @@ impl MCResourceLoader {
     }
 
     pub(crate) fn chunk_from_nbt(&self, chunk_nbt: NBTCompound) -> Option<Chunk> {
-        Some(Chunk::from_nbt_in(chunk_nbt, &self.rodeo))
+        Some({
+            let binding = chunk_nbt
+                .get_tag("")
+                .expect_tag("Chunks must start with an empty name compound tag")?;
+            let chunk = binding.get_compound();
+            let data_version = chunk
+                .get_tag("DataVersion")
+                .expect("Not a Chunk NBT")
+                .get_int();
+            let xpos = chunk.get_tag("xPos").expect("Not a Chunk NBT").get_int();
+            let zpos = chunk.get_tag("zPos").expect("Not a Chunk NBT").get_int();
+
+            let sections = chunk.get_tag("sections").unwrap().get_list();
+
+            let section_array: Vec<ChunkSection> = sections
+                .iter()
+                .filter_map(|section| {
+                    let section_compound = section.get_compound();
+                    let section = ChunkSection::from_compound_internal(&section_compound);
+                    if section.ypos >= -4 {
+                        Some(section)
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            let lowest_section = section_array
+                .iter()
+                .min_by_key(|s| s.ypos)
+                .expect("empty section array");
+
+            let min = lowest_section.ypos as isize;
+            let max = section_array
+                .iter()
+                .max_by_key(|s| s.ypos)
+                .map(|s| s.ypos)
+                .unwrap() as isize;
+            let mut sparse_sections = vec![None; (1 + max - min) as usize];
+
+            for (i, sec) in section_array.iter().enumerate() {
+                let sec_index = (sec.ypos as isize - min) as usize;
+
+                sparse_sections[sec_index] = Some(i);
+            }
+
+            let sec_tower = SectionTower {
+                sections: section_array,
+                map: sparse_sections,
+                y_min: 16 * min,
+                y_max: 16 * (max + 1),
+            };
+
+            let coords = ChunkCoords::new(xpos.into(), zpos.into());
+
+            Chunk<'a> {
+                coords,
+                data_version,
+                sections: sec_tower,
+            }
+        })
     }
 
     pub fn new() -> Self {

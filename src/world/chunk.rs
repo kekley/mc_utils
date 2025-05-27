@@ -3,21 +3,27 @@ use std::{fmt::Debug, sync::Arc, u32};
 use bumpalo::Bump;
 use bytes::Bytes;
 
+use super::{
+    chunk_error::ChunkError,
+    loaded_world::{ChunkCoords, WorldCoords},
+};
 use crate::{
-    block::Block,
+    block::{Block, BlockName},
+    java_string::JavaString,
     nbt::{nbt_compound::NBTCompound, nbt_tag::NBTTag},
+    nbt_error::NBTError,
     palette::BlockPalette,
 };
-
-use super::loaded_world::{ChunkCoords, WorldCoords};
+use bumpalo::collections::String as BumpString;
+use bumpalo::collections::Vec as BumpVec;
 
 #[derive(Clone)]
-pub struct Chunk {
+pub struct Chunk<'a> {
     data_version: i32,
     pub coords: ChunkCoords,
-    pub sections: SectionTower,
+    pub sections: SectionTower<'a>,
 }
-impl Debug for Chunk {
+impl Debug for Chunk<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Chunk")
             .field("data_version", &self.data_version)
@@ -27,8 +33,8 @@ impl Debug for Chunk {
 }
 
 #[derive(Debug, Clone)]
-pub struct SectionTower {
-    sections: Vec<ChunkSection>,
+pub struct SectionTower<'a> {
+    sections: BumpVec<'a, ChunkSection>,
     map: Vec<Option<usize>>,
     y_min: isize,
     y_max: isize,
@@ -37,7 +43,7 @@ const fn y_to_index(y: isize, y_min: isize) -> u8 {
     ((y - y_min) >> 4) as u8
 }
 
-impl SectionTower {
+impl<'a> SectionTower<'a> {
     pub fn get_section_for_y(&self, y: isize) -> Option<&ChunkSection> {
         if y >= self.y_max || y < self.y_min {
             return None;
@@ -56,9 +62,24 @@ impl SectionTower {
         self.y_max
     }
 }
-impl Chunk {
-    pub(crate) fn from_nbt_in(nbt_compound: NBTCompound, bump: &Bump) -> Chunk {
-        let binding = nbt_compound.get_tag("").expect("Not a Chunk NBT");
+
+pub trait ExpectTag<'a> {
+    fn expect_tag(&'a self, error_text: &str) -> Result<&'a NBTTag<'a>, ChunkError>;
+}
+
+impl<'a> ExpectTag<'a> for Option<&'a NBTTag<'a>> {
+    fn expect_tag(&'a self, error_text: &str) -> Result<&'a NBTTag<'a>, ChunkError> {
+        self.ok_or(ChunkError {
+            kind: super::chunk_error::ChunkErrorKind::InvalidNBT(format!("{}", error_text)),
+        })
+    }
+}
+
+impl<'a> Chunk<'a> {
+    pub(crate) fn from_nbt_in(nbt_compound: NBTCompound<'a>) -> Result<Chunk<'a>, ChunkError> {
+        let binding = nbt_compound
+            .get_tag("")
+            .expect_tag("Chunks must start with an empty name compound tag")?;
         let chunk = binding.get_compound();
         let data_version = chunk
             .get_tag("DataVersion")
@@ -70,7 +91,7 @@ impl Chunk {
         let sections = chunk.get_tag("sections").unwrap().get_list();
 
         let section_array: Vec<ChunkSection> = sections
-            .iter()
+            .into_iter()
             .filter_map(|section| {
                 let section_compound = section.get_compound();
                 let section = ChunkSection::from_compound_internal(&section_compound);
@@ -195,27 +216,22 @@ impl Chunk {
 #[derive(Debug, Clone)]
 pub struct ChunkSection {
     pub ypos: i8,
-    pub(crate) block_palette: BlockPalette,
     pub block_data: [u32; 4096],
     pub biome_data: [u32; 4096],
 }
 
 impl ChunkSection {
-    pub(crate) fn with_palette_from_compound(interner: &Arc<ThreadedRodeo>) -> Self {
-        unimplemented!()
-    }
-    pub(crate) fn from_compound_internal(compound: &NBTCompound) -> Self {
-        let mut palette = BlockPalette::new_inner(interner);
+    pub(crate) fn from_compound_internal(compound: NBTCompound) -> Result<Self, ChunkError> {
+        let bump = compound.children.bump();
         let y = compound.get_tag("Y").unwrap().get_byte();
         //ignore non-vanilla world heights for now
         //FIXME
         if y < -4 || y > 19 {
-            return Self {
-                block_palette: BlockPalette::new_inner(interner),
+            return Ok(Self {
                 ypos: y,
                 block_data: [0u32; 4096],
                 biome_data: [0u32; 4096],
-            };
+            });
         }
         let block_states_compound = compound.get_tag("block_states").unwrap().get_compound();
         let block_light = compound.get_tag("BlockLight");
@@ -228,45 +244,37 @@ impl ChunkSection {
             //dbg!(biome_resource);
         });
 
-        let block_light = block_light
-            .unwrap_or(&NBTTag::ByteArray(Bytes::new()))
-            .get_byte_array()
-            .to_owned();
-
-        let sky_light = sky_light
-            .unwrap_or(&NBTTag::ByteArray(Bytes::new()))
-            .get_byte_array()
-            .to_owned();
-
-        let block_states: Vec<Block> = block_states_compound
+        let palette_blocks: Result<Vec<Block>, ChunkError> = block_states_compound
             .get_tag("palette")
-            .unwrap()
+            .expect_tag("no palette")?
             .get_list()
             .iter()
             .map(|f| {
-                let block = f.get_compound();
-                let block_name = block.get_tag("Name").unwrap().get_string();
-                let block_name_spur = interner.get_or_intern(block_name);
-                let mut props = Vec::with_capacity(2);
-                let block_states: InternedBlockState = block
-                    .get_tag("Properties")
-                    .map(|properties| {
-                        properties.get_compound().children.iter().for_each(|f| {
-                            let state_name = f.0.clone();
-                            let state_value = interner.get_or_intern(f.1.get_string());
-                            props.push((state_name, state_value));
-                        });
-                        InternedBlockState { properties: props }
-                    })
-                    .unwrap_or(BlockState { properties: vec![] });
+                let block_compound = f.get_compound();
+                let block_name =
+                    BlockName::new_in(&block_compound.get_tag("Name").unwrap().get_string(), bump);
 
-                Block {
-                    block_name: block_name_spur,
-                    properties: block_states,
-                }
+                let properties = block_compound
+                    .get_tag("Properties")
+                    .expect_tag("no palette block properties")?;
+
+                let properties =
+                    properties
+                        .get_compound()
+                        .children
+                        .into_iter()
+                        .map(|(tag_name, tag)| {
+                            let property_name = tag_name.as_str();
+
+                            let property_value = tag.get_string();
+                        });
+                Ok(Block {
+                    block_name,
+                    properties: todo!(),
+                })
             })
             .collect();
-        let data = if block_states.len() == 1 {
+        let data = if palette_blocks.len() == 1 {
             &vec![]
         } else {
             &block_states_compound
@@ -275,9 +283,9 @@ impl ChunkSection {
                 .get_long_array()
         };
 
-        let bit_size = (f32::log2(block_states.len() as f32 - 1.0)).floor() + 1.0;
+        let bit_size = (f32::log2(palette_blocks.len() as f32 - 1.0)).floor() + 1.0;
 
-        palette.block_states = block_states;
+        palette.block_states = palette_blocks;
 
         let block_data: [u32; 4096] = std::array::from_fn(|i| {
             let ind = Self::extract_index(&data[..], i as u32, bit_size as u32);

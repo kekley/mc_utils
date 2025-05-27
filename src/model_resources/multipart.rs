@@ -13,7 +13,7 @@ use std::{slice, sync::Arc};
 
 use super::utils::try_get_field;
 use super::{
-    block_states::BlockState, resource_error::ResourceErrorKind, utils::parse_type,
+    block_states::BlockProperties, resource_error::ResourceErrorKind, utils::parse_type,
     variant::ModelVariant,
 };
 
@@ -31,7 +31,7 @@ pub struct Case<'a> {
     apply: Apply<'a>,
 }
 impl<'a> Case<'a> {
-    pub fn check(&self, block_state: &BlockState) -> bool {
+    pub fn check(&self, block_state: &BlockProperties) -> bool {
         if self
             .when
             .as_ref()
@@ -61,7 +61,7 @@ pub enum When<'a> {
     SingleCase(TestStates<'a>),
 }
 impl<'a> When<'a> {
-    pub fn check(&self, block_state: &BlockState<'a>) -> bool {
+    pub fn check(&self, block_state: &BlockProperties<'a>) -> bool {
         match self {
             When::OrCase(test_block_states) => {
                 todo!()

@@ -6,7 +6,7 @@ use serde_json::{Map, Value};
 
 use super::{
     block_models::{BlockModel, BlockRotation, ASSET_PATH},
-    block_states::BlockState,
+    block_states::BlockProperties,
     multipart::TestStates,
     resource::ResourcePath,
     resource_error::ResourceErrorKind,
@@ -71,7 +71,7 @@ pub enum ModelVariant<'a> {
 #[derive(Debug)]
 
 pub struct Variants<'a> {
-    variants: BumpVec<'a, (BlockState<'a>, ModelVariant<'a>)>,
+    variants: BumpVec<'a, (BlockProperties<'a>, ModelVariant<'a>)>,
 }
 
 #[derive(Debug, Clone)]
@@ -84,7 +84,7 @@ pub struct VariantEntry<'a> {
 }
 
 impl<'a> Variants<'a> {
-    pub fn get_model_variants(&self, block_state: &BlockState<'a>) -> Vec<ModelVariant> {
+    pub fn get_model_variants(&self, block_state: &BlockProperties<'a>) -> Vec<ModelVariant> {
         //dbg!(&block_state);
 
         let mut a: Vec<_> = self
@@ -149,17 +149,15 @@ impl<'a> Variants<'a> {
         value: &Value,
         bump: &'a Bump,
     ) -> Result<Self, ResourceErrorKind> {
-        let model_variants: BumpVec<(BlockState, ModelVariant)> =
+        let model_variants: BumpVec<(BlockProperties, ModelVariant)> =
             parse_type::<Map<String, Value>>(value)?
                 .iter()
                 .map(|(properties, model)| {
-                    let test_state = BlockState {
-                        properties: BumpString::from_str_in(&properties, &bump),
-                    };
+                    let test_state = BlockProperties::from_str(properties, bump)?;
                     let model = ModelVariant::from_json_value(model, &bump)?;
                     Ok((test_state, model))
                 })
-                .collect_in::<Result<BumpVec<'a, (BlockState, ModelVariant)>, _>>(&bump)?;
+                .collect_in::<Result<BumpVec<'a, (BlockProperties, ModelVariant)>, _>>(&bump)?;
 
         return Ok(Variants {
             variants: model_variants,
