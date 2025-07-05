@@ -64,7 +64,7 @@ impl LazyRegion {
         );
         let compressed_bytes = LoadedRegion::get_compressed_chunk(&mut cursor, &segment);
         let mut chunk_bytes = Bytes::from(LoadedRegion::decompress_chunk(&compressed_bytes));
-        let nbt = NBTCompound::new(&mut chunk_bytes, &self.interner).ok()?;
+        let nbt = NBTCompound::new_from_bytes(&mut chunk_bytes, &self.interner).ok()?;
         let chunk = {
             let binding = nbt
                 .get_tag("")
@@ -181,7 +181,7 @@ impl From<&LazyRegion> for LoadedRegion {
                     let chunk_bytes = Self::decompress_chunk(&compressed_chunk_data);
                     let mut bytes = Bytes::from(chunk_bytes);
                     let chunk_nbt =
-                        NBTCompound::new(&mut bytes, &interner).expect("Chunk NBT was invalid");
+                        NBTCompound::new_from_bytes(&mut bytes, &interner).expect("Chunk NBT was invalid");
                     let chunk = {
                         let binding = chunk_nbt
                             .get_tag("")

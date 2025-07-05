@@ -1,4 +1,4 @@
-use std::str::Utf8Error;
+use std::{io, str::Utf8Error};
 
 use num_enum::{TryFromPrimitive, TryFromPrimitiveError};
 
@@ -13,6 +13,7 @@ pub enum NBTErrorKind {
     InvalidString(String),
     ListError(String),
     InvalidUTF8(String),
+    IOError(io::Error),
 }
 
 impl<T: TryFromPrimitive> From<TryFromPrimitiveError<T>> for NBTError {
@@ -37,6 +38,14 @@ impl Into<NBTError> for Utf8Error {
     fn into(self) -> NBTError {
         NBTError {
             kind: NBTErrorKind::InvalidUTF8(self.to_string()),
+        }
+    }
+}
+
+impl From<std::io::Error> for NBTError {
+    fn from(value: std::io::Error) -> Self {
+        Self {
+            kind: NBTErrorKind::IOError(value),
         }
     }
 }

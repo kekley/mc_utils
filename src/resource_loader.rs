@@ -1,17 +1,8 @@
-use aovec::Aovec;
 use bumpalo::Bump;
 use bytes::Bytes;
-use fxhash::FxBuildHasher;
-use log::error;
-use palette::ConcurrentPalette;
 
 use crate::{
-    block::Block,
-    block_models::{BlockModel, BlockModelParent, IntermediateBlockModel},
-    chunk::Chunk,
-    loaded_world::World,
-    nbt_compound::NBTCompound,
-    variant::ModelVariant,
+    block::Block,  chunk::Chunk, loaded_world::World, nbt_compound::NBTCompound, variant::ModelVariant
 };
 
 use super::{block_models::ASSET_PATH, resource::ModelVariants};
@@ -58,7 +49,7 @@ impl MCResourceLoader {
     }
 
     pub fn nbt_from_bytes(&self, bytes: &mut Bytes) -> anyhow::Result<NBTCompound> {
-        NBTCompound::new(bytes, &self.rodeo)
+        NBTCompound::new_from_bytes(bytes, &self.rodeo)
     }
 
     pub(crate) fn chunk_from_nbt(&self, chunk_nbt: NBTCompound) -> Option<Chunk> {
