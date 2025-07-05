@@ -19,7 +19,7 @@ use crate::utils::get_optional_field;
 use super::{
     block_display::BlockDisplay,
     block_element::BlockElement,
-    block_texture::{BlockTextureMap, TextureVariableEnum},
+    block_texture::BlockTextureMap,
     resource_error::{ResourceError, ResourceErrorKind},
     utils::parse_type,
 };

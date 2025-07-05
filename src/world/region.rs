@@ -163,7 +163,7 @@ impl From<&LazyRegion> for LoadedRegion {
                 segments[(x + z * 32) as usize] = segment
             }
         }
-        let mut chunks: Box<[Option<Chunk>; 1024]> = Box::new([const { None }; 1024]);
+        let chunks: Box<[Option<Chunk>; 1024]> = Box::new([const { None }; 1024]);
         for z in 0..32 {
             for x in 0..32 {
                 let segment = segments[x + 32 * z];

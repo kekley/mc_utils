@@ -1,4 +1,3 @@
-use bumpalo::collections::String as BumpString;
 use bumpalo::collections::Vec as BumpVec;
 use bumpalo::{collections::CollectIn, Bump};
 use serde_json::Value;

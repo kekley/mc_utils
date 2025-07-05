@@ -1,7 +1,7 @@
 use serde_json::Value;
 use std::{any::type_name, mem::MaybeUninit};
 
-use super::resource_error::{ResourceError, ResourceErrorKind};
+use super::resource_error::ResourceErrorKind;
 /*
 pub fn parse_f32_3(value: &Value) -> anyhow::Result<[f32; 3]> {
     let values = value.as_array().context("Value was not an array")?;

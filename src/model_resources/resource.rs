@@ -1,12 +1,12 @@
 use std::fs;
 
 use bumpalo::Bump;
-use log::{error, info};
+use log::info;
 use serde_json::Value;
 
 use crate::{
     resource_error::create_resource_error,
-    utils::{get_optional_field, try_get_field},
+    utils::get_optional_field,
 };
 
 use super::{

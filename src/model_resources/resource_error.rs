@@ -1,4 +1,3 @@
-use std::str::Utf8Error;
 
 pub struct ResourceError {
     pub file: String,

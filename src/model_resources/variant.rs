@@ -1,13 +1,11 @@
-use std::marker::PhantomData;
 
 use bumpalo::{collections::CollectIn, Bump};
 use log::error;
 use serde_json::{Map, Value};
 
 use super::{
-    block_models::{BlockModel, BlockRotation, ASSET_PATH},
+    block_models::{BlockRotation, ASSET_PATH},
     block_states::BlockProperties,
-    multipart::TestStates,
     resource::ResourcePath,
     resource_error::ResourceErrorKind,
     utils::{parse_type, try_get_field},
