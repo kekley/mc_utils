@@ -40,20 +40,16 @@ pub mod nbt_string {
 
 pub mod nbt_compound {
 
+    use crate::nbt_error::NBTErrorKind;
     use crate::owned::nbt_string::NBTString;
-    use byteorder::ReadBytesExt;
     use bytes::Buf;
     use core::str;
     use num_enum::TryFromPrimitive;
     use std::fmt::Debug;
     use std::io::{Cursor, Read};
-    use std::mem::ManuallyDrop;
     use std::slice;
 
-    use crate::{
-        nbt_error::{NBTError, NBTErrorKind},
-        nbt_ids::*,
-    };
+    use crate::{nbt_error::NBTError, nbt_ids::*};
 
     #[derive(Clone, Debug)]
     pub struct NBTCompound {
@@ -74,48 +70,72 @@ pub mod nbt_compound {
                 None
             }
         }
+
+        pub fn from_file<T>(stream: &mut Cursor<T>) -> Result<NBTCompound, NBTError>
+        where
+            T: AsRef<[u8]>,
+        {
+            let root_id = NBTId::try_from_primitive(stream.get_u8())?;
+            if root_id != NBTId::CompoundId {
+                return Err(NBTError {
+                    kind: NBTErrorKind::InvalidNBT("Root NBT id missing ".to_string()),
+                });
+            }
+
+            let _root_name = get_nbt_string(stream)?;
+
+            NBTCompound::new(stream)
+        }
         pub fn new<T>(stream: &mut Cursor<T>) -> Result<NBTCompound, NBTError>
         where
             T: AsRef<[u8]>,
         {
             let mut tmp = NBTCompound { children: vec![] };
 
-            while NBTId::try_from_primitive(stream.get_u8())? != NBTId::EndId {
-                let name = get_nbt_string(stream)?;
-                if let Ok(tag) = NBTTag::read_tag(stream) {
-                    tmp.add_tag(name, tag);
-                } else {
+            loop {
+                let tag = stream.get_u8();
+                let id = NBTId::try_from_primitive(tag)?;
+                if id == NBTId::EndId {
                     break;
                 }
+                let name = get_nbt_string(stream)?;
+
+                tmp.add_tag(name, NBTTag::read_tag_payload(stream, id)?);
             }
             Ok(tmp)
         }
         pub fn pretty_print(&self, out: &mut String) {
-            self.pretty_print_inner(out, 1);
+            self.pretty_print_inner(out, 0);
         }
 
         fn pretty_print_inner(&self, out: &mut String, tabs: u32) {
+            for _tab in 0..tabs {
+                out.push('\t');
+            }
+
+            out.push_str("NBTCompound {\n");
             for (name, tag) in &self.children {
                 for _tab in 0..tabs {
                     out.push('\t');
                 }
                 out.push_str(&name.as_str());
                 out.push_str(" : ");
-                match tag {
-                    NBTTag::Compound(nbtcompound) => {
-                        nbtcompound.pretty_print_inner(out, tabs + 1);
-                    }
-                    _ => {
-                        out.push_str(format!("{:?}", tag).as_str());
-                    }
+                if let NBTTag::Compound(nbtcompound) = tag {
+                    nbtcompound.pretty_print_inner(out, tabs + 1);
+                } else {
+                    out.push_str(format!("{tag:?}").as_str());
                 }
-                println!("\n")
+                out.push('\n');
             }
+            for _tab in 0..tabs {
+                out.push('\t');
+            }
+            out.push_str("}\n");
         }
     }
 
     #[repr(u8)]
-    #[derive(Clone, Debug)]
+    #[derive(Clone)]
     pub enum NBTTag {
         End = END_ID,
         Byte(i8) = BYTE_ID,
@@ -132,15 +152,41 @@ pub mod nbt_compound {
         LongArray(Vec<i64>) = LONG_ARRAY_ID,
     }
 
+    impl Debug for NBTTag {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                Self::End => write!(f, "End"),
+                Self::Byte(arg0) => f.debug_tuple("Byte").field(arg0).finish(),
+                Self::Short(arg0) => f.debug_tuple("Short").field(arg0).finish(),
+                Self::Int(arg0) => f.debug_tuple("Int").field(arg0).finish(),
+                Self::Long(arg0) => f.debug_tuple("Long").field(arg0).finish(),
+                Self::Float(arg0) => f.debug_tuple("Float").field(arg0).finish(),
+                Self::Double(arg0) => f.debug_tuple("Double").field(arg0).finish(),
+                Self::ByteArray(arg0) => f.debug_tuple("ByteArray").field(arg0).finish(),
+                Self::String(arg0) => f.debug_tuple("String").field(arg0).finish(),
+                Self::List(arg0) => f.debug_tuple("List").field(arg0).finish(),
+                Self::Compound(arg0) => {
+                    let mut string = String::new();
+                    arg0.pretty_print(&mut string);
+                    f.write_str(&string)
+                }
+                Self::IntArray(arg0) => f.debug_tuple("IntArray").field(arg0).finish(),
+                Self::LongArray(arg0) => f.debug_tuple("LongArray").field(arg0).finish(),
+            }
+        }
+    }
+
     impl NBTTag {
         /// Returns the numeric id associated with the data type.
+        #[expect(unsafe_code)]
         pub const fn get_type_id(&self) -> u8 {
             // See https://doc.rust-lang.org/reference/items/enumerations.html#pointer-casting
             unsafe { *(self as *const Self).cast::<u8>() }
         }
-        pub fn read_tag<T: AsRef<[u8]>>(stream: &mut Cursor<T>) -> Result<NBTTag, NBTError> {
-            let tag = stream.read_u8()?;
-            let id = NBTId::try_from_primitive(tag)?;
+        pub fn read_tag_payload<T: AsRef<[u8]>>(
+            stream: &mut Cursor<T>,
+            id: NBTId,
+        ) -> Result<NBTTag, NBTError> {
             match id {
                 NBTId::EndId => Ok(NBTTag::End),
                 NBTId::ByteId => Ok(NBTTag::Byte(stream.get_i8())),
@@ -157,82 +203,35 @@ pub mod nbt_compound {
                 }
                 NBTId::StringId => Ok(NBTTag::String(get_nbt_string(stream)?)),
                 NBTId::ListId => {
-                    let tag_id = NBTId::try_from_primitive(stream.get_u8())?;
+                    let expected_id = NBTId::try_from_primitive(stream.get_u8())?;
                     let len = stream.get_i32() as usize;
                     let mut list = Vec::with_capacity(len);
                     for _ in 0..len {
-                        let tag = Self::read_tag(stream)?;
-                        if tag.get_type_id() != tag_id as u8 {
-                            return Err(NBTError {
-                                kind: NBTErrorKind::ListError(format!("")),
-                            });
-                        } else {
-                            list.push(tag);
-                        }
+                        list.push(Self::read_tag_payload(stream, expected_id)?);
                     }
                     Ok(NBTTag::List(list))
                 }
                 NBTId::CompoundId => Ok(NBTTag::Compound(NBTCompound::new(stream)?)),
                 NBTId::IntArrayId => {
                     let len = stream.get_i32() as usize;
-                    let vec = vec![0i32; len];
-                    let (ptr, len, cap) = {
-                        let mut me = ManuallyDrop::new(vec);
-                        (me.as_mut_ptr(), me.len(), me.capacity())
-                    };
+                    let mut vec = Vec::with_capacity(len);
+                    for _ in 0..len {
+                        vec.push(stream.get_i32());
+                    }
 
-                    //SAFETY: ptr of u8 is always aligned, multiplication is checked for overflow
-                    let buf: &mut [u8] = unsafe {
-                        slice::from_raw_parts_mut(
-                            ptr.cast::<u8>(),
-                            len.checked_mul(4).expect("len should not overflow"),
-                        )
-                    };
-
-                    stream.read_exact(buf)?;
-
-                    drop(buf);
-
-                    //SAFETY: mutable reference has been dropped, raw parts came from vec of same type
-                    let mut vec_again = unsafe { Vec::from_raw_parts(ptr, len, cap) };
-
-                    vec_again
-                        .iter_mut()
-                        .for_each(|val| *val = i32::from_be(*val));
-
-                    Ok(NBTTag::IntArray(vec_again))
+                    Ok(NBTTag::IntArray(vec))
                 }
                 NBTId::LongArrayId => {
                     //len * 8
+                    //
+                    //
                     let len = stream.get_i32() as usize;
+                    let mut vec = Vec::with_capacity(len);
+                    for _ in 0..len {
+                        vec.push(stream.get_i64());
+                    }
 
-                    let vec = vec![0i64; len];
-
-                    let (ptr, len, cap) = {
-                        let mut me = ManuallyDrop::new(vec);
-                        (me.as_mut_ptr(), me.len(), me.capacity())
-                    };
-
-                    //SAFETY: ptr of u8 is always aligned, multiplication is checked for overflow
-                    let buf: &mut [u8] = unsafe {
-                        slice::from_raw_parts_mut(
-                            ptr.cast::<u8>(),
-                            len.checked_mul(8).expect("len should not overflow"),
-                        )
-                    };
-
-                    stream.read_exact(buf)?;
-
-                    drop(buf);
-
-                    //SAFETY: mutable reference has been dropped, raw parts came from vec of same type
-                    let mut vec_again = unsafe { Vec::from_raw_parts(ptr, len, cap) };
-
-                    vec_again
-                        .iter_mut()
-                        .for_each(|val| *val = i64::from_be(*val));
-
-                    Ok(NBTTag::LongArray(vec_again))
+                    Ok(NBTTag::LongArray(vec))
                 }
             }
         }
@@ -244,7 +243,7 @@ pub mod nbt_compound {
             if let NBTTag::Byte(value) = self {
                 *value
             } else {
-                panic!("Tried to read a byte from a {:?}", self);
+                panic!("Tried to read a byte from a {self:?}");
             }
         }
         #[inline]
@@ -252,7 +251,7 @@ pub mod nbt_compound {
             if let NBTTag::Short(value) = self {
                 *value
             } else {
-                panic!("Tried to read a short from a {:?}", self);
+                panic!("Tried to read a short from a {self:?}");
             }
         }
         #[inline]
@@ -260,7 +259,7 @@ pub mod nbt_compound {
             if let NBTTag::Int(value) = self {
                 *value
             } else {
-                panic!("Tried to read an int from a {:?}", self);
+                panic!("Tried to read an int from a {self:?}");
             }
         }
         #[inline]
@@ -268,7 +267,7 @@ pub mod nbt_compound {
             if let NBTTag::Long(value) = self {
                 *value
             } else {
-                panic!("Tried to read a long from a {:?}", self);
+                panic!("Tried to read a long from a {self:?}");
             }
         }
         #[inline]
@@ -276,7 +275,7 @@ pub mod nbt_compound {
             if let NBTTag::Float(value) = self {
                 *value
             } else {
-                panic!("Tried to read a float from a {:?}", self);
+                panic!("Tried to read a float from a {self:?}");
             }
         }
         #[inline]
@@ -284,7 +283,7 @@ pub mod nbt_compound {
             if let NBTTag::Double(value) = self {
                 *value
             } else {
-                panic!("Tried to read a double from a {:?}", self);
+                panic!("Tried to read a double from a {self:?}");
             }
         }
         #[inline]
@@ -308,7 +307,7 @@ pub mod nbt_compound {
             if let NBTTag::List(value) = self {
                 value
             } else {
-                panic!("Tried to read a list from a {:?}", self);
+                panic!("Tried to read a list from a {self:?}");
             }
         }
         #[inline]
@@ -339,7 +338,7 @@ pub mod nbt_compound {
 
     #[inline]
     pub fn get_nbt_string<T: AsRef<[u8]>>(stream: &mut Cursor<T>) -> Result<NBTString, NBTError> {
-        let len = stream.get_i16() as usize;
+        let len = stream.get_u16() as usize;
         let mut buf = vec![0u8; len];
         stream.read_exact(&mut buf)?;
         Ok(NBTString::new_from_bytes(buf)?)
@@ -350,17 +349,14 @@ pub mod nbt_compound {
 mod nbt_test {
     use std::io::Cursor;
 
-    use crate::compression::decompress_bytes;
-
     use super::nbt_compound::NBTCompound;
 
     #[test]
     fn test_file() {
-        let level_dat = std::fs::read("../../test_assets/level.dat")
-            .expect("could not find test_assets/level.dat");
-        let decompressed = decompress_bytes(level_dat).expect("decompression error");
-        let mut cursor = Cursor::new(decompressed);
-        let compound = NBTCompound::new(&mut cursor).expect("NBT parse error");
+        let path = "./test_assets/iceandfire_myrmex.dat";
+        let level_dat = std::fs::read(path).unwrap_or_else(|_| panic!("could not find {path}"));
+        let mut cursor = Cursor::new(level_dat);
+        let compound = NBTCompound::from_file(&mut cursor).expect("NBT parse error");
         let mut string = String::new();
         compound.pretty_print(&mut string);
         println!("{string}");

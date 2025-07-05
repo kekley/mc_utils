@@ -23,7 +23,7 @@ impl CompressionData {
         let scheme = data.read_u8()?;
         let compression_data = Self {
             scheme: CompressionScheme::try_from(scheme)
-                .map_err(|_| SpiderEyeError::UnknownCompression(scheme))?,
+                .map_err(|_err| SpiderEyeError::UnknownCompression(scheme))?,
             compressed_len: (len - 1) as usize,
         };
 
@@ -44,7 +44,7 @@ pub fn decompress_bytes(mut data: Vec<u8>) -> Result<Vec<u8>, SpiderEyeError> {
             let data_slice = &data.as_slice()[5..];
             let mut writer =
                 flate2::write::GzDecoder::new(Vec::with_capacity(compression_data.compressed_len));
-            writer.write_all(&data_slice)?;
+            writer.write_all(data_slice)?;
             Ok(writer.finish()?)
         }
         CompressionScheme::Zlib => {
@@ -52,7 +52,7 @@ pub fn decompress_bytes(mut data: Vec<u8>) -> Result<Vec<u8>, SpiderEyeError> {
             let mut writer = flate2::write::ZlibDecoder::new(Vec::with_capacity(
                 compression_data.compressed_len,
             ));
-            writer.write_all(&data_slice)?;
+            writer.write_all(data_slice)?;
             Ok(writer.finish()?)
         }
         CompressionScheme::Uncompressed => {

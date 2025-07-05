@@ -9,6 +9,7 @@ pub struct NBTError {
 
 #[derive(Debug)]
 pub enum NBTErrorKind {
+    InvalidNBT(String),
     InvalidTag(String),
     InvalidString(String),
     ListError(String),
@@ -34,10 +35,10 @@ impl From<cesu8::Cesu8DecodingError> for NBTError {
         }
     }
 }
-impl Into<NBTError> for Utf8Error {
-    fn into(self) -> NBTError {
+impl From<Utf8Error> for NBTError {
+    fn from(val: Utf8Error) -> Self {
         NBTError {
-            kind: NBTErrorKind::InvalidUTF8(self.to_string()),
+            kind: NBTErrorKind::InvalidUTF8(val.to_string()),
         }
     }
 }
