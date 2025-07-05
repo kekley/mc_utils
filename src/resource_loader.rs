@@ -1,8 +1,14 @@
+use std::io::Cursor;
+
+use crate::chunk::ChunkSection;
+use crate::loaded_world::ChunkCoords;
+use crate::resource_error::ResourceError;
+use crate::world::chunk::ExpectTag;
 use bumpalo::Bump;
-use bytes::Bytes;
 
 use crate::{
-    block::Block,  chunk::Chunk, loaded_world::World, nbt_compound::NBTCompound, variant::ModelVariant
+    block::Block, chunk::Chunk, loaded_world::World, owned::nbt_compound::NBTCompound,
+    variant::ModelVariant,
 };
 
 use super::{block_models::ASSET_PATH, resource::ModelVariants};
@@ -27,7 +33,8 @@ impl MCResourceLoader {
         path.push_str(block_name_split);
         path.push_str(".json");
 
-        let new_state = ModelVariants::load_from_json(&path, &self.arena);
+        let new_state = ModelVariants::load_from_json_in(&path, &self.arena);
+        todo!()
     }
     pub fn load_variants_for(
         &self,
@@ -35,28 +42,30 @@ impl MCResourceLoader {
         block_states: &ModelVariants,
     ) -> Vec<ModelVariant> {
         let variants = match block_states {
-            ModelVariants::MultipartVariant(multipart) => {
-                multipart.load_models(&block.properties, &self.rodeo)
-            }
+            ModelVariants::MultipartVariant(multipart) => multipart.load_models(&block.properties),
             ModelVariants::StandardVariant(variants) => {
                 variants.get_model_variants(&block.properties)
             }
         };
-        variants
+        todo!()
     }
-    pub fn open_world(&self, region_folder: &str) -> Result<World> {
-        World::new(region_folder, &self.rodeo)
+    pub fn open_world(&self, region_folder: &str) -> Result<World, ResourceError> {
+        World::new(region_folder);
+        todo!()
     }
 
-    pub fn nbt_from_bytes(&self, bytes: &mut Bytes) -> anyhow::Result<NBTCompound> {
-        NBTCompound::new_from_bytes(bytes, &self.rodeo)
+    pub fn nbt_from_bytes(&self, mut bytes: Cursor<Vec<u8>>) -> Result<NBTCompound, ResourceError> {
+        NBTCompound::new(&mut bytes);
+        todo!()
     }
 
     pub(crate) fn chunk_from_nbt(&self, chunk_nbt: NBTCompound) -> Option<Chunk> {
         Some({
-            let binding = chunk_nbt
-                .get_tag("")
-                .expect_tag("Chunks must start with an empty name compound tag")?;
+            let binding = chunk_nbt.get_tag("");
+
+            let binding = binding
+                .expect_tag("Chunks must start with an empty name compound tag")
+                .unwrap();
             let chunk = binding.get_compound();
             let data_version = chunk
                 .get_tag("DataVersion")
@@ -71,7 +80,8 @@ impl MCResourceLoader {
                 .iter()
                 .filter_map(|section| {
                     let section_compound = section.get_compound();
-                    let section = ChunkSection::from_compound_internal(&section_compound);
+                    let section =
+                        ChunkSection::from_compound_internal(section_compound.clone()).unwrap();
                     if section.ypos >= -4 {
                         Some(section)
                     } else {
@@ -99,20 +109,10 @@ impl MCResourceLoader {
                 sparse_sections[sec_index] = Some(i);
             }
 
-            let sec_tower = SectionTower {
-                sections: section_array,
-                map: sparse_sections,
-                y_min: 16 * min,
-                y_max: 16 * (max + 1),
-            };
-
+            let sec_tower = todo!();
             let coords = ChunkCoords::new(xpos.into(), zpos.into());
 
-            Chunk<'a> {
-                coords,
-                data_version,
-                sections: sec_tower,
-            }
+            todo!()
         })
     }
 
@@ -139,8 +139,5 @@ impl MCResourceLoader {
                 + remaining_str
                 + ".png",
         )
-    }
-    pub fn resolve_spur(&self, spur: &Spur) -> &str {
-        self.rodeo.resolve(spur)
     }
 }

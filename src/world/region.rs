@@ -6,10 +6,10 @@ use std::{usize, vec};
 
 use crate::chunk::Chunk;
 
-use crate::nbt::compression::{CompressionData, CompressionScheme};
-use crate::nbt_compound::NBTCompound;
+use crate::compression::decompress_bytes;
+use crate::owned::nbt_compound::NBTCompound;
 
-
+use super::chunk::{ChunkSection, ExpectTag};
 use super::loaded_world::{ChunkCoords, RegionCoords};
 use super::world_error::WorldError;
 
@@ -63,13 +63,15 @@ impl LazyRegion {
             &mut cursor,
         );
         let compressed_bytes = LoadedRegion::get_compressed_chunk(&mut cursor, &segment);
-        let mut chunk_bytes = Bytes::from(LoadedRegion::decompress_chunk(&compressed_bytes));
-        let nbt = NBTCompound::new_from_bytes(&mut chunk_bytes, &self.interner).ok()?;
+        let chunk_bytes = decompress_bytes(compressed_bytes).unwrap();
+        let mut cursor = Cursor::new(chunk_bytes);
+        let nbt = NBTCompound::new(&mut cursor).ok()?;
         let chunk = {
-            let binding = nbt
-                .get_tag("")
-                .expect_tag("Chunks must start with an empty name compound tag")?;
-            let chunk = binding.get_compound();
+            let binding = nbt.get_tag("");
+            let tag = binding
+                .expect_tag("Chunks must start with an empty name compound tag")
+                .unwrap();
+            let chunk = tag.get_compound();
             let data_version = chunk
                 .get_tag("DataVersion")
                 .expect("Not a Chunk NBT")
@@ -83,7 +85,8 @@ impl LazyRegion {
                 .iter()
                 .filter_map(|section| {
                     let section_compound = section.get_compound();
-                    let section = ChunkSection::from_compound_internal(&section_compound);
+                    let section =
+                        ChunkSection::from_compound_internal(section_compound.clone()).unwrap();
                     if section.ypos >= -4 {
                         Some(section)
                     } else {
@@ -111,20 +114,9 @@ impl LazyRegion {
                 sparse_sections[sec_index] = Some(i);
             }
 
-            let sec_tower = SectionTower {
-                sections: section_array,
-                map: sparse_sections,
-                y_min: 16 * min,
-                y_max: 16 * (max + 1),
-            };
-
+            let sec_tower = todo!();
             let coords = ChunkCoords::new(xpos.into(), zpos.into());
-
-            Chunk<'a> {
-                coords,
-                data_version,
-                sections: sec_tower,
-            }
+            todo!()
         };
         Some(chunk)
     }
@@ -154,7 +146,6 @@ impl FileSegment {
 impl From<&LazyRegion> for LoadedRegion {
     fn from(value: &LazyRegion) -> Self {
         let LazyRegion {
-            interner,
             coords,
             data: bytes,
         } = value;
@@ -178,14 +169,16 @@ impl From<&LazyRegion> for LoadedRegion {
                 let segment = segments[x + 32 * z];
                 if segment.sector_offset != 0 && segment.sectors != 0 {
                     let compressed_chunk_data = Self::get_compressed_chunk(&mut reader, &segment);
-                    let chunk_bytes = Self::decompress_chunk(&compressed_chunk_data);
-                    let mut bytes = Bytes::from(chunk_bytes);
-                    let chunk_nbt =
-                        NBTCompound::new_from_bytes(&mut bytes, &interner).expect("Chunk NBT was invalid");
+                    let chunk_bytes = decompress_bytes(compressed_chunk_data).unwrap();
+                    let mut cursor = Cursor::new(chunk_bytes);
+                    let chunk_nbt = NBTCompound::new(&mut cursor).expect("Chunk NBT was invalid");
                     let chunk = {
-                        let binding = chunk_nbt
-                            .get_tag("")
-                            .expect_tag("Chunks must start with an empty name compound tag")?;
+                        let binding = chunk_nbt.get_tag("");
+
+                        let binding = binding
+                            .expect_tag("Chunks must start with an empty name compound tag")
+                            .unwrap();
+
                         let chunk = binding.get_compound();
                         let data_version = chunk
                             .get_tag("DataVersion")
@@ -200,7 +193,9 @@ impl From<&LazyRegion> for LoadedRegion {
                             .iter()
                             .filter_map(|section| {
                                 let section_compound = section.get_compound();
-                                let section = ChunkSection::from_compound_internal(&section_compound);
+                                let section =
+                                    ChunkSection::from_compound_internal(section_compound.clone())
+                                        .unwrap();
                                 if section.ypos >= -4 {
                                     Some(section)
                                 } else {
@@ -228,20 +223,11 @@ impl From<&LazyRegion> for LoadedRegion {
                             sparse_sections[sec_index] = Some(i);
                         }
 
-                        let sec_tower = SectionTower {
-                            sections: section_array,
-                            map: sparse_sections,
-                            y_min: 16 * min,
-                            y_max: 16 * (max + 1),
-                        };
+                        let sec_tower = todo!();
 
                         let coords = ChunkCoords::new(xpos.into(), zpos.into());
 
-                        Chunk<'a> {
-                            coords,
-                            data_version,
-                            sections: sec_tower,
-                        }
+                        todo!()
                     };
                     chunks[(x + z * 32) as usize] = Some(chunk);
                 }
@@ -249,9 +235,8 @@ impl From<&LazyRegion> for LoadedRegion {
         }
 
         LoadedRegion {
-            interner: interner.clone(),
             coords: coords.clone(),
-            chunks: chunks,
+            chunks,
         }
     }
 }
@@ -276,43 +261,6 @@ impl LoadedRegion {
 
     pub fn get_all_chunks(self) -> Box<[Option<Chunk>; 1024]> {
         self.chunks
-    }
-
-    fn decompress_chunk(data: &Vec<u8>) -> Vec<u8> {
-        let compression_data = Self::get_compression_data(data).unwrap();
-        let compressed_data = data
-            .get(5..5 + compression_data.compressed_len as usize)
-            .expect("ran out of bytes reading compressed data");
-        let mut cursor = Cursor::new(compressed_data);
-        let res = match compression_data.scheme {
-            CompressionScheme::Gzip => {
-                let mut writer = flate2::write::GzDecoder::new(Vec::with_capacity(1000));
-                io::copy(&mut cursor, &mut writer).unwrap();
-                writer.finish().unwrap()
-            }
-            CompressionScheme::Zlib => {
-                let mut writer = flate2::write::ZlibDecoder::new(Vec::with_capacity(1000));
-                io::copy(&mut cursor, &mut writer).unwrap();
-                writer.finish().unwrap()
-            }
-            CompressionScheme::Uncompressed => {
-                let mut writer = Vec::with_capacity(1000);
-                io::copy(&mut cursor, &mut writer).unwrap();
-                writer
-            }
-        };
-
-        res
-    }
-
-    fn get_compression_data(data: &Vec<u8>) -> anyhow::Result<CompressionData> {
-        let chunk_header = data
-            .get(0..5)
-            .expect("ran out of bytes getting compression data");
-
-        let compression_data = CompressionData::new(&chunk_header)?;
-
-        Ok(compression_data)
     }
 }
 

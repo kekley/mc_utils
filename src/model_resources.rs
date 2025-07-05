@@ -1,10 +1,3 @@
-#![warn(
-    clippy::all,
-    clippy::restriction,
-    clippy::pedantic,
-    clippy::nursery,
-    clippy::cargo
-)]
 pub mod block;
 pub mod block_display;
 pub mod block_element;

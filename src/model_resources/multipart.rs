@@ -1,15 +1,7 @@
-#![warn(
-    clippy::all,
-    clippy::restriction,
-    clippy::pedantic,
-    clippy::nursery,
-    clippy::cargo
-)]
 use bumpalo::collections::String as BumpString;
 use bumpalo::collections::Vec as BumpVec;
 use bumpalo::{collections::CollectIn, Bump};
 use serde_json::{Map, Value};
-use std::{slice, sync::Arc};
 
 use super::utils::try_get_field;
 use super::{
@@ -84,6 +76,10 @@ impl<'a> Multipart<'a> {
             .collect_in::<Result<BumpVec<'a, _>, ResourceErrorKind>>(bump)?;
 
         Ok(Multipart { cases: cases })
+    }
+
+    pub(crate) fn load_models(&self, properties: &BlockProperties<'_>) -> Vec<ModelVariant<'_>> {
+        todo!()
     }
 }
 

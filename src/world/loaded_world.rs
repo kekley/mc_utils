@@ -1,12 +1,8 @@
-use std::{hash::Hash, sync::Arc};
+use std::hash::Hash;
 
-use fxhash::FxBuildHasher;
 use log::info;
 
-use crate::palette::BlockPalette;
-
 use super::{
-    chunk::Chunk,
     region::{LazyRegion, LoadedRegion},
     world_error::WorldError,
 };
@@ -25,7 +21,7 @@ pub struct ChunkCoords {
 
 impl ChunkCoords {
     pub fn new(x: i64, z: i64) -> Self {
-        Self { x: x, z: z }
+        Self { x, z }
     }
 }
 #[derive(Debug, Default, Hash, PartialEq, Eq, Clone, Copy)]
@@ -96,7 +92,7 @@ impl World {
         path_str.push_str(&self.region_folder);
         path_str.push_str(&format!("/r.{x}.{z}.mca"));
         let file_path = path_str;
-        LazyRegion::new(&file_path, &self.interner).ok()
+        LazyRegion::new(&file_path).ok()
     }
 
     pub fn load_region(&self, region_coords: RegionCoords) -> Option<LoadedRegion> {

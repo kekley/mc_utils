@@ -1,7 +1,4 @@
-use std::{fmt::Debug, sync::Arc, u32};
-
-use bumpalo::Bump;
-use bytes::Bytes;
+use std::{fmt::Debug, u32};
 
 use super::{
     chunk_error::ChunkError,
@@ -9,21 +6,16 @@ use super::{
 };
 use crate::{
     block::{Block, BlockName},
-    java_string::JavaString,
-    nbt::{nbt_compound::NBTCompound, nbt_tag::NBTTag},
-    nbt_error::NBTError,
-    palette::BlockPalette,
+    owned::nbt_compound::{NBTCompound, NBTTag},
 };
-use bumpalo::collections::String as BumpString;
-use bumpalo::collections::Vec as BumpVec;
 
 #[derive(Clone)]
-pub struct Chunk<'a> {
+pub struct Chunk {
     data_version: i32,
     pub coords: ChunkCoords,
-    pub sections: SectionTower<'a>,
+    pub sections: SectionTower,
 }
-impl Debug for Chunk<'_> {
+impl Debug for Chunk {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Chunk")
             .field("data_version", &self.data_version)
@@ -33,8 +25,8 @@ impl Debug for Chunk<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub struct SectionTower<'a> {
-    sections: BumpVec<'a, ChunkSection>,
+pub struct SectionTower {
+    sections: Vec<ChunkSection>,
     map: Vec<Option<usize>>,
     y_min: isize,
     y_max: isize,
@@ -43,7 +35,7 @@ const fn y_to_index(y: isize, y_min: isize) -> u8 {
     ((y - y_min) >> 4) as u8
 }
 
-impl<'a> SectionTower<'a> {
+impl SectionTower {
     pub fn get_section_for_y(&self, y: isize) -> Option<&ChunkSection> {
         if y >= self.y_max || y < self.y_min {
             return None;
@@ -63,24 +55,23 @@ impl<'a> SectionTower<'a> {
     }
 }
 
-pub trait ExpectTag<'a> {
-    fn expect_tag(&'a self, error_text: &str) -> Result<&'a NBTTag<'a>, ChunkError>;
+pub trait ExpectTag {
+    fn expect_tag(&self, error_text: &str) -> Result<&NBTTag, ChunkError>;
 }
 
-impl<'a> ExpectTag<'a> for Option<&'a NBTTag<'a>> {
-    fn expect_tag(&'a self, error_text: &str) -> Result<&'a NBTTag<'a>, ChunkError> {
+impl ExpectTag for Option<&NBTTag> {
+    fn expect_tag(&self, error_text: &str) -> Result<&NBTTag, ChunkError> {
         self.ok_or(ChunkError {
             kind: super::chunk_error::ChunkErrorKind::InvalidNBT(format!("{}", error_text)),
         })
     }
 }
 
-impl<'a> Chunk<'a> {
-    pub(crate) fn from_nbt_in(nbt_compound: NBTCompound<'a>) -> Result<Chunk<'a>, ChunkError> {
-        let binding = nbt_compound
-            .get_tag("")
-            .expect_tag("Chunks must start with an empty name compound tag")?;
-        let chunk = binding.get_compound();
+impl Chunk {
+    pub(crate) fn from_nbt_in(nbt_compound: NBTCompound) -> Result<Chunk, ChunkError> {
+        let binding = nbt_compound.get_tag("");
+        let tag = binding.expect_tag("Chunks must start with an empty name compound tag")?;
+        let chunk = tag.get_compound();
         let data_version = chunk
             .get_tag("DataVersion")
             .expect("Not a Chunk NBT")
@@ -93,8 +84,8 @@ impl<'a> Chunk<'a> {
         let section_array: Vec<ChunkSection> = sections
             .into_iter()
             .filter_map(|section| {
-                let section_compound = section.get_compound();
-                let section = ChunkSection::from_compound_internal(&section_compound);
+                let section_compound = section.get_compound().clone();
+                let section = ChunkSection::from_compound_internal(section_compound).unwrap();
                 if section.ypos >= -4 {
                     Some(section)
                 } else {
@@ -131,11 +122,11 @@ impl<'a> Chunk<'a> {
 
         let coords = ChunkCoords::new(xpos.into(), zpos.into());
 
-        Self {
+        Ok(Self {
             coords,
             data_version,
             sections: sec_tower,
-        }
+        })
     }
     pub fn get_local_block(&self, x: usize, y: isize, z: usize) -> Option<&Block> {
         let sections = &self.sections;
@@ -170,20 +161,10 @@ impl<'a> Chunk<'a> {
                 unreachable!("local_block_x (0-15) should always convert to target type");
             }
         };
-
-        // For world_coords.y:
-        // This conversion's safety and performance depend on the type of world_coords.y
-        // and the type expected by get_local_block. If world_coords.y can be out of range
-        // for the target type, .unwrap() will panic, which is slow.
-        // Consider returning None earlier if y can be invalid.
         let final_local_y = match world_coords.y.try_into() {
             Ok(val) => val,
             Err(_) => {
-                // If invalid y values are possible and not exceptional, handle them gracefully.
-                // For example, return None instead of panicking:
-                // return None;
-                // For this optimization, we assume current .unwrap() behavior is intended for valid inputs.
-                panic!("world_coords.y out of range for target type"); // or keep .unwrap()
+                panic!("world_coords.y out of range for target type");
             }
         };
 
@@ -193,24 +174,8 @@ impl<'a> Chunk<'a> {
                 unreachable!("local_block_z (0-15) should always convert to target type");
             }
         };
-
-        // If you are certain the try_into() calls will not fail (i.e., the values always fit),
-        // the original .unwrap() is fine. For local_block_x and local_block_z, if the target
-        // type in get_local_block is usize, you could even do `as usize` directly:
-        // let final_local_x = (world_coords.x & 15) as usize;
-        // let final_local_z = (world_coords.z & 15) as usize;
-        // let final_local_y = world_coords.y.try_into().unwrap(); // Keep as is or adapt based on Y's type & constraints
-
         self.get_local_block(final_local_x, final_local_y, final_local_z)
     }
-
-    // Make sure your WorldCoords struct field types are appropriate.
-    // For example:
-    // pub struct WorldCoords {
-    //     pub x: i64, // or i32, etc.
-    //     pub y: i64, // or i32, u16, etc. This type is important for try_into()
-    //     pub z: i64, // or i32, etc.
-    // }
 }
 
 #[derive(Debug, Clone)]
@@ -222,7 +187,6 @@ pub struct ChunkSection {
 
 impl ChunkSection {
     pub(crate) fn from_compound_internal(compound: NBTCompound) -> Result<Self, ChunkError> {
-        let bump = compound.children.bump();
         let y = compound.get_tag("Y").unwrap().get_byte();
         //ignore non-vanilla world heights for now
         //FIXME
@@ -251,18 +215,21 @@ impl ChunkSection {
             .iter()
             .map(|f| {
                 let block_compound = f.get_compound();
-                let block_name =
-                    BlockName::new_in(&block_compound.get_tag("Name").unwrap().get_string(), bump);
+                let block_name = BlockName::new_from_str(
+                    &block_compound
+                        .get_tag("Name")
+                        .unwrap()
+                        .get_string()
+                        .as_str(),
+                );
 
-                let properties = block_compound
-                    .get_tag("Properties")
-                    .expect_tag("no palette block properties")?;
+                let binding = block_compound.get_tag("Properties");
+                let properties = binding.expect_tag("no palette block properties")?;
 
                 let properties =
                     properties
                         .get_compound()
-                        .children
-                        .into_iter()
+                        .iter_children()
                         .map(|(tag_name, tag)| {
                             let property_name = tag_name.as_str();
 
@@ -274,7 +241,7 @@ impl ChunkSection {
                 })
             })
             .collect();
-        let data = if palette_blocks.len() == 1 {
+        let data = if palette_blocks.as_ref().unwrap().len() == 1 {
             &vec![]
         } else {
             &block_states_compound
@@ -283,9 +250,7 @@ impl ChunkSection {
                 .get_long_array()
         };
 
-        let bit_size = (f32::log2(palette_blocks.len() as f32 - 1.0)).floor() + 1.0;
-
-        palette.block_states = palette_blocks;
+        let bit_size = (f32::log2(palette_blocks.unwrap().len() as f32 - 1.0)).floor() + 1.0;
 
         let block_data: [u32; 4096] = std::array::from_fn(|i| {
             let ind = Self::extract_index(&data[..], i as u32, bit_size as u32);
@@ -294,12 +259,11 @@ impl ChunkSection {
 
         let biome_data = [0u32; 4096];
 
-        Self {
-            block_palette: palette,
+        Ok(Self {
             ypos: y,
             block_data,
             biome_data,
-        }
+        })
     }
 
     #[inline]
@@ -327,7 +291,8 @@ impl ChunkSection {
             .block_data
             .get((sec_y * 16 * 16 + z * 16 + x) as usize)
             .expect("invalid index");
-        self.block_palette.get(*num)
+        //self.block_palette.get(*num)
+        todo!()
     }
     fn pp(data: &[i64], x: u16, y: u16, z: u16) -> u32 {
         let bits_per_block = 4;

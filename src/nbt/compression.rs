@@ -1,14 +1,10 @@
 use std::io::Write;
 
 use crate::spider_eye_error::SpiderEyeError;
-use bumpalo::collections::String as BumpString;
-use bumpalo::collections::Vec as BumpVec;
-use bumpalo::Bump;
 use byteorder::{BigEndian, ReadBytesExt};
-use bytes::{Buf, Bytes};
 use num_enum::TryFromPrimitive;
 
-#[derive(Debug, TryFromPrimitive)]
+#[derive(Debug, TryFromPrimitive, Clone, Copy)]
 #[repr(u8)]
 pub enum CompressionScheme {
     Gzip = 1,
@@ -17,8 +13,8 @@ pub enum CompressionScheme {
 }
 
 pub struct CompressionData {
-    pub scheme: CompressionScheme,
-    pub compressed_len: usize,
+    scheme: CompressionScheme,
+    compressed_len: usize,
 }
 
 impl CompressionData {
@@ -33,37 +29,40 @@ impl CompressionData {
 
         Ok(compression_data)
     }
+    pub fn scheme(&self) -> CompressionScheme {
+        self.scheme
+    }
+    pub fn compressed_len(&self) -> usize {
+        self.compressed_len
+    }
 }
 
-pub fn decompress_bytes<'a>(
-    data: &mut dyn Buf,
-    compression_data: CompressionData,
-    bump: &'a mut Bump,
-) -> Result<BumpVec<'a, u8>, SpiderEyeError> {
-    let mut take = data.take(compression_data.compressed_len as usize);
-
+pub fn decompress_bytes(mut data: Vec<u8>) -> Result<Vec<u8>, SpiderEyeError> {
+    let compression_data = CompressionData::new(&data)?;
     match compression_data.scheme {
         CompressionScheme::Gzip => {
-            let mut compressed_data_buffer =
-                bump.alloc_slice_fill_default(compression_data.compressed_len as usize);
-            let mut writer = flate2::write::GzDecoder::new(BumpVec::new_in(bump));
-            Buf::copy_to_slice(&mut take, &mut compressed_data_buffer);
-            writer.write_all(&compressed_data_buffer[..])?;
+            let data_slice = &data.as_slice()[5..];
+            let mut writer =
+                flate2::write::GzDecoder::new(Vec::with_capacity(compression_data.compressed_len));
+            writer.write_all(&data_slice)?;
             Ok(writer.finish()?)
         }
         CompressionScheme::Zlib => {
-            let mut compressed_data_buffer =
-                bump.alloc_slice_fill_default(compression_data.compressed_len as usize);
-            let mut writer = flate2::write::ZlibDecoder::new(BumpVec::new_in(bump));
-            Buf::copy_to_slice(&mut take, &mut compressed_data_buffer);
-            writer.write_all(&compressed_data_buffer[..])?;
-            Ok(writer.finish()?.into())
+            let data_slice = &data.as_slice()[5..];
+            let mut writer = flate2::write::ZlibDecoder::new(Vec::with_capacity(
+                compression_data.compressed_len,
+            ));
+            writer.write_all(&data_slice)?;
+            Ok(writer.finish()?)
         }
         CompressionScheme::Uncompressed => {
-            let mut writer =
-                BumpVec::with_capacity_in(compression_data.compressed_len as usize, bump);
-            Buf::copy_to_slice(&mut take, &mut writer);
-            Ok(writer.into())
+            data.rotate_left(5);
+            data.pop();
+            data.pop();
+            data.pop();
+            data.pop();
+            data.pop();
+            Ok(data)
         }
     }
 }
