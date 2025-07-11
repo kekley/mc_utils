@@ -1,16 +1,9 @@
-#![warn(
-    clippy::all,
-    clippy::restriction,
-    clippy::pedantic,
-    clippy::nursery,
-    clippy::cargo
-)]
 use std::fs;
+use tracing::debug;
 
 use bumpalo::collections::String as BumpString;
 use bumpalo::collections::Vec as BumpVec;
 use bumpalo::Bump;
-use log::debug;
 use serde_json::Value;
 
 use crate::resource_error::create_resource_error;

@@ -2,6 +2,8 @@ use std::{io, str::Utf8Error};
 
 use num_enum::{TryFromPrimitive, TryFromPrimitiveError};
 
+use super::borrow::list::ParsingError;
+
 #[derive(Debug)]
 pub struct NBTError {
     pub kind: NBTErrorKind,
@@ -28,8 +30,8 @@ impl<T: TryFromPrimitive> From<TryFromPrimitiveError<T>> for NBTError {
     }
 }
 
-impl From<cesu8::Cesu8DecodingError> for NBTError {
-    fn from(value: cesu8::Cesu8DecodingError) -> Self {
+impl From<simd_cesu8::DecodingError> for NBTError {
+    fn from(value: simd_cesu8::DecodingError) -> Self {
         NBTError {
             kind: NBTErrorKind::InvalidTag(value.to_string()),
         }
@@ -47,6 +49,14 @@ impl From<std::io::Error> for NBTError {
     fn from(value: std::io::Error) -> Self {
         Self {
             kind: NBTErrorKind::IOError(value),
+        }
+    }
+}
+
+impl From<ParsingError> for NBTError {
+    fn from(value: ParsingError) -> Self {
+        NBTError {
+            kind: NBTErrorKind::InvalidNBT("".to_string()),
         }
     }
 }

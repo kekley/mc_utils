@@ -1,6 +1,6 @@
 use std::hash::Hash;
 
-use crate::owned::nbt_string::NBTString;
+use crate::{borrow::nbt_string::NBTStr, owned::nbt_string::NBTString};
 
 use super::block_states::BlockProperties;
 
@@ -10,10 +10,13 @@ pub struct BlockName {
 }
 
 impl BlockName {
-    pub fn new_from_str(name: &str) -> Self {
+    pub fn new_from_str(name: &NBTStr) -> Self {
         Self {
-            value: NBTString::new_from_str(name).unwrap(),
+            value: name.to_owned(),
         }
+    }
+    pub fn new_from_string(name: NBTString) -> Self {
+        Self { value: name }
     }
 }
 

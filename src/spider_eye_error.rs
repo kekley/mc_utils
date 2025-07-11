@@ -12,7 +12,7 @@ pub enum SpiderEyeError {
     TryFromPrimitiveError(TryFromPrimitiveError<NBTId>),
     ListError(i32),
     UTF8Error(std::string::FromUtf8Error),
-    JavaStringDecodingError(cesu8::Cesu8DecodingError),
+    JavaStringDecodingError(simd_cesu8::DecodingError),
 }
 
 impl From<std::io::Error> for SpiderEyeError {
@@ -33,8 +33,8 @@ impl From<std::string::FromUtf8Error> for SpiderEyeError {
     }
 }
 
-impl From<cesu8::Cesu8DecodingError> for SpiderEyeError {
-    fn from(value: cesu8::Cesu8DecodingError) -> Self {
+impl From<simd_cesu8::DecodingError> for SpiderEyeError {
+    fn from(value: simd_cesu8::DecodingError) -> Self {
         SpiderEyeError::JavaStringDecodingError(value)
     }
 }

@@ -215,12 +215,8 @@ impl ChunkSection {
             .iter()
             .map(|f| {
                 let block_compound = f.get_compound();
-                let block_name = BlockName::new_from_str(
-                    &block_compound
-                        .get_tag("Name")
-                        .unwrap()
-                        .get_string()
-                        .as_str(),
+                let block_name = BlockName::new_from_string(
+                    block_compound.get_tag("Name").unwrap().get_string().clone(),
                 );
 
                 let binding = block_compound.get_tag("Properties");

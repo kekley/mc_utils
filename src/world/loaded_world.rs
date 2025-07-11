@@ -1,6 +1,6 @@
 use std::hash::Hash;
 
-use log::info;
+use tracing::info;
 
 use super::{
     region::{LazyRegion, LoadedRegion},

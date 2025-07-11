@@ -1,45 +1,43 @@
 pub mod nbt_string {
-    use std::borrow::Cow;
+    use std::borrow::{Borrow, Cow};
 
-    use cesu8::from_java_cesu8;
+    use crate::borrow::nbt_string::NBTStr;
 
     #[derive(Debug, Clone, Hash, PartialEq, Eq)]
     pub struct NBTString {
-        value: Vec<u8>,
+        pub data: Vec<u8>,
     }
 
     impl NBTString {
-        pub fn new_from_bytes(bytes: Vec<u8>) -> Result<Self, cesu8::Cesu8DecodingError> {
-            if let Err(err) = from_java_cesu8(&bytes) {
-                Err(err)
-            } else {
-                Ok(Self { value: bytes })
+        pub fn new_from_vec(bytes: Vec<u8>) -> Self {
+            Self { data: bytes }
+        }
+        pub fn new_from_str(str: &str) -> Self {
+            let string = str.to_string();
+            NBTString {
+                data: string.into_bytes(),
             }
         }
-        pub fn new_from_str(str: &str) -> Result<Self, cesu8::Cesu8DecodingError> {
-            let cow = from_java_cesu8(str.as_bytes())?;
-            let string = cow.into_owned();
-            Ok(NBTString {
-                value: string.into_bytes(),
-            })
-        }
 
-        pub fn from_byte_slice(bytes: &[u8]) -> Result<Self, cesu8::Cesu8DecodingError> {
-            let cow = from_java_cesu8(bytes)?;
-            let string = cow.into_owned();
-            Ok(NBTString {
-                value: string.into_bytes(),
-            })
+        pub fn from_byte_slice(bytes: &[u8]) -> Self {
+            NBTString {
+                data: bytes.to_owned(),
+            }
         }
-        pub fn as_str(&self) -> Cow<'_, str> {
-            from_java_cesu8(&self.value)
-                .expect("an NBTString should always contain a pre-checked string")
+        pub fn as_str(&self) -> &NBTStr {
+            NBTStr::from_slice(self.data.as_slice())
+        }
+    }
+    impl Borrow<NBTStr> for NBTString {
+        fn borrow(&self) -> &NBTStr {
+            self.as_str()
         }
     }
 }
 
 pub mod nbt_compound {
 
+    use crate::borrow::nbt_string::NBTStr;
     use crate::nbt_error::NBTErrorKind;
     use crate::owned::nbt_string::NBTString;
     use bytes::Buf;
@@ -63,7 +61,10 @@ pub mod nbt_compound {
             self.children.iter()
         }
         pub fn get_tag(&self, tag_name: &str) -> Option<&NBTTag> {
-            let tag = self.children.iter().find(|a| a.0.as_str() == tag_name);
+            let name = NBTStr::from_str(tag_name);
+            let name = name.as_ref();
+
+            let tag = self.children.iter().find(|a| a.0.as_str() == name);
             if let Some(child) = tag {
                 Some(&child.1)
             } else {
@@ -118,7 +119,7 @@ pub mod nbt_compound {
                 for _tab in 0..tabs {
                     out.push('\t');
                 }
-                out.push_str(&name.as_str());
+                out.push_str(&name.as_str().to_str());
                 out.push_str(" : ");
                 if let NBTTag::Compound(nbtcompound) = tag {
                     nbtcompound.pretty_print_inner(out, tabs + 1);
@@ -204,6 +205,9 @@ pub mod nbt_compound {
                 NBTId::StringId => Ok(NBTTag::String(get_nbt_string(stream)?)),
                 NBTId::ListId => {
                     let expected_id = NBTId::try_from_primitive(stream.get_u8())?;
+                    if expected_id == NBTId::EndId {
+                        return Ok(NBTTag::List(Vec::new()));
+                    }
                     let len = stream.get_i32() as usize;
                     let mut list = Vec::with_capacity(len);
                     for _ in 0..len {
@@ -341,7 +345,7 @@ pub mod nbt_compound {
         let len = stream.get_u16() as usize;
         let mut buf = vec![0u8; len];
         stream.read_exact(&mut buf)?;
-        Ok(NBTString::new_from_bytes(buf)?)
+        Ok(NBTString::new_from_vec(buf))
     }
 }
 
@@ -359,6 +363,5 @@ mod nbt_test {
         let compound = NBTCompound::from_file(&mut cursor).expect("NBT parse error");
         let mut string = String::new();
         compound.pretty_print(&mut string);
-        println!("{string}");
     }
 }

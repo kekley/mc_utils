@@ -1,13 +1,10 @@
 use std::fs;
+use tracing::info;
 
 use bumpalo::Bump;
-use log::info;
 use serde_json::Value;
 
-use crate::{
-    resource_error::create_resource_error,
-    utils::get_optional_field,
-};
+use crate::{resource_error::create_resource_error, utils::get_optional_field};
 
 use super::{
     multipart::Multipart,
