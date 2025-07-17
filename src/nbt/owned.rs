@@ -1,5 +1,5 @@
 pub mod nbt_string {
-    use std::borrow::{Borrow, Cow};
+    use std::borrow::Borrow;
 
     use crate::borrow::nbt_string::NBTStr;
 

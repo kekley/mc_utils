@@ -2,7 +2,7 @@ use std::{io, str::Utf8Error};
 
 use num_enum::{TryFromPrimitive, TryFromPrimitiveError};
 
-use super::borrow::list::ParsingError;
+use super::borrow::parsing_stack::ParsingError;
 
 #[derive(Debug)]
 pub struct NBTError {

@@ -1,24 +1,245 @@
-#[allow(dead_code)]
-#[allow(clippy::unimplemented)]
 #[allow(clippy::todo)]
-#[allow(unsafe_code)]
+pub(crate) mod nbt_tag {
+    use core::slice;
+
+    use byteorder::{BigEndian, ByteOrder};
+
+    use crate::borrow::nbt_compound::unaligned_types;
+
+    use super::{
+        nbt_compound::{Element, ElementTag, InnerElement, NBTCompound},
+        nbt_list::ListType,
+        nbt_string::NBTStr,
+    };
+
+    pub struct NBTTag<'a, 'root> {
+        data: &'a [u8],
+        //this slice starts at the element of this tag
+        elements: &'root [Element],
+        inner_elements: &'root [InnerElement],
+    }
+    #[expect(unsafe_code)]
+    impl<'a, 'root> NBTTag<'a, 'root> {
+        pub fn get_byte(&self) -> Option<i8> {
+            if self.elements[0].get_id() == ElementTag::Byte {
+                Some(self.elements[0].get_byte())
+            } else {
+                None
+            }
+        }
+        pub fn get_short(&self) -> Option<i16> {
+            if self.elements[0].get_id() == ElementTag::Short {
+                Some(self.elements[0].get_short())
+            } else {
+                None
+            }
+        }
+        pub fn get_int(&self) -> Option<i32> {
+            if self.elements[0].get_id() == ElementTag::Int {
+                Some(self.elements[0].get_int())
+            } else {
+                None
+            }
+        }
+        pub fn get_long(&self) -> Option<i64> {
+            if self.elements[0].get_id() == ElementTag::Long {
+                let offset = self.elements[0].get_long_offset() as usize;
+                let size_of_long = 8_usize;
+                let value = BigEndian::read_i64(&self.data[offset..offset + size_of_long]);
+                Some(value)
+            } else {
+                None
+            }
+        }
+        pub fn get_float(&self) -> Option<f32> {
+            if self.elements[0].get_id() == ElementTag::Float {
+                Some(self.elements[0].get_float())
+            } else {
+                None
+            }
+        }
+        pub fn get_double(&self) -> Option<f64> {
+            if self.elements[0].get_id() == ElementTag::Double {
+                let offset = self.elements[0].get_double_offset() as usize;
+                let size_of_double = 8_usize;
+                let value = BigEndian::read_f64(&self.data[offset..offset + size_of_double]);
+                Some(value)
+            } else {
+                None
+            }
+        }
+        pub fn get_string(&self) -> Option<&NBTStr> {
+            if self.elements[0].get_id() == ElementTag::String {
+                let length_offset = self.elements[0].get_string_offset() as usize;
+                let size_of_short = 2_usize;
+                let data_offset = length_offset + size_of_short;
+                let length_of_string =
+                    BigEndian::read_u16(&self.data[length_offset..length_offset + size_of_short]);
+                let byte_slice = &self.data[data_offset..data_offset + length_of_string as usize];
+                Some(NBTStr::from_slice(byte_slice))
+            } else {
+                None
+            }
+        }
+
+        pub fn get_byte_array(&self) -> Option<&[i8]> {
+            if self.elements[0].get_id() == ElementTag::ByteArray {
+                let length_offset = self.elements[0].get_byte_array_offset() as usize;
+
+                let size_of_int = 4_usize;
+                let data_offset = length_offset + size_of_int;
+
+                let length_of_array =
+                    BigEndian::read_u32(&self.data[length_offset..length_offset + size_of_int]);
+
+                let ptr = &self.data[data_offset..data_offset + length_of_array as usize].as_ptr();
+
+                let byte_slice: &[i8] =
+                    unsafe { slice::from_raw_parts(ptr.cast(), length_of_array as usize) };
+
+                Some(byte_slice)
+            } else {
+                None
+            }
+        }
+
+        pub fn get_int_array(&self) -> Option<&[unaligned_types::BigEndianInt]> {
+            if self.elements[0].get_id() == ElementTag::IntArray {
+                let length_offset = self.elements[0].get_int_array_offset() as usize;
+
+                let size_of_int = 4_usize;
+
+                let data_offset = length_offset + size_of_int;
+
+                let length_of_array =
+                    BigEndian::read_u32(&self.data[length_offset..length_offset + size_of_int]);
+                let length_of_array_in_bytes = length_of_array as usize * size_of_int;
+
+                let ptr = &self.data[data_offset..data_offset + length_of_array_in_bytes].as_ptr();
+
+                let slice: &[unaligned_types::BigEndianInt] =
+                    unsafe { slice::from_raw_parts(ptr.cast(), length_of_array as usize) };
+
+                Some(slice)
+            } else {
+                None
+            }
+        }
+
+        pub fn get_long_array(&self) -> Option<&[unaligned_types::BigEndianLong]> {
+            if self.elements[0].get_id() == ElementTag::LongArray {
+                let length_offset = self.elements[0].get_long_array_offset() as usize;
+
+                let size_of_int = 4_usize;
+
+                let data_offset = length_offset + size_of_int;
+
+                let length_of_array =
+                    BigEndian::read_u32(&self.data[length_offset..length_offset + size_of_int]);
+
+                let size_of_long = 4_usize;
+                let length_of_array_in_bytes = length_of_array as usize * size_of_long;
+
+                let ptr = self.data[data_offset..data_offset + length_of_array_in_bytes].as_ptr();
+
+                let slice: &[unaligned_types::BigEndianLong] =
+                    unsafe { slice::from_raw_parts(ptr.cast(), length_of_array as usize) };
+
+                Some(slice)
+            } else {
+                None
+            }
+        }
+
+        pub fn get_list(&self) -> Option<ListType<'a, 'root>> {
+            //we want to panic if the slice is empty
+            if self.elements[0].get_id().is_list() {
+                Some(ListType::new(self.data, self.elements, self.inner_elements))
+            } else {
+                None
+            }
+        }
+        pub fn get_compound(&self) -> Option<NBTCompound<'a, 'root>> {
+            if self.elements[0].get_id() == ElementTag::Compound {
+                Some(NBTCompound::new(
+                    self.data,
+                    self.elements,
+                    self.inner_elements,
+                ))
+            } else {
+                None
+            }
+        }
+
+        pub(crate) fn new(
+            data: &'a [u8],
+            element_slice: &'root [Element],
+            inner_elements: &'root [InnerElement],
+        ) -> Self {
+            Self {
+                data,
+                elements: element_slice,
+                inner_elements,
+            }
+        }
+    }
+}
+
 pub mod nbt_compound {
 
-    use std::{io::Cursor, marker::PhantomData};
+    use crate::borrow::nbt_tag::NBTTag;
+    use std::fmt::Debug;
+    use std::io::Cursor;
 
-    use crate::borrow::list::ParseStackEntry;
-    use crate::borrow::list::ParsingStack;
+    use crate::borrow::parsing_stack::ParseStackEntry;
+    use crate::borrow::parsing_stack::ParsingStack;
     use crate::{nbt_error::NBTError, nbt_ids::*};
     use byteorder::{BigEndian, ReadBytesExt};
     use bytes::Buf;
     use num_enum::TryFromPrimitive;
 
-    use super::list::ParsingError;
     use super::nbt_string::NBTStr;
+    use super::parsing_stack::ParsingError;
+
+    pub struct NBTCompound<'a, 'root> {
+        data: &'a [u8],
+        elements: &'root [Element],
+        inner_elements: &'root [InnerElement],
+    }
+
+    impl<'a, 'root> NBTCompound<'a, 'root> {
+        pub fn new(
+            data: &'a [u8],
+            elements: &'root [Element],
+            inner_elements: &'root [InnerElement],
+        ) -> Self {
+            let compound_element = elements[0];
+
+            let max_offset = compound_element.get_offset() as usize;
+            let compound_elements = &elements[1..max_offset];
+
+            Self {
+                data,
+                elements: compound_elements,
+                inner_elements,
+            }
+        }
+        pub fn iter(&self) -> NBTCompoundIter<'a, 'root> {
+            let max_tape_offset = self.elements[0].get_truncated_len_and_offset().1 as usize;
+
+            let element_slice = &self.elements[1..max_tape_offset];
+
+            NBTCompoundIter {
+                current_offset: 0,
+                data: self.data,
+                elements: element_slice,
+                inner_elements: self.inner_elements,
+            }
+        }
+    }
 
     pub struct NBTCompoundIter<'a, 'root> {
         current_offset: usize,
-        max_offset: usize,
         data: &'a [u8],
         elements: &'root [Element],
         inner_elements: &'root [InnerElement],
@@ -27,7 +248,7 @@ pub mod nbt_compound {
         type Item = (&'a NBTStr, NBTTag<'a, 'root>);
 
         fn next(&mut self) -> Option<Self::Item> {
-            if self.current_offset + 1 >= self.max_offset {
+            if self.current_offset + 1 >= self.elements.len() {
                 return None;
             }
 
@@ -39,27 +260,26 @@ pub mod nbt_compound {
                     .try_into()
                     .expect("This should always be a length of two"),
             ) as usize;
+            dbg!(string_len);
             let string_start = offset + size_of::<i16>();
             let string_end = string_start + string_len;
             let string_slice = &self.data[string_start..string_end];
 
-            let str = NBTStr::from_slice(string_slice).to_str();
+            let nbt_str = NBTStr::from_slice(string_slice);
+            let str = nbt_str.to_str();
 
-            println!("{str}");
+            println!("str: {str}");
             self.current_offset += 1;
 
-            let element = self.elements[self.current_offset];
+            let element_slice = &self.elements[self.current_offset..];
 
-            self.current_offset += element.get_skip_amount();
-
-            todo!()
+            self.current_offset += element_slice[0].get_skip_amount();
+            dbg!(element_slice[0].get_skip_amount());
+            Some((
+                nbt_str,
+                NBTTag::new(self.data, element_slice, self.inner_elements),
+            ))
         }
-    }
-
-    pub struct NBTTag<'a, 'root> {
-        data: &'a [u8],
-        this_element: Element,
-        inner_elements: &'root [InnerElement],
     }
 
     pub struct RootNBTCompound<'a> {
@@ -97,10 +317,17 @@ pub mod nbt_compound {
 
         fn take_nbt_string(cursor: &mut Cursor<&'a [u8]>) -> Result<&'a NBTStr, NBTError> {
             let len = cursor.read_u16::<BigEndian>()?;
+
             let start = cursor.position() as usize;
             let end = start + len as usize;
             let slice = &cursor.get_ref()[start..end];
-            Ok(NBTStr::from_slice(slice))
+            let nbt_str = NBTStr::from_slice(slice);
+            assert!(cursor.remaining() >= len as usize);
+            cursor.advance(len as usize);
+            Ok(nbt_str)
+        }
+        pub fn name(&self) -> &NBTStr {
+            self.name
         }
 
         pub fn from_file(bytes: &'a [u8]) -> Result<Self, NBTError> {
@@ -125,7 +352,7 @@ pub mod nbt_compound {
 
             while !parsing_stack.is_empty() {
                 match parsing_stack.peek()?.ty() {
-                    crate::borrow::list::CringeCompoundTypes::Compound => {
+                    crate::borrow::parsing_stack::CringeCompoundTypes::Compound => {
                         Self::read_tag_in_compound(
                             &mut cursor,
                             &mut elements,
@@ -133,7 +360,7 @@ pub mod nbt_compound {
                             &mut parsing_stack,
                         )?;
                     }
-                    crate::borrow::list::CringeCompoundTypes::ListOfCompounds => {
+                    crate::borrow::parsing_stack::CringeCompoundTypes::ListOfCompounds => {
                         Self::read_compound_in_list(
                             &mut cursor,
                             &mut elements,
@@ -141,7 +368,7 @@ pub mod nbt_compound {
                             &mut parsing_stack,
                         )?;
                     }
-                    crate::borrow::list::CringeCompoundTypes::ListOfLists => {
+                    crate::borrow::parsing_stack::CringeCompoundTypes::ListOfLists => {
                         Self::read_list_in_list(
                             &mut cursor,
                             &mut elements,
@@ -158,7 +385,18 @@ pub mod nbt_compound {
                 data: bytes,
             })
         }
-        fn iter<'root>(&'root self) -> NBTCompoundIter<'a, 'root> {}
+        pub fn iter<'root>(&'root self) -> NBTCompoundIter<'a, 'root> {
+            let max_tape_offset = self.elements[0].get_truncated_len_and_offset().1 as usize;
+
+            let element_slice = &self.elements[1..max_tape_offset];
+
+            NBTCompoundIter {
+                current_offset: 0,
+                data: self.data,
+                elements: element_slice,
+                inner_elements: &self.inner_elements,
+            }
+        }
         fn read_tag_in_compound(
             cursor: &mut Cursor<&[u8]>,
             elements: &mut Vec<Element>,
@@ -166,8 +404,6 @@ pub mod nbt_compound {
             stack: &mut ParsingStack,
         ) -> Result<(), NBTError> {
             let tag_id = Self::read_tag_id(cursor)?;
-            let name_element = Element::name_string(cursor.position());
-            elements.push(name_element);
 
             let element = match tag_id {
                 NBTId::EndId => {
@@ -175,28 +411,52 @@ pub mod nbt_compound {
                     return Ok(());
                 }
                 NBTId::ByteId => {
+                    let name_element = Element::name_string(cursor.position());
+                    Self::read_u16_length_and_slice_of(cursor, 1)?;
+                    elements.push(name_element);
+
                     let value = cursor.read_u8()?;
                     Element::from_byte(value)
                 }
                 NBTId::ShortId => {
+                    let name_element = Element::name_string(cursor.position());
+                    Self::read_u16_length_and_slice_of(cursor, 1)?;
+                    elements.push(name_element);
+
                     let value = cursor.read_u16::<BigEndian>()?;
                     Element::from_short(value)
                 }
                 NBTId::IntId => {
+                    let name_element = Element::name_string(cursor.position());
+                    Self::read_u16_length_and_slice_of(cursor, 1)?;
+                    elements.push(name_element);
+
                     let value = cursor.read_u32::<BigEndian>()?;
                     Element::from_int(value)
                 }
                 NBTId::LongId => {
+                    let name_element = Element::name_string(cursor.position());
+                    Self::read_u16_length_and_slice_of(cursor, 1)?;
+                    elements.push(name_element);
+
                     let offset = cursor.position();
                     //we need to advance the cursor since we just stored an offset
                     cursor.advance(8);
                     Element::from_long(offset)
                 }
                 NBTId::FloatId => {
+                    let name_element = Element::name_string(cursor.position());
+                    Self::read_u16_length_and_slice_of(cursor, 1)?;
+                    elements.push(name_element);
+
                     let value = cursor.read_u32::<BigEndian>()?;
                     Element::from_float(value)
                 }
                 NBTId::DoubleId => {
+                    let name_element = Element::name_string(cursor.position());
+                    Self::read_u16_length_and_slice_of(cursor, 1)?;
+                    elements.push(name_element);
+
                     let offset = cursor.position();
 
                     //we need to advance the cursor since we just stored an offset
@@ -204,30 +464,53 @@ pub mod nbt_compound {
                     Element::from_double(offset)
                 }
                 NBTId::ByteArrayId => {
+                    let name_element = Element::name_string(cursor.position());
+                    Self::read_u16_length_and_slice_of(cursor, 1)?;
+                    elements.push(name_element);
+
                     let offset = cursor.position();
                     Self::read_u32_length_and_slice_of(cursor, 1)?;
                     Element::from_byte_array(offset)
                 }
                 NBTId::StringId => {
+                    let name_element = Element::name_string(cursor.position());
+                    Self::read_u16_length_and_slice_of(cursor, 1)?;
+                    elements.push(name_element);
+
                     let offset = cursor.position();
                     Self::read_u16_length_and_slice_of(cursor, 1)?;
                     Element::from_string(offset)
                 }
                 NBTId::LongArrayId => {
+                    let name_element = Element::name_string(cursor.position());
+                    Self::read_u16_length_and_slice_of(cursor, 1)?;
+                    elements.push(name_element);
+
                     let offset = cursor.position();
                     Self::read_u32_length_and_slice_of(cursor, 8)?;
                     Element::from_long_array(offset)
                 }
                 NBTId::IntArrayId => {
+                    let name_element = Element::name_string(cursor.position());
+                    Self::read_u16_length_and_slice_of(cursor, 1)?;
+                    elements.push(name_element);
+
                     let offset = cursor.position();
                     Self::read_u32_length_and_slice_of(cursor, 4)?;
                     Element::from_int_array(offset)
                 }
-                // these suck
                 NBTId::ListId => {
+                    let name_element = Element::name_string(cursor.position());
+                    Self::read_u16_length_and_slice_of(cursor, 1)?;
+                    elements.push(name_element);
+
                     return Self::list(cursor, elements, inner_elements, stack);
                 }
                 NBTId::CompoundId => {
+                    let name_element = Element::name_string(cursor.position());
+                    Self::read_u16_length_and_slice_of(cursor, 1)?;
+                    elements.push(name_element);
+
                     return Self::compound(cursor, elements, inner_elements, stack);
                 }
             };
@@ -285,7 +568,7 @@ pub mod nbt_compound {
                 NBTId::ByteArrayId => {
                     let index_of_inner = inner_elements.len() as u32;
                     let length = cursor.read_u32::<BigEndian>()?;
-                    inner_elements.push(InnerElement::Length(length));
+                    inner_elements.push(InnerElement::Length(length.into()));
                     let byte_size = 1;
                     for _ in 0..length {
                         let offset = cursor.position();
@@ -297,7 +580,7 @@ pub mod nbt_compound {
                 NBTId::StringId => {
                     let index_of_inner = inner_elements.len() as u32;
                     let length = cursor.read_u32::<BigEndian>()?;
-                    inner_elements.push(InnerElement::Length(length));
+                    inner_elements.push(InnerElement::Length(length.into()));
                     let byte_size = 1;
                     for _ in 0..length {
                         let offset = cursor.position();
@@ -330,7 +613,7 @@ pub mod nbt_compound {
                 NBTId::IntArrayId => {
                     let index_of_inner = inner_elements.len() as u32;
                     let length = cursor.read_u32::<BigEndian>()?;
-                    inner_elements.push(InnerElement::Length(length));
+                    inner_elements.push(InnerElement::Length(length as u64));
                     let int_size = 4;
                     for _ in 0..length {
                         let offset = cursor.position();
@@ -342,7 +625,7 @@ pub mod nbt_compound {
                 NBTId::LongArrayId => {
                     let index_of_inner = inner_elements.len() as u32;
                     let length = cursor.read_u32::<BigEndian>()?;
-                    inner_elements.push(InnerElement::Length(length));
+                    inner_elements.push(InnerElement::Length(length as u64));
                     let long_size = 8;
                     for _ in 0..length {
                         let offset = cursor.position();
@@ -356,9 +639,9 @@ pub mod nbt_compound {
         }
 
         fn compound(
-            cursor: &mut Cursor<&[u8]>,
+            _cursor: &mut Cursor<&[u8]>,
             elements: &mut Vec<Element>,
-            inner_elements: &mut Vec<InnerElement>,
+            _inner_elements: &mut [InnerElement],
             stack: &mut ParsingStack,
         ) -> Result<(), NBTError> {
             let compound_start_index = elements.len();
@@ -373,7 +656,7 @@ pub mod nbt_compound {
         fn read_compound_in_list(
             cursor: &mut Cursor<&[u8]>,
             elements: &mut Vec<Element>,
-            inner_elements: &mut Vec<InnerElement>,
+            inner_elements: &mut [InnerElement],
             parsing_stack: &mut ParsingStack,
         ) -> Result<(), NBTError> {
             let list_index = parsing_stack.peek()?.index();
@@ -419,7 +702,7 @@ pub mod nbt_compound {
             Self::list(cursor, elements, inner_elements, parsing_stack)
         }
         fn handle_compound_end(
-            elements: &mut Vec<Element>,
+            elements: &mut [Element],
             parsing_stack: &mut ParsingStack,
         ) -> Result<(), ParsingError> {
             let compound_start_index = parsing_stack.pop()?.index();
@@ -440,25 +723,35 @@ pub mod nbt_compound {
 
         #[derive(Debug, Clone, Copy)]
         #[repr(C, packed)]
-        pub struct Long(pub u64);
+        pub struct BigEndianLong(pub u64);
 
         #[derive(Debug, Clone, Copy)]
         #[repr(C, packed)]
-        pub struct Double(pub u64);
+        pub struct BigEndianDouble(pub u64);
 
         #[derive(Debug, Clone, Copy)]
         #[repr(C, packed)]
-        pub struct Int(pub u32);
+        pub struct BigEndianInt(pub u32);
 
         #[derive(Debug, Clone, Copy)]
         #[repr(C, packed)]
-        pub struct Short(pub u16);
+        pub struct BigEndianShort(pub u16);
+
+        #[derive(Debug, Clone, Copy)]
+        #[repr(C, packed)]
+        pub struct BigEndianFloat(pub f32);
     }
 
-    ///bit pattern: u8 | u24 | u32
+    ///bit pattern for lists: u8 | u24 | u32
     ///           kind | len | offset
     #[derive(Clone, Copy)]
-    struct Element(u64);
+    pub struct Element(u64);
+
+    impl Debug for Element {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_tuple("Element").field(&self.get_id()).finish()
+        }
+    }
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive)]
     #[repr(u8)]
@@ -490,6 +783,69 @@ pub mod nbt_compound {
         LongArrayList,
     }
 
+    impl ElementTag {
+        pub fn is_list(self) -> bool {
+            matches!(
+                self,
+                ElementTag::ListList
+                    | ElementTag::CompoundList
+                    | ElementTag::EmptyList
+                    | ElementTag::ByteList
+                    | ElementTag::ShortList
+                    | ElementTag::IntList
+                    | ElementTag::LongList
+                    | ElementTag::FloatList
+                    | ElementTag::DoubleList
+                    | ElementTag::ByteArrayList
+                    | ElementTag::StringList
+                    | ElementTag::IntArrayList
+                    | ElementTag::LongArrayList
+            )
+        }
+    }
+    impl Element {
+        pub fn get_byte(self) -> i8 {
+            assert!(self.get_id() == ElementTag::Byte);
+            (self.0 & 0xFF) as i8
+        }
+        pub fn get_short(self) -> i16 {
+            assert!(self.get_id() == ElementTag::Short);
+            (self.0 & 0xFFFF) as i16
+        }
+        pub fn get_int(self) -> i32 {
+            assert!(self.get_id() == ElementTag::Int);
+            (self.0 & 0xFFFF_FFFF) as i32
+        }
+        pub fn get_long_offset(self) -> u64 {
+            assert!(self.get_id() == ElementTag::Long);
+            self.0 & 0x00FF_FFFF_FFFF_FFFF
+        }
+        pub fn get_float(self) -> f32 {
+            assert!(self.get_id() == ElementTag::Float);
+            (self.0 & 0xFFFF) as f32
+        }
+        pub fn get_double_offset(self) -> u64 {
+            assert!(self.get_id() == ElementTag::Double);
+            self.0 & 0x00FF_FFFF_FFFF_FFFF
+        }
+        pub fn get_byte_array_offset(self) -> u64 {
+            assert!(self.get_id() == ElementTag::ByteArray);
+            self.0 & 0x00FF_FFFF_FFFF_FFFF
+        }
+        pub fn get_string_offset(self) -> u64 {
+            assert!(self.get_id() == ElementTag::ByteArray);
+            self.0 & 0x00FF_FFFF_FFFF_FFFF
+        }
+        pub fn get_long_array_offset(self) -> u64 {
+            assert!(self.get_id() == ElementTag::LongArray);
+            self.0 & 0x00FF_FFFF_FFFF_FFFF
+        }
+        pub fn get_int_array_offset(self) -> u64 {
+            assert!(self.get_id() == ElementTag::IntArray);
+            self.0 & 0x00FF_FFFF_FFFF_FFFF
+        }
+    }
+
     impl Element {
         pub fn get_id(self) -> ElementTag {
             let u8 = (self.0 >> 56) as u8;
@@ -506,9 +862,9 @@ pub mod nbt_compound {
         }
         pub fn get_skip_amount(self) -> usize {
             match self.get_id() {
-                ElementTag::Compound => todo!(),
-                ElementTag::ListList => todo!(),
-                ElementTag::CompoundList => todo!(),
+                ElementTag::Compound | ElementTag::ListList | ElementTag::CompoundList => {
+                    self.get_truncated_len_and_offset().1 as usize
+                }
                 _ => 1,
             }
         }
@@ -635,18 +991,465 @@ pub mod nbt_compound {
         }
     }
 
-    #[derive(Debug, Clone, Copy, PartialEq)]
-    struct RawList<T> {
-        data: &'static [u8],
-        _marker: PhantomData<T>,
-    }
-
-    enum InnerElement {
-        Length(u32),
+    #[derive(Debug, Clone)]
+    pub enum InnerElement {
+        Length(u64),
         ByteArray(u64),
         String(u64),
         IntArray(u64),
         LongArray(u64),
+    }
+}
+#[allow(dead_code)]
+#[allow(clippy::todo)]
+pub mod nbt_list {
+    use core::slice;
+    use std::marker::PhantomData;
+
+    use byteorder::{BigEndian, ByteOrder};
+
+    use crate::borrow::nbt_compound::ElementTag;
+
+    use super::{
+        nbt_compound::{
+            unaligned_types::{
+                BigEndianDouble, BigEndianFloat, BigEndianInt, BigEndianLong, BigEndianShort,
+            },
+            Element, InnerElement, NBTCompound,
+        },
+        nbt_string::NBTStr,
+    };
+    pub enum ListType<'a, 'root> {
+        Empty(()),
+        Byte(PrimitiveList<'a, i8>),
+        Short(PrimitiveList<'a, BigEndianShort>),
+        Int(PrimitiveList<'a, BigEndianInt>),
+        Long(PrimitiveList<'a, BigEndianLong>),
+        Float(PrimitiveList<'a, BigEndianFloat>),
+        Double(PrimitiveList<'a, BigEndianDouble>),
+        ByteArray(ArrayList<'a, 'root, i8>),
+        IntArray(ArrayList<'a, 'root, BigEndianInt>),
+        LongArray(ArrayList<'a, 'root, BigEndianLong>),
+        String(StringList<'a, 'root>),
+        List(ListList<'a, 'root>),
+        Compound(CompoundList<'a, 'root>),
+    }
+    impl<'a, 'root> ListType<'a, 'root> {
+        pub fn new(
+            data: &'a [u8],
+            elements: &'root [Element],
+            inner_elements: &'root [InnerElement],
+        ) -> Self {
+            let list_element = elements[0];
+            match list_element.get_id() {
+                ElementTag::EmptyList => ListType::empty_list(list_element),
+                ElementTag::ByteList => ListType::byte_list(list_element, data),
+                ElementTag::ShortList => ListType::short_list(list_element, data),
+                ElementTag::IntList => ListType::int_list(list_element, data),
+                ElementTag::LongList => ListType::long_list(list_element, data),
+                ElementTag::FloatList => ListType::float_list(list_element, data),
+                ElementTag::DoubleList => ListType::double_list(list_element, data),
+                ElementTag::ByteArrayList => {
+                    ListType::byte_array_list(data, list_element, inner_elements)
+                }
+                ElementTag::StringList => ListType::string_list(data, list_element, inner_elements),
+                ElementTag::ListList => ListType::list_list(data, elements, inner_elements),
+                ElementTag::CompoundList => ListType::compound_list(data, elements, inner_elements),
+                ElementTag::IntArrayList => {
+                    ListType::int_array_list(data, list_element, inner_elements)
+                }
+                ElementTag::LongArrayList => {
+                    ListType::long_array_list(data, list_element, inner_elements)
+                }
+                _ => {
+                    unreachable!()
+                }
+            }
+        }
+        pub fn empty_list(list_element: Element) -> ListType<'a, 'root> {
+            assert!(list_element.get_id() == ElementTag::EmptyList);
+            ListType::Empty(())
+        }
+
+        pub fn byte_list(list_element: Element, data: &'a [u8]) -> ListType<'a, 'root> {
+            assert!(list_element.get_id() == ElementTag::ByteList);
+            ListType::Byte(PrimitiveList::new(data, list_element))
+        }
+
+        pub fn short_list(list_element: Element, data: &'a [u8]) -> ListType<'a, 'root> {
+            assert!(list_element.get_id() == ElementTag::ShortList);
+            ListType::Short(PrimitiveList::new(data, list_element))
+        }
+
+        pub fn int_list(list_element: Element, data: &'a [u8]) -> ListType<'a, 'root> {
+            assert!(list_element.get_id() == ElementTag::IntList);
+
+            ListType::Int(PrimitiveList::new(data, list_element))
+        }
+        pub fn long_list(list_element: Element, data: &'a [u8]) -> ListType<'a, 'root> {
+            assert!(list_element.get_id() == ElementTag::LongList);
+            ListType::Long(PrimitiveList::new(data, list_element))
+        }
+        pub fn float_list(list_element: Element, data: &'a [u8]) -> ListType<'a, 'root> {
+            assert!(list_element.get_id() == ElementTag::FloatList);
+            ListType::Float(PrimitiveList::new(data, list_element))
+        }
+        pub fn double_list(list_element: Element, data: &'a [u8]) -> ListType<'a, 'root> {
+            assert!(list_element.get_id() == ElementTag::DoubleList);
+            ListType::Double(PrimitiveList::new(data, list_element))
+        }
+        pub fn byte_array_list(
+            data: &'a [u8],
+            list_element: Element,
+            inner_elements: &'root [InnerElement],
+        ) -> ListType<'a, 'root> {
+            assert!(list_element.get_id() == ElementTag::ByteArrayList);
+            let inner_index = list_element.get_offset() as usize;
+            let array_elements = if let InnerElement::Length(length) = inner_elements[inner_index] {
+                &inner_elements[inner_index..inner_index + length as usize]
+            } else {
+                unreachable!()
+            };
+            ListType::ByteArray(ArrayList {
+                data,
+                inner_elements: array_elements,
+                phantom_data: PhantomData,
+            })
+        }
+        pub fn int_array_list(
+            data: &'a [u8],
+            list_element: Element,
+            inner_elements: &'root [InnerElement],
+        ) -> ListType<'a, 'root> {
+            assert!(list_element.get_id() == ElementTag::IntArrayList);
+            let inner_index = list_element.get_offset() as usize;
+            let array_elements = if let InnerElement::Length(length) = inner_elements[inner_index] {
+                &inner_elements[inner_index..inner_index + length as usize]
+            } else {
+                unreachable!()
+            };
+            ListType::IntArray(ArrayList {
+                data,
+                inner_elements: array_elements,
+                phantom_data: PhantomData,
+            })
+        }
+        pub fn long_array_list(
+            data: &'a [u8],
+            list_element: Element,
+            inner_elements: &'root [InnerElement],
+        ) -> ListType<'a, 'root> {
+            assert!(list_element.get_id() == ElementTag::LongArrayList);
+            let inner_index = list_element.get_offset() as usize;
+            let array_elements = if let InnerElement::Length(length) = inner_elements[inner_index] {
+                &inner_elements[inner_index..inner_index + length as usize]
+            } else {
+                unreachable!()
+            };
+            ListType::LongArray(ArrayList {
+                data,
+                inner_elements: array_elements,
+                phantom_data: PhantomData,
+            })
+        }
+        pub fn string_list(
+            data: &'a [u8],
+            list_element: Element,
+            inner_elements: &'root [InnerElement],
+        ) -> ListType<'a, 'root> {
+            assert!(list_element.get_id() == ElementTag::StringList);
+            let inner_index = list_element.get_offset() as usize;
+            let array_elements = if let InnerElement::Length(length) = inner_elements[inner_index] {
+                &inner_elements[inner_index..inner_index + length as usize]
+            } else {
+                unreachable!()
+            };
+
+            ListType::String(StringList {
+                data,
+                inner_elements: array_elements,
+            })
+        }
+
+        pub fn list_list(
+            data: &'a [u8],
+            elements: &'root [Element],
+            inner_elements: &'root [InnerElement],
+        ) -> ListType<'a, 'root> {
+            let list_element = elements
+                .first()
+                .expect("list list element should be first in the slice passed to list_list");
+
+            assert!(list_element.get_id() == ElementTag::ListList);
+            let (trunc_len, offset) = list_element.get_truncated_len_and_offset();
+            //exclude the list list element
+            let slice_of_list_elements = &elements[1..offset as usize];
+            let iter = ListListIter {
+                current_offset: 0,
+                approx_len: trunc_len,
+                data,
+                elements: slice_of_list_elements,
+                inner_elements,
+            };
+
+            ListType::List(ListList { iter })
+        }
+        pub fn compound_list(
+            data: &'a [u8],
+            elements: &'root [Element],
+            inner_elements: &'root [InnerElement],
+        ) -> ListType<'a, 'root> {
+            let list_element = elements.first().expect(
+                "Compound list element should be first in the slice passed to compound_list",
+            );
+
+            assert!(list_element.get_id() == ElementTag::CompoundList);
+            //approximate length is not calculated for compounds
+            let (_trunc_len, offset) = list_element.get_truncated_len_and_offset();
+            //exclude the compound list element
+            let slice_of_list_elements = &elements[1..offset as usize];
+
+            let iter = CompoundListIter {
+                current_offset: 0,
+                data,
+                elements: slice_of_list_elements,
+                inner_elements,
+            };
+            ListType::Compound(CompoundList { iter })
+        }
+    }
+
+    pub struct PrimitiveList<'a, T> {
+        data: &'a [T],
+    }
+
+    impl<'a, T> PrimitiveList<'a, T> {
+        pub fn new(data: &'a [u8], list_element: Element) -> Self {
+            let length_offset = list_element.get_offset() as usize;
+            let size_of_int = 4_usize;
+            let list_length =
+                BigEndian::read_u32(&data[length_offset..length_offset + size_of_int]) as usize;
+            let data_offset = length_offset + size_of_int;
+
+            let ptr = &data[data_offset..data_offset + list_length * size_of::<T>()].as_ptr();
+
+            let data: &[T] = unsafe { slice::from_raw_parts(ptr.cast(), list_length) };
+
+            PrimitiveList { data }
+        }
+        pub fn as_slice(&self) -> &[T] {
+            self.data
+        }
+    }
+
+    impl<'a, T> NBTList for PrimitiveList<'a, T> {
+        type Output = &'a T;
+
+        fn get_index(&self, index: usize) -> Option<Self::Output> {
+            self.data.get(index)
+        }
+
+        fn length(&self) -> usize {
+            self.data.len()
+        }
+    }
+
+    pub struct ArrayList<'a, 'root, T> {
+        data: &'a [u8],
+        inner_elements: &'root [InnerElement],
+        phantom_data: PhantomData<T>,
+    }
+
+    impl<'a, 'root, T> NBTList for ArrayList<'a, 'root, T>
+    where
+        T: 'a,
+    {
+        type Output = &'a [T];
+        #[expect(unsafe_code)]
+        fn get_index(&self, index: usize) -> Option<Self::Output> {
+            let list_element = self.inner_elements.get(index + 1)?;
+            match *list_element {
+                InnerElement::ByteArray(length_offset)
+                | InnerElement::IntArray(length_offset)
+                | InnerElement::LongArray(length_offset) => {
+                    let length_offset = length_offset as usize;
+                    let size_of_int = 4usize;
+                    let data_offset = length_offset + size_of_int;
+                    let array_length =
+                        BigEndian::read_u32(&self.data[length_offset..length_offset + size_of_int])
+                            as usize;
+                    let ptr = self.data[data_offset..data_offset + array_length * size_of::<T>()]
+                        .as_ptr();
+                    let slice: &[T] = unsafe { slice::from_raw_parts(ptr.cast(), array_length) };
+                    Some(slice)
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        fn length(&self) -> usize {
+            let length_element = self
+                .inner_elements
+                .first()
+                .expect("List should always have a length element");
+            if let InnerElement::Length(length) = length_element {
+                *length as usize
+            } else {
+                unreachable!()
+            }
+        }
+    }
+    pub struct StringList<'a, 'root> {
+        data: &'a [u8],
+        inner_elements: &'root [InnerElement],
+    }
+
+    impl<'a, 'root> NBTList for StringList<'a, 'root> {
+        type Output = &'a NBTStr;
+
+        fn get_index(&self, index: usize) -> Option<Self::Output> {
+            let list_element = self.inner_elements.get(index + 1)?;
+
+            if let InnerElement::String(length_offset) = *list_element {
+                let length_offset = length_offset as usize;
+                let size_of_short = 2usize;
+                let data_offset = length_offset + size_of_short;
+                let string_length =
+                    BigEndian::read_u32(&self.data[length_offset..length_offset + size_of_short])
+                        as usize;
+                let slice = &self.data[data_offset..data_offset + string_length];
+
+                Some(NBTStr::from_slice(slice))
+            } else {
+                unreachable!()
+            }
+        }
+
+        fn length(&self) -> usize {
+            let length_element = self
+                .inner_elements
+                .first()
+                .expect("List should always have a length element");
+            if let InnerElement::Length(length) = length_element {
+                *length as usize
+            } else {
+                unreachable!()
+            }
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct ListList<'a, 'root> {
+        iter: ListListIter<'a, 'root>,
+    }
+
+    impl<'root, 'a> NBTList for ListList<'a, 'root> {
+        type Output = ListType<'a, 'root>;
+
+        fn get_index(&self, index: usize) -> Option<Self::Output> {
+            self.iter.clone().nth(index)
+        }
+
+        fn length(&self) -> usize {
+            self.iter.length()
+        }
+    }
+    #[derive(Debug, Clone)]
+    pub struct ListListIter<'a, 'root> {
+        current_offset: usize,
+        approx_len: u32,
+        data: &'a [u8],
+        elements: &'root [Element],
+        inner_elements: &'root [InnerElement],
+    }
+    impl<'a, 'root> ListListIter<'a, 'root> {
+        pub fn approx_len(&self) -> usize {
+            self.approx_len as usize
+        }
+        pub fn length(&self) -> usize {
+            let len = self.approx_len() as u32;
+            if len < (2u32.pow(24)) {
+                len as usize
+            } else {
+                self.clone().count()
+            }
+        }
+    }
+
+    impl<'a, 'root> Iterator for ListListIter<'a, 'root> {
+        type Item = ListType<'a, 'root>;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            if self.current_offset + 1 >= self.elements.len() {
+                return None;
+            }
+
+            let current_list_element = self.elements[self.current_offset];
+            assert!(current_list_element.get_id().is_list());
+
+            let skip_offset = if matches!(
+                current_list_element.get_id(),
+                ElementTag::CompoundList | ElementTag::ListList
+            ) {
+                current_list_element.get_offset() as usize
+            } else {
+                1
+            };
+            let return_list = ListType::new(self.data, self.elements, self.inner_elements);
+            self.current_offset += skip_offset;
+            Some(return_list)
+        }
+    }
+
+    pub struct CompoundList<'a, 'root> {
+        iter: CompoundListIter<'a, 'root>,
+    }
+
+    impl<'root, 'a> NBTList for CompoundList<'a, 'root> {
+        type Output = NBTCompound<'a, 'root>;
+
+        fn get_index(&self, index: usize) -> Option<Self::Output> {
+            self.iter.clone().nth(index)
+        }
+
+        fn length(&self) -> usize {
+            self.iter.clone().length()
+        }
+    }
+    #[derive(Debug, Clone)]
+    pub struct CompoundListIter<'a, 'root> {
+        current_offset: usize,
+        data: &'a [u8],
+        elements: &'root [Element],
+        inner_elements: &'root [InnerElement],
+    }
+
+    impl<'a, 'root> CompoundListIter<'a, 'root> {
+        pub fn length(&self) -> usize {
+            self.clone().count()
+        }
+    }
+    impl<'a, 'root> Iterator for CompoundListIter<'a, 'root> {
+        type Item = NBTCompound<'a, 'root>;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            if self.current_offset + 1 >= self.elements.len() {
+                return None;
+            }
+
+            let compound_element = self.elements[self.current_offset];
+            let skip_amount = compound_element.get_offset() as usize;
+            let compound = NBTCompound::new(self.data, self.elements, self.inner_elements);
+
+            self.current_offset += skip_amount;
+            Some(compound)
+        }
+    }
+
+    pub trait NBTList {
+        type Output;
+        fn get_index(&self, index: usize) -> Option<Self::Output>;
+        fn length(&self) -> usize;
     }
 }
 
@@ -707,38 +1510,7 @@ pub mod nbt_string {
     }
 }
 
-#[cfg(test)]
-mod borrow_test {
-    use crate::nbt_ids::*;
-
-    use super::nbt_compound::RootNBTCompound;
-
-    #[test]
-    pub fn ptr_metadata() {
-        let one: [u8; 4] = 1u32.to_be_bytes();
-        let data: Vec<u8> = vec![
-            COMPOUND_ID,
-            LONG_ID,
-            1u8,
-            0u8,
-            0u8,
-            0u8,
-            b'L',
-            0u8,
-            0u8,
-            0u8,
-            0u8,
-            0u8,
-            0u8,
-            0u8,
-            0u8,
-            END_ID,
-        ];
-        let compound = RootNBTCompound::from_file(&data).expect("NBT parse error");
-    }
-}
-
-pub mod list {
+pub mod parsing_stack {
 
     pub struct ParsingError {
         kind: ParsingErrorKind,
@@ -890,5 +1662,43 @@ pub mod list {
         pub(crate) fn is_empty(&self) -> bool {
             self.depth == 0
         }
+    }
+}
+
+#[cfg(test)]
+mod borrow_test {
+
+    use crate::nbt_ids::*;
+
+    use super::nbt_compound::RootNBTCompound;
+
+    #[test]
+    pub fn compound() {
+        let data: Vec<u8> = vec![
+            COMPOUND_ID,
+            0u8,
+            1u8,
+            b'C',
+            LONG_ID,
+            0u8,
+            1u8,
+            b'L',
+            0u8,
+            0u8,
+            0u8,
+            0u8,
+            0u8,
+            0u8,
+            0u8,
+            0u8,
+            END_ID,
+        ];
+        let path = "./test_assets/iceandfire_myrmex.dat";
+        let level_dat = std::fs::read(path).unwrap_or_else(|_| panic!("could not find {path}"));
+
+        let compound = RootNBTCompound::from_file(&level_dat).expect("NBT parse error");
+        compound.iter().for_each(|f| {
+            dbg!(f.0.to_str());
+        });
     }
 }
