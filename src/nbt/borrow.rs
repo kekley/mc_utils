@@ -211,7 +211,6 @@ pub mod nbt_compound {
             inner_elements: &'root [InnerElement],
         ) -> Self {
             let compound_element = elements[0];
-            println!("compound created: {:?}", compound_element);
 
             let max_offset = compound_element.get_offset() as usize;
             let compound_elements = &elements[..max_offset];
@@ -226,7 +225,7 @@ pub mod nbt_compound {
         pub fn get_tag(&self, name: &str) -> Option<NBTTag<'a, 'root>> {
             let name = NBTStr::from_str(name);
             let name = name.as_ref();
-            let tag = self.iter().find(|(tag_name, tag)| *tag_name == name);
+            let tag = self.iter().find(|(tag_name, _tag)| *tag_name == name);
 
             Some(tag?.1)
         }
@@ -259,14 +258,6 @@ pub mod nbt_compound {
             }
 
             let name_element = self.elements[self.current_offset];
-            if name_element.get_id() != ElementTag::NameString {
-                /*  println!(
-                    "current offset: {}, current element: {:?}  next element: {:?}",
-                    self.current_offset,
-                    self.elements[self.current_offset],
-                    self.elements[self.current_offset + 1]
-                );*/
-            }
             assert!(name_element.get_id() == ElementTag::NameString);
             let offset = name_element.get_offset() as usize;
             let string_len = u16::from_be_bytes(
@@ -279,14 +270,12 @@ pub mod nbt_compound {
             let string_slice = &self.data[string_start..string_end];
 
             let nbt_str = NBTStr::from_slice(string_slice);
-            let str = nbt_str.to_str();
 
             self.current_offset += 1;
 
             let element_slice = &self.elements[self.current_offset..];
 
             self.current_offset += element_slice[0].get_skip_amount();
-            dbg!(element_slice[0].get_skip_amount());
             Some((
                 nbt_str,
                 NBTTag::new(self.data, element_slice, self.inner_elements),
@@ -1244,6 +1233,7 @@ pub mod nbt_list {
     }
 
     impl<'a, T> PrimitiveList<'a, T> {
+        #[expect(unsafe_code)]
         pub fn new(data: &'a [u8], list_element: Element) -> Self {
             let length_offset = list_element.get_offset() as usize;
             let size_of_int = 4_usize;
@@ -1537,7 +1527,8 @@ pub mod nbt_string {
 }
 
 pub mod parsing_stack {
-
+    #[allow(dead_code)]
+    #[derive(Debug)]
     pub struct ParsingError {
         kind: ParsingErrorKind,
     }
@@ -1549,6 +1540,7 @@ pub mod parsing_stack {
             kind: ParsingErrorKind::MaxDepthExceeded,
         };
     }
+    #[derive(Debug)]
     pub enum ParsingErrorKind {
         UnexpectedEOF,
         MaxDepthExceeded,
@@ -1694,33 +1686,10 @@ pub mod parsing_stack {
 #[cfg(test)]
 mod borrow_test {
 
-    use std::hint::black_box;
-
-    use crate::nbt_ids::*;
-
     use super::nbt_compound::RootNBTCompound;
 
     #[test]
     pub fn compound() {
-        let data: Vec<u8> = vec![
-            COMPOUND_ID,
-            0u8,
-            1u8,
-            b'C',
-            LONG_ID,
-            0u8,
-            1u8,
-            b'L',
-            0u8,
-            0u8,
-            0u8,
-            0u8,
-            0u8,
-            0u8,
-            0u8,
-            0u8,
-            END_ID,
-        ];
         let path = "./test_assets/iceandfire_myrmex.dat";
         let level_dat = std::fs::read(path).unwrap_or_else(|_| panic!("could not find {path}"));
 
@@ -1729,7 +1698,7 @@ mod borrow_test {
 
         let data_compound = tag.get_compound().expect("Tag was not compound");
 
-        data_compound.iter().for_each(|(name, tag)| {
+        data_compound.iter().for_each(|(name, _tag)| {
             println!("{name}");
         });
     }

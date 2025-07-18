@@ -1,4 +1,4 @@
-use std::{fmt::Debug, u32};
+use std::fmt::Debug;
 
 use super::{
     chunk_error::ChunkError,
@@ -62,7 +62,7 @@ pub trait ExpectTag {
 impl ExpectTag for Option<&NBTTag> {
     fn expect_tag(&self, error_text: &str) -> Result<&NBTTag, ChunkError> {
         self.ok_or(ChunkError {
-            kind: super::chunk_error::ChunkErrorKind::InvalidNBT(format!("{}", error_text)),
+            kind: super::chunk_error::ChunkErrorKind::InvalidNBT(format!("{error_text}")),
         })
     }
 }
@@ -138,26 +138,12 @@ impl Chunk {
         sec.get_block(x, sec_y, z)
     }
     pub fn get_world_block(&self, world_coords: WorldCoords) -> Option<&Block> {
-        // Assuming world_coords.x and world_coords.z are integer types (e.g., i64, i32).
-        // The operation `& 15` computes `value % 16` correctly for both positive and negative values,
-        // resulting in a value in the range [0, 15].
-        // This is much faster than a division-based modulo.
-
-        // If world_coords.x is i64, (world_coords.x & 15) is an i64 in [0, 15].
-        // Casting this to i16 is safe and preserves the value.
         let local_block_x: i16 = (world_coords.x & 15) as i16;
         let local_block_z: i16 = (world_coords.z & 15) as i16;
 
-        // The .try_into().unwrap() calls:
-        // For local_block_x and local_block_z (which are 0..15):
-        // If the target type for get_local_block (e.g., usize) can hold 0..15,
-        // this conversion is safe and typically well-optimized.
         let final_local_x = match local_block_x.try_into() {
             Ok(val) => val,
             Err(_) => {
-                // This path should ideally not be hit if the target type is usize or similar.
-                // If it can, panicking via unwrap() is costly. Consider returning None.
-                // For now, let's assume it matches the original unwrap() behavior if types are compatible.
                 unreachable!("local_block_x (0-15) should always convert to target type");
             }
         };
@@ -190,7 +176,7 @@ impl ChunkSection {
         let y = compound.get_tag("Y").unwrap().get_byte();
         //ignore non-vanilla world heights for now
         //FIXME
-        if y < -4 || y > 19 {
+        if !(-4..=19).contains(&y) {
             return Ok(Self {
                 ypos: y,
                 block_data: [0u32; 4096],
@@ -270,14 +256,11 @@ impl ChunkSection {
         let bits_per_index = std::cmp::max(bit_size, 4); // Minimum size of 4 bits
         let indices_per_element = 64 / bits_per_index; // How many indices fit into one 64-bit integer
 
-        // Determine which 64-bit integer contains the desired index
         let element_index = index / indices_per_element;
         let within_element_index = index % indices_per_element;
 
-        // Calculate the bit position within the 64-bit integer
         let bit_position = within_element_index * bits_per_index;
 
-        // Extract the relevant bits
         let mask = (1 << bits_per_index) - 1;
         ((packed_array[element_index as usize] >> bit_position) & mask) as u32
     }

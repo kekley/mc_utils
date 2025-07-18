@@ -56,7 +56,7 @@ impl From<std::io::Error> for NBTError {
 impl From<ParsingError> for NBTError {
     fn from(value: ParsingError) -> Self {
         NBTError {
-            kind: NBTErrorKind::InvalidNBT("".to_string()),
+            kind: NBTErrorKind::InvalidNBT(format!("{value:?}")),
         }
     }
 }

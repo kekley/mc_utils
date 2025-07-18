@@ -1,3 +1,4 @@
+pub mod chunk_new;
 pub mod model_resources;
 mod nbt;
 mod palette;
