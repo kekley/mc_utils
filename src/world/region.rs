@@ -1,6 +1,5 @@
 use std::fs::File;
 use std::io::{self, Cursor, Read, Seek};
-use std::os::unix::fs::MetadataExt;
 use std::sync::Arc;
 use std::{usize, vec};
 
@@ -45,7 +44,7 @@ impl LazyRegion {
         let region = RegionCoords::from(coords);
         dbg!(path);
         let mut file = File::open(path).unwrap();
-        let file_size = file.metadata().unwrap().size();
+        let file_size = file.metadata().unwrap().len();
         let mut bytes: Vec<u8> = Vec::with_capacity(file_size as usize);
         file.read_to_end(&mut bytes);
         let bytes: Arc<[u8]> = Arc::from(bytes);

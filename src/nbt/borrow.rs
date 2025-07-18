@@ -7,11 +7,12 @@ pub(crate) mod nbt_tag {
     use crate::borrow::nbt_compound::unaligned_types;
 
     use super::{
-        nbt_compound::{Element, ElementTag, InnerElement, NBTCompound},
+        nbt_compound::{Compound, Element, ElementTag, InnerElement},
         nbt_list::ListType,
         nbt_string::NBTStr,
     };
 
+    #[derive(Debug)]
     pub struct NBTTag<'a, 'root> {
         data: &'a [u8],
         //this slice starts at the element of this tag
@@ -159,13 +160,9 @@ pub(crate) mod nbt_tag {
                 None
             }
         }
-        pub fn get_compound(&self) -> Option<NBTCompound<'a, 'root>> {
+        pub fn get_compound(&self) -> Option<Compound<'a, 'root>> {
             if self.elements[0].get_id() == ElementTag::Compound {
-                Some(NBTCompound::new(
-                    self.data,
-                    self.elements,
-                    self.inner_elements,
-                ))
+                Some(Compound::new(self.data, self.elements, self.inner_elements))
             } else {
                 None
             }
@@ -201,28 +198,37 @@ pub mod nbt_compound {
     use super::nbt_string::NBTStr;
     use super::parsing_stack::ParsingError;
 
-    pub struct NBTCompound<'a, 'root> {
+    pub struct Compound<'a, 'root> {
         data: &'a [u8],
         elements: &'root [Element],
         inner_elements: &'root [InnerElement],
     }
 
-    impl<'a, 'root> NBTCompound<'a, 'root> {
+    impl<'a, 'root> Compound<'a, 'root> {
         pub fn new(
             data: &'a [u8],
             elements: &'root [Element],
             inner_elements: &'root [InnerElement],
         ) -> Self {
             let compound_element = elements[0];
+            println!("compound created: {:?}", compound_element);
 
             let max_offset = compound_element.get_offset() as usize;
-            let compound_elements = &elements[1..max_offset];
+            let compound_elements = &elements[..max_offset];
 
             Self {
                 data,
                 elements: compound_elements,
                 inner_elements,
             }
+        }
+
+        pub fn get_tag(&self, name: &str) -> Option<NBTTag<'a, 'root>> {
+            let name = NBTStr::from_str(name);
+            let name = name.as_ref();
+            let tag = self.iter().find(|(tag_name, tag)| *tag_name == name);
+
+            Some(tag?.1)
         }
         pub fn iter(&self) -> NBTCompoundIter<'a, 'root> {
             let max_tape_offset = self.elements[0].get_truncated_len_and_offset().1 as usize;
@@ -253,6 +259,14 @@ pub mod nbt_compound {
             }
 
             let name_element = self.elements[self.current_offset];
+            if name_element.get_id() != ElementTag::NameString {
+                /*  println!(
+                    "current offset: {}, current element: {:?}  next element: {:?}",
+                    self.current_offset,
+                    self.elements[self.current_offset],
+                    self.elements[self.current_offset + 1]
+                );*/
+            }
             assert!(name_element.get_id() == ElementTag::NameString);
             let offset = name_element.get_offset() as usize;
             let string_len = u16::from_be_bytes(
@@ -260,7 +274,6 @@ pub mod nbt_compound {
                     .try_into()
                     .expect("This should always be a length of two"),
             ) as usize;
-            dbg!(string_len);
             let string_start = offset + size_of::<i16>();
             let string_end = string_start + string_len;
             let string_slice = &self.data[string_start..string_end];
@@ -268,7 +281,6 @@ pub mod nbt_compound {
             let nbt_str = NBTStr::from_slice(string_slice);
             let str = nbt_str.to_str();
 
-            println!("str: {str}");
             self.current_offset += 1;
 
             let element_slice = &self.elements[self.current_offset..];
@@ -385,6 +397,14 @@ pub mod nbt_compound {
                 data: bytes,
             })
         }
+        pub fn get_tag<'root>(&'root self, name: &str) -> Option<NBTTag<'a, 'root>> {
+            let name = NBTStr::from_str(name);
+            let name = name.as_ref();
+            let tag = self.iter().find(|(tag_name, _)| *tag_name == name);
+
+            Some(tag?.1)
+        }
+
         pub fn iter<'root>(&'root self) -> NBTCompoundIter<'a, 'root> {
             let max_tape_offset = self.elements[0].get_truncated_len_and_offset().1 as usize;
 
@@ -1015,7 +1035,7 @@ pub mod nbt_list {
             unaligned_types::{
                 BigEndianDouble, BigEndianFloat, BigEndianInt, BigEndianLong, BigEndianShort,
             },
-            Element, InnerElement, NBTCompound,
+            Compound, Element, InnerElement,
         },
         nbt_string::NBTStr,
     };
@@ -1406,7 +1426,7 @@ pub mod nbt_list {
     }
 
     impl<'root, 'a> NBTList for CompoundList<'a, 'root> {
-        type Output = NBTCompound<'a, 'root>;
+        type Output = Compound<'a, 'root>;
 
         fn get_index(&self, index: usize) -> Option<Self::Output> {
             self.iter.clone().nth(index)
@@ -1430,7 +1450,7 @@ pub mod nbt_list {
         }
     }
     impl<'a, 'root> Iterator for CompoundListIter<'a, 'root> {
-        type Item = NBTCompound<'a, 'root>;
+        type Item = Compound<'a, 'root>;
 
         fn next(&mut self) -> Option<Self::Item> {
             if self.current_offset + 1 >= self.elements.len() {
@@ -1439,7 +1459,7 @@ pub mod nbt_list {
 
             let compound_element = self.elements[self.current_offset];
             let skip_amount = compound_element.get_offset() as usize;
-            let compound = NBTCompound::new(self.data, self.elements, self.inner_elements);
+            let compound = Compound::new(self.data, self.elements, self.inner_elements);
 
             self.current_offset += skip_amount;
             Some(compound)
@@ -1454,7 +1474,7 @@ pub mod nbt_list {
 }
 
 pub mod nbt_string {
-    use std::borrow::Cow;
+    use std::{borrow::Cow, fmt::Display};
 
     use tracing::error;
 
@@ -1463,6 +1483,12 @@ pub mod nbt_string {
     #[derive(PartialEq, Eq)]
     pub struct NBTStr {
         data: [u8],
+    }
+
+    impl Display for NBTStr {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(&self.to_str_lossy())
+        }
     }
 
     impl NBTStr {
@@ -1668,6 +1694,8 @@ pub mod parsing_stack {
 #[cfg(test)]
 mod borrow_test {
 
+    use std::hint::black_box;
+
     use crate::nbt_ids::*;
 
     use super::nbt_compound::RootNBTCompound;
@@ -1697,8 +1725,12 @@ mod borrow_test {
         let level_dat = std::fs::read(path).unwrap_or_else(|_| panic!("could not find {path}"));
 
         let compound = RootNBTCompound::from_file(&level_dat).expect("NBT parse error");
-        compound.iter().for_each(|f| {
-            dbg!(f.0.to_str());
+        let tag = compound.get_tag("data").expect("Could not get data tag");
+
+        let data_compound = tag.get_compound().expect("Tag was not compound");
+
+        data_compound.iter().for_each(|(name, tag)| {
+            println!("{name}");
         });
     }
 }
