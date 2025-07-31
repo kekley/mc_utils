@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use super::{
     chunk_error::ChunkError,
-    loaded_world::{ChunkCoords, WorldCoords},
+    loaded_world::{BlockCoords, ChunkCoords},
 };
 use crate::{
     block::{Block, BlockName},
@@ -137,7 +137,7 @@ impl Chunk {
         let sec_y = (y - sec.ypos as isize * 16) as usize;
         sec.get_block(x, sec_y, z)
     }
-    pub fn get_world_block(&self, world_coords: WorldCoords) -> Option<&Block> {
+    pub fn get_world_block(&self, world_coords: BlockCoords) -> Option<&Block> {
         let local_block_x: i16 = (world_coords.x & 15) as i16;
         let local_block_z: i16 = (world_coords.z & 15) as i16;
 

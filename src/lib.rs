@@ -1,7 +1,9 @@
 pub mod chunk_new;
+pub mod coords;
 pub mod model_resources;
 mod nbt;
 mod palette;
+pub mod region_new;
 pub mod resource_loader;
 mod spider_eye_error;
 mod world;

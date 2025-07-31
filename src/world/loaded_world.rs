@@ -6,67 +6,6 @@ use super::{
     region::{LazyRegion, LoadedRegion},
     world_error::WorldError,
 };
-#[derive(Debug, Default, Hash, PartialEq, Eq, Clone, Copy)]
-pub struct WorldCoords {
-    pub x: i64,
-    pub y: i64,
-    pub z: i64,
-}
-#[derive(Debug, Default, Hash, PartialEq, Eq, Clone, Copy)]
-
-pub struct ChunkCoords {
-    pub x: i64,
-    pub z: i64,
-}
-
-impl ChunkCoords {
-    pub fn new(x: i64, z: i64) -> Self {
-        Self { x, z }
-    }
-}
-#[derive(Debug, Default, Hash, PartialEq, Eq, Clone, Copy)]
-
-pub struct RegionCoords {
-    pub x: i64,
-    pub z: i64,
-}
-
-impl From<ChunkCoords> for RegionCoords {
-    fn from(value: ChunkCoords) -> Self {
-        Self {
-            x: value.x >> 5,
-            z: value.z >> 5,
-        }
-    }
-}
-
-impl From<WorldCoords> for RegionCoords {
-    fn from(value: WorldCoords) -> Self {
-        Self {
-            x: value.x >> 10,
-            z: value.z >> 10,
-        }
-    }
-}
-
-impl From<WorldCoords> for ChunkCoords {
-    fn from(value: WorldCoords) -> Self {
-        Self {
-            x: value.x >> 4,
-            z: value.z >> 4,
-        }
-    }
-}
-
-impl From<ChunkCoords> for WorldCoords {
-    fn from(value: ChunkCoords) -> Self {
-        Self {
-            x: 16 * value.x,
-            y: 0,
-            z: 16 * value.z,
-        }
-    }
-}
 
 #[derive(Debug)]
 pub struct World {

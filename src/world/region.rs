@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::io::{self, Cursor, Read, Seek};
 use std::sync::Arc;
-use std::{usize, vec};
+use std::vec;
 
 use crate::chunk::Chunk;
 
