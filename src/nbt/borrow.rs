@@ -762,7 +762,7 @@ pub mod nbt_compound {
         }
     }
 
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     #[repr(u8)]
     pub enum ElementTag {
         EmptyList = 0,
@@ -1413,6 +1413,12 @@ pub mod nbt_list {
 
     pub struct CompoundList<'a, 'root> {
         iter: CompoundListIter<'a, 'root>,
+    }
+
+    impl CompoundList {
+        pub fn iter(&self) -> CompoundListIter {
+            self.iter.clone()
+        }
     }
 
     impl<'root, 'a> NBTList for CompoundList<'a, 'root> {
