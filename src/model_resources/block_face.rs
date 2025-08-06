@@ -1,10 +1,3 @@
-#![warn(
-    clippy::all,
-    clippy::restriction,
-    clippy::pedantic,
-    clippy::nursery,
-    clippy::cargo
-)]
 use bumpalo::collections::Vec as BumpVec;
 use bumpalo::{collections::CollectIn, Bump};
 use serde_json::{Map, Value};
@@ -37,26 +30,23 @@ impl TryFrom<&Value> for TintIndex {
 }
 
 #[derive(Debug, Clone)]
-pub struct BlockFace<'a> {
+pub struct BlockFace {
     pub name: FaceName,
     pub uv: Option<Uv>,
-    pub texture: TextureVariableEnum<'a>,
+    pub texture: TextureVariableEnum,
     cullface: Option<FaceName>,
     pub texture_rotation: Option<BlockRotation>,
     pub tint_index: Option<TintIndex>,
 }
 
-impl<'a> BlockFace<'a> {
-    pub fn parse_faces(
-        value: &Value,
-        bump: &'a Bump,
-    ) -> Result<[Option<BlockFace<'a>>; 6], ResourceErrorKind> {
+impl BlockFace {
+    pub fn parse_faces(value: &Value) -> Result<[Option<BlockFace>; 6], ResourceErrorKind> {
         const NONE_VALUE: Option<BlockFace> = None;
         let obj = parse_type::<Map<_, _>>(value)?;
         let vec = obj
             .iter()
-            .map(|(name, value)| BlockFace::parse_from_json_value(name, value, bump))
-            .collect_in::<Result<BumpVec<'a, _>, ResourceErrorKind>>(bump)?;
+            .map(|(name, value)| BlockFace::parse_from_json_value(name, value))
+            .collect::<Result<Vec<_>, ResourceErrorKind>>()?;
 
         let mut array = [NONE_VALUE; 6];
         vec.iter()
@@ -91,11 +81,10 @@ impl TryFrom<&str> for FaceName {
     }
 }
 
-impl<'a> BlockFace<'a> {
+impl BlockFace {
     pub fn parse_from_json_value(
         face_name: &str,
         value: &Value,
-        bump: &'a Bump,
     ) -> Result<Self, ResourceErrorKind> {
         let name = FaceName::try_from(face_name)?;
         let uv_field = get_optional_field(value, "uv");
@@ -105,7 +94,7 @@ impl<'a> BlockFace<'a> {
         };
 
         let texture_field = try_get_field(value, "texture")?;
-        let texture = TextureVariableEnum::try_from_in(texture_field, bump)?;
+        let texture = TextureVariableEnum::try_from(texture_field)?;
         let cullface_field = get_optional_field(value, "cullface");
 
         let cullface = match cullface_field {

@@ -1,7 +1,6 @@
 use std::fs;
 use tracing::info;
 
-use bumpalo::Bump;
 use serde_json::Value;
 
 use crate::{resource_error::create_resource_error, utils::get_optional_field};
@@ -13,23 +12,19 @@ use super::{
 };
 
 #[derive(Debug, Clone)]
-pub enum ResourcePath<'a> {
-    BlockModel(bumpalo::collections::String<'a>),
-    Texture(bumpalo::collections::String<'a>),
-    BlockState(bumpalo::collections::String<'a>),
+pub enum ResourcePath {
+    BlockModel(String),
+    Texture(String),
+    BlockState(String),
 }
 
-#[derive(Debug)]
-pub enum ModelVariants<'a> {
-    MultipartVariant(Multipart<'a>),
-    StandardVariant(Variants<'a>),
+pub enum ModelVariants {
+    MultipartVariant(Multipart),
+    StandardVariant(Variants),
 }
 
-impl<'a> ModelVariants<'a> {
-    pub(crate) fn load_from_json_in(
-        path: &str,
-        bump: &'a Bump,
-    ) -> Result<ModelVariants<'a>, ResourceError> {
+impl ModelVariants {
+    pub(crate) fn load_from_json_in(path: &str) -> Result<ModelVariants, ResourceError> {
         info!("loading block state from disk: {}", path);
         let file = fs::read_to_string(path);
         let Ok(file) = file else {
@@ -51,20 +46,20 @@ impl<'a> ModelVariants<'a> {
 
         Ok(match get_optional_field(&value, "variants") {
             Some(variants) => ModelVariants::StandardVariant(create_resource_error(path, || {
-                Variants::from_json_value(&variants, bump)
+                Variants::from_json_value(variants)
             })?),
             None => match get_optional_field(&value, "multipart") {
                 Some(multipart) => {
                     ModelVariants::MultipartVariant(create_resource_error(path, || {
-                        Multipart::try_from_json(&multipart, bump)
+                        Multipart::try_from_json(multipart)
                     })?)
                 }
                 None => {
                     return Err(ResourceError {
                         file: path.to_string(),
-                        kind: ResourceErrorKind::MissingField(format!(
-                            "No variant or multipart field"
-                        )),
+                        kind: ResourceErrorKind::MissingField(
+                            "No variant or multipart field".to_string(),
+                        ),
                     })
                 }
             },

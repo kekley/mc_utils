@@ -1,13 +1,3 @@
-#![warn(
-    clippy::all,
-    clippy::restriction,
-    clippy::pedantic,
-    clippy::nursery,
-    clippy::cargo
-)]
-use bumpalo::collections::Vec as BumpVec;
-use bumpalo::{collections::CollectIn, Bump};
-
 use serde_json::Value;
 
 use super::{resource_error::ResourceErrorKind, utils::parse_array};
@@ -23,7 +13,7 @@ enum DisplayPosition {
     Ground,
     Fixed,
 }
-
+#[allow(clippy::fallible_impl_from)]
 impl From<&str> for DisplayPosition {
     fn from(value: &str) -> DisplayPosition {
         match value {
@@ -53,12 +43,11 @@ impl TryFrom<(&str, &Value)> for BlockDisplay {
     fn try_from(value: (&str, &Value)) -> Result<Self, Self::Error> {
         let position = value.0;
         let data = value.1;
-        let rotation: Option<Result<[f32; 3], _>> =
-            data.get("rotation").map(|f| parse_array::<f32, 3>(f));
+        let rotation: Option<Result<[f32; 3], _>> = data.get("rotation").map(parse_array::<f32, 3>);
         let translation: Option<Result<[f32; 3], ResourceErrorKind>> =
-            data.get("translation").map(|f| parse_array::<f32, 3>(f));
+            data.get("translation").map(parse_array::<f32, 3>);
         let scale: Option<Result<[f32; 3], ResourceErrorKind>> =
-            data.get("scale").map(|f| parse_array::<f32, 3>(f));
+            data.get("scale").map(parse_array::<f32, 3>);
         let res = BlockDisplay {
             position: position.into(),
             rotation: rotation.unwrap_or(Ok([0f32; 3]))?,
@@ -71,18 +60,14 @@ impl TryFrom<(&str, &Value)> for BlockDisplay {
 }
 
 impl BlockDisplay {
-    pub fn parse_display<'a>(
-        value: &Value,
-        bump: &'a Bump,
-    ) -> Result<BumpVec<'a, BlockDisplay>, ResourceErrorKind> {
+    pub fn parse_display(value: &Value) -> Result<Vec<BlockDisplay>, ResourceErrorKind> {
         match value.as_object() {
             Some(object) => object
                 .iter()
                 .map(|(name, value)| BlockDisplay::try_from((name.as_str(), value)))
-                .collect_in::<Result<BumpVec<'a, _>, ResourceErrorKind>>(bump),
+                .collect::<Result<Vec<_>, ResourceErrorKind>>(),
             None => Err(ResourceErrorKind::InvalidField(format!(
-                "Block display field must be a json object. json value: {}",
-                value.to_string()
+                "Block display field must be a json object. json value: {value}"
             ))),
         }
     }

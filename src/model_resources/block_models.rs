@@ -1,9 +1,6 @@
 use std::fs;
 use tracing::debug;
 
-use bumpalo::collections::String as BumpString;
-use bumpalo::collections::Vec as BumpVec;
-use bumpalo::Bump;
 use serde_json::Value;
 
 use crate::resource_error::create_resource_error;
@@ -32,16 +29,16 @@ impl From<&bool> for AmbientOcclusion {
 }
 
 #[derive(Debug, Clone)]
-pub struct BlockModelParent<'a> {
-    value: bumpalo::collections::String<'a>,
+pub struct BlockModelParent {
+    value: String,
 }
 
-impl<'a> BlockModelParent<'a> {
-    fn try_from_in(value: &Value, bump: &'a Bump) -> Result<Self, ResourceErrorKind> {
+impl BlockModelParent {
+    fn try_from(value: &Value) -> Result<Self, ResourceErrorKind> {
         let str = parse_type::<&str>(value)?;
 
         Ok(BlockModelParent {
-            value: BumpString::from_str_in(str, bump),
+            value: String::from(str),
         })
     }
 }
@@ -63,8 +60,7 @@ impl TryFrom<&Value> for BlockRotation {
             180 => Ok(BlockRotation::OneEighty),
             270 => Ok(BlockRotation::TwoSeventy),
             _ => Err(ResourceErrorKind::InvalidField(format!(
-                "Block rotations must be 0, 90, 180, or 270. Got {}",
-                int
+                "Block rotations must be 0, 90, 180, or 270. Got {int}"
             ))),
         }
     }
@@ -80,22 +76,22 @@ impl BlockRotation {
     }
 }
 #[derive(Debug, Clone)]
-pub struct IntermediateBlockModel<'a> {
-    pub parent: Option<BlockModelParent<'a>>,
+pub struct IntermediateBlockModel {
+    pub parent: Option<BlockModelParent>,
     pub ambient_occlusion: Option<AmbientOcclusion>,
-    pub displays: Option<BumpVec<'a, BlockDisplay>>,
-    pub textures: Option<BlockTextureMap<'a>>,
-    pub elements: Option<BumpVec<'a, BlockElement<'a>>>,
+    pub displays: Option<Vec<BlockDisplay>>,
+    pub textures: Option<BlockTextureMap>,
+    pub elements: Option<Vec<BlockElement>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct BlockModel<'a> {
+pub struct BlockModel {
     pub ambient_occlusion: AmbientOcclusion,
-    pub displays: BumpVec<'a, BlockDisplay>,
-    textures: BlockTextureMap<'a>,
-    pub elements: BumpVec<'a, BlockElement<'a>>,
+    pub displays: Vec<BlockDisplay>,
+    textures: BlockTextureMap,
+    pub elements: Vec<BlockElement>,
 }
-impl<'a> BlockModel<'a> {
+impl BlockModel {
     pub fn get_textures(&self) -> &BlockTextureMap {
         &self.textures
     }
@@ -109,8 +105,8 @@ impl<'a> BlockModel<'a> {
     }
 }
 
-impl<'a> BlockModel<'a> {
-    pub fn try_from_intermediate(value: &'a IntermediateBlockModel) -> Option<Self> {
+impl BlockModel {
+    pub fn try_from_intermediate(value: &IntermediateBlockModel) -> Option<Self> {
         let IntermediateBlockModel {
             parent: _,
             ambient_occlusion,
@@ -130,7 +126,7 @@ impl<'a> BlockModel<'a> {
 
 pub const ASSET_PATH: &str = "./test_assets/assets/";
 
-impl<'a> IntermediateBlockModel<'a> {
+impl IntermediateBlockModel {
     pub fn parent_to_path(parent_str: &str) -> String {
         let (namespace, remaining_str) = parent_str
             .split_once(":")
@@ -141,22 +137,18 @@ impl<'a> IntermediateBlockModel<'a> {
             .split_once("/")
             .unwrap_or(("block", remaining_str));
         //        dbg!(model_type, remaining_str);
-        String::from(
-            ASSET_PATH.to_string()
-                + namespace
-                + "/"
-                + "models/"
-                + model_type
-                + "/"
-                + remaining_str
-                + ".json",
-        )
+        let mut path = ASSET_PATH.to_string();
+        path.push_str(namespace);
+        path.push('/');
+        path.push_str("models/");
+        path.push_str(model_type);
+        path.push('/');
+        path.push_str(remaining_str);
+        path.push_str(".json");
+        path
     }
 
-    pub fn from_json(
-        path: &str,
-        bump: &'a mut Bump,
-    ) -> Result<IntermediateBlockModel<'a>, ResourceError> {
+    pub fn from_json(path: &str) -> Result<IntermediateBlockModel, ResourceError> {
         debug!("loading block model from file:{}", &path);
         let file_string = create_resource_error(path, || fs::read_to_string(path))?;
 
@@ -167,7 +159,7 @@ impl<'a> IntermediateBlockModel<'a> {
 
         let parent = match parent_field {
             Some(parent) => Some(create_resource_error(path, || {
-                BlockModelParent::try_from_in(parent, bump)
+                BlockModelParent::try_from(parent)
             })?),
             None => None,
         };
@@ -182,7 +174,7 @@ impl<'a> IntermediateBlockModel<'a> {
 
         let displays = match displays_field {
             Some(value) => Some(create_resource_error(path, || {
-                BlockDisplay::parse_display(value, bump)
+                BlockDisplay::parse_display(value)
             })?),
             None => None,
         };
@@ -190,7 +182,7 @@ impl<'a> IntermediateBlockModel<'a> {
         let textures_field = get_optional_field(&json_value, "textures");
         let textures = match textures_field {
             Some(value) => Some(create_resource_error(path, || {
-                BlockTextureMap::try_from_json(value, bump)
+                BlockTextureMap::try_from_json(value)
             })?),
             None => None,
         };
@@ -199,7 +191,7 @@ impl<'a> IntermediateBlockModel<'a> {
 
         let elements = match elements_field {
             Some(value) => Some(create_resource_error(path, || {
-                BlockElement::parse_elements(value, bump)
+                BlockElement::parse_elements(value)
             })?),
             None => None,
         };

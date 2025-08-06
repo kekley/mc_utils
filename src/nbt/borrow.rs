@@ -7,7 +7,7 @@ pub(crate) mod nbt_tag {
     use crate::borrow::nbt_compound::unaligned_types;
 
     use super::{
-        nbt_compound::{Compound, Element, ElementTag, InnerElement},
+        nbt_compound::{Element, ElementTag, InnerElement, NBTCompound},
         nbt_list::ListType,
         nbt_string::NBTStr,
     };
@@ -19,6 +19,7 @@ pub(crate) mod nbt_tag {
         elements: &'root [Element],
         inner_elements: &'root [InnerElement],
     }
+
     #[expect(unsafe_code)]
     impl<'a, 'root> NBTTag<'a, 'root> {
         pub fn get_byte(&self) -> Option<i8> {
@@ -69,7 +70,7 @@ pub(crate) mod nbt_tag {
                 None
             }
         }
-        pub fn get_string(&self) -> Option<&NBTStr> {
+        pub fn get_string(&self) -> Option<&'a NBTStr> {
             if self.elements[0].get_id() == ElementTag::String {
                 let length_offset = self.elements[0].get_string_offset() as usize;
                 let size_of_short = 2_usize;
@@ -83,7 +84,7 @@ pub(crate) mod nbt_tag {
             }
         }
 
-        pub fn get_byte_array(&self) -> Option<&[i8]> {
+        pub fn get_byte_array(&self) -> Option<&'a [i8]> {
             if self.elements[0].get_id() == ElementTag::ByteArray {
                 let length_offset = self.elements[0].get_byte_array_offset() as usize;
 
@@ -104,7 +105,7 @@ pub(crate) mod nbt_tag {
             }
         }
 
-        pub fn get_int_array(&self) -> Option<&[unaligned_types::BigEndianInt]> {
+        pub fn get_int_array(&self) -> Option<&'a [unaligned_types::BigEndianInt]> {
             if self.elements[0].get_id() == ElementTag::IntArray {
                 let length_offset = self.elements[0].get_int_array_offset() as usize;
 
@@ -127,7 +128,7 @@ pub(crate) mod nbt_tag {
             }
         }
 
-        pub fn get_long_array(&self) -> Option<&[unaligned_types::BigEndianLong]> {
+        pub fn get_long_array(&self) -> Option<&'a [unaligned_types::BigEndianLong]> {
             if self.elements[0].get_id() == ElementTag::LongArray {
                 let length_offset = self.elements[0].get_long_array_offset() as usize;
 
@@ -160,9 +161,13 @@ pub(crate) mod nbt_tag {
                 None
             }
         }
-        pub fn get_compound(&self) -> Option<Compound<'a, 'root>> {
+        pub fn get_compound(&self) -> Option<NBTCompound<'a, 'root>> {
             if self.elements[0].get_id() == ElementTag::Compound {
-                Some(Compound::new(self.data, self.elements, self.inner_elements))
+                Some(NBTCompound::new(
+                    self.data,
+                    self.elements,
+                    self.inner_elements,
+                ))
             } else {
                 None
             }
@@ -194,17 +199,19 @@ pub mod nbt_compound {
     use byteorder::{BigEndian, ReadBytesExt};
     use bytes::Buf;
     use num_enum::TryFromPrimitive;
+    use tracing::instrument;
 
     use super::nbt_string::NBTStr;
     use super::parsing_stack::ParsingError;
 
-    pub struct Compound<'a, 'root> {
+    #[derive(Clone)]
+    pub struct NBTCompound<'a, 'root> {
         data: &'a [u8],
         elements: &'root [Element],
         inner_elements: &'root [InnerElement],
     }
 
-    impl<'a, 'root> Compound<'a, 'root> {
+    impl<'a, 'root> NBTCompound<'a, 'root> {
         pub fn new(
             data: &'a [u8],
             elements: &'root [Element],
@@ -291,6 +298,20 @@ pub mod nbt_compound {
     }
 
     impl<'a> RootNBTCompound<'a> {
+        pub fn to_nameless_compound<'root_nbt>(&'root_nbt self) -> NBTCompound<'a, 'root_nbt> {
+            let Self {
+                name: _,
+                elements,
+                inner_elements,
+                data,
+            } = self;
+
+            NBTCompound {
+                data,
+                elements: &elements,
+                inner_elements,
+            }
+        }
         fn read_tag_id(cursor: &mut Cursor<&[u8]>) -> Result<NBTId, NBTError> {
             let u8 = cursor.read_u8()?;
             Ok(NBTId::try_from_primitive(u8)?)
@@ -331,7 +352,8 @@ pub mod nbt_compound {
             self.name
         }
 
-        pub fn from_file(bytes: &'a [u8]) -> Result<Self, NBTError> {
+        #[instrument]
+        pub fn from_bytes(bytes: &'a [u8]) -> Result<Self, NBTError> {
             assert!(bytes.len() as u64 <= 0x00FF_FFFF_FFFF_FFFF);
             let slice = bytes;
             let mut cursor = Cursor::new(slice);
@@ -382,7 +404,7 @@ pub mod nbt_compound {
             Ok(RootNBTCompound {
                 name: root_name,
                 elements,
-                inner_elements: vec![],
+                inner_elements,
                 data: bytes,
             })
         }
@@ -537,6 +559,7 @@ pub mod nbt_compound {
                 NBTId::EndId => {
                     assert!(cursor.remaining() >= 4);
                     cursor.advance(4);
+                    elements.push(Element::from_empty_list());
                 }
                 NBTId::ByteId => {
                     let offset = cursor.position();
@@ -729,26 +752,116 @@ pub mod nbt_compound {
     }
 
     pub mod unaligned_types {
+        use std::ops::{BitOr, BitOrAssign};
+
+        pub trait UnalignedType {
+            type AlignedType;
+            fn to_aligned_ne(self) -> Self::AlignedType;
+            fn from_ne(from: Self::AlignedType) -> Self;
+        }
+
+        #[derive(Clone, Copy)]
+        #[repr(C, packed)]
+        pub struct BigEndianLong(u64);
+
+        impl std::fmt::Debug for BigEndianLong {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_fmt(format_args!("{:064b}", self.to_aligned_ne()))
+            }
+        }
+
+        impl BitOrAssign for BigEndianLong {
+            #[inline]
+            fn bitor_assign(&mut self, rhs: Self) {
+                let value = self.0;
+
+                let result = value.bitor(rhs.0);
+
+                *self = BigEndianLong(result);
+            }
+        }
+
+        impl UnalignedType for BigEndianLong {
+            type AlignedType = i64;
+
+            ///Copies into an aligned, native endian type
+            fn to_aligned_ne(self) -> Self::AlignedType {
+                let bytes = self.0.to_ne_bytes();
+
+                i64::from_be_bytes(bytes)
+            }
+            fn from_ne(from: Self::AlignedType) -> Self {
+                Self(from.to_be().cast_unsigned())
+            }
+        }
 
         #[derive(Debug, Clone, Copy)]
         #[repr(C, packed)]
-        pub struct BigEndianLong(pub u64);
+        pub struct BigEndianDouble(u64);
+
+        impl UnalignedType for BigEndianDouble {
+            type AlignedType = f64;
+
+            fn to_aligned_ne(self) -> Self::AlignedType {
+                let bytes = self.0.to_ne_bytes();
+
+                f64::from_be_bytes(bytes)
+            }
+            fn from_ne(from: Self::AlignedType) -> Self {
+                Self(u64::from_ne_bytes(from.to_be_bytes()))
+            }
+        }
 
         #[derive(Debug, Clone, Copy)]
         #[repr(C, packed)]
-        pub struct BigEndianDouble(pub u64);
+        pub struct BigEndianInt(u32);
+
+        impl UnalignedType for BigEndianInt {
+            type AlignedType = i32;
+
+            fn to_aligned_ne(self) -> Self::AlignedType {
+                let bytes = self.0.to_ne_bytes();
+
+                i32::from_be_bytes(bytes)
+            }
+            fn from_ne(from: Self::AlignedType) -> Self {
+                Self(from.to_be().cast_unsigned())
+            }
+        }
 
         #[derive(Debug, Clone, Copy)]
         #[repr(C, packed)]
-        pub struct BigEndianInt(pub u32);
+        pub struct BigEndianShort(u16);
+
+        impl UnalignedType for BigEndianShort {
+            type AlignedType = i16;
+
+            fn to_aligned_ne(self) -> Self::AlignedType {
+                let bytes = self.0.to_ne_bytes();
+
+                i16::from_be_bytes(bytes)
+            }
+            fn from_ne(from: Self::AlignedType) -> Self {
+                Self(from.to_be().cast_unsigned())
+            }
+        }
 
         #[derive(Debug, Clone, Copy)]
         #[repr(C, packed)]
-        pub struct BigEndianShort(pub u16);
+        pub struct BigEndianFloat(u32);
 
-        #[derive(Debug, Clone, Copy)]
-        #[repr(C, packed)]
-        pub struct BigEndianFloat(pub f32);
+        impl UnalignedType for BigEndianFloat {
+            type AlignedType = f32;
+
+            fn to_aligned_ne(self) -> Self::AlignedType {
+                let bytes = self.0.to_ne_bytes();
+
+                f32::from_be_bytes(bytes)
+            }
+            fn from_ne(from: Self::AlignedType) -> Self {
+                Self(u32::from_ne_bytes(from.to_be_bytes()))
+            }
+        }
     }
 
     ///bit pattern for lists: u8 | u24 | u32
@@ -762,7 +875,7 @@ pub mod nbt_compound {
         }
     }
 
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive)]
     #[repr(u8)]
     pub enum ElementTag {
         EmptyList = 0,
@@ -842,7 +955,7 @@ pub mod nbt_compound {
             self.0 & 0x00FF_FFFF_FFFF_FFFF
         }
         pub fn get_string_offset(self) -> u64 {
-            assert!(self.get_id() == ElementTag::ByteArray);
+            assert!(self.get_id() == ElementTag::String);
             self.0 & 0x00FF_FFFF_FFFF_FFFF
         }
         pub fn get_long_array_offset(self) -> u64 {
@@ -900,6 +1013,10 @@ pub mod nbt_compound {
         }
         pub fn from_long(offset: u64) -> Self {
             let value = ((LONG_ID as u64) << 56) | offset;
+            Self(value)
+        }
+        fn from_empty_list() -> Self {
+            let value = (END_ID as u64) << 56;
             Self(value)
         }
 
@@ -1024,7 +1141,7 @@ pub mod nbt_list {
             unaligned_types::{
                 BigEndianDouble, BigEndianFloat, BigEndianInt, BigEndianLong, BigEndianShort,
             },
-            Compound, Element, InnerElement,
+            Element, InnerElement, NBTCompound,
         },
         nbt_string::NBTStr,
     };
@@ -1411,18 +1528,19 @@ pub mod nbt_list {
         }
     }
 
+    #[derive(Clone)]
     pub struct CompoundList<'a, 'root> {
         iter: CompoundListIter<'a, 'root>,
     }
 
-    impl CompoundList {
-        pub fn iter(&self) -> CompoundListIter {
+    impl<'a, 'root> CompoundList<'a, 'root> {
+        pub fn iter(&self) -> CompoundListIter<'a, 'root> {
             self.iter.clone()
         }
     }
 
     impl<'root, 'a> NBTList for CompoundList<'a, 'root> {
-        type Output = Compound<'a, 'root>;
+        type Output = NBTCompound<'a, 'root>;
 
         fn get_index(&self, index: usize) -> Option<Self::Output> {
             self.iter.clone().nth(index)
@@ -1446,7 +1564,7 @@ pub mod nbt_list {
         }
     }
     impl<'a, 'root> Iterator for CompoundListIter<'a, 'root> {
-        type Item = Compound<'a, 'root>;
+        type Item = NBTCompound<'a, 'root>;
 
         fn next(&mut self) -> Option<Self::Item> {
             if self.current_offset + 1 >= self.elements.len() {
@@ -1455,9 +1573,14 @@ pub mod nbt_list {
 
             let compound_element = self.elements[self.current_offset];
             let skip_amount = compound_element.get_offset() as usize;
-            let compound = Compound::new(self.data, self.elements, self.inner_elements);
+            let compound = NBTCompound::new(
+                self.data,
+                &self.elements[self.current_offset..],
+                self.inner_elements,
+            );
 
             self.current_offset += skip_amount;
+
             Some(compound)
         }
     }
@@ -1699,7 +1822,7 @@ mod borrow_test {
         let path = "./test_assets/iceandfire_myrmex.dat";
         let level_dat = std::fs::read(path).unwrap_or_else(|_| panic!("could not find {path}"));
 
-        let compound = RootNBTCompound::from_file(&level_dat).expect("NBT parse error");
+        let compound = RootNBTCompound::from_bytes(&level_dat).expect("NBT parse error");
         let tag = compound.get_tag("data").expect("Could not get data tag");
 
         let data_compound = tag.get_compound().expect("Tag was not compound");

@@ -1,10 +1,8 @@
-use bumpalo::{collections::CollectIn, Bump};
 use serde_json::{Map, Value};
 use tracing::error;
 
 use super::{
     block_models::{BlockRotation, ASSET_PATH},
-    block_states::BlockProperties,
     resource::ResourcePath,
     resource_error::ResourceErrorKind,
     utils::{parse_type, try_get_field},
@@ -22,9 +20,9 @@ impl TryFrom<f32> for Weight {
         if value.is_finite() {
             Ok(Self(value))
         } else {
-            return Err(ResourceErrorKind::InvalidField(format!(
-                "NaN or infinite value for weight"
-            )));
+            Err(ResourceErrorKind::InvalidField(
+                "NaN or infinite value for weight".to_string(),
+            ))
         }
     }
 }
@@ -32,7 +30,7 @@ impl TryFrom<f32> for Weight {
 impl TryFrom<&Value> for Weight {
     type Error = ResourceErrorKind;
     fn try_from(value: &Value) -> Result<Self, Self::Error> {
-        Ok(parse_type::<f32>(value)?.try_into()?)
+        parse_type::<f32>(value)?.try_into()
     }
 }
 
@@ -60,35 +58,35 @@ impl TryFrom<&Value> for UvLock {
 }
 
 #[derive(Debug, Clone)]
-pub enum ModelVariant<'a> {
-    SingleModel(VariantEntry<'a>),
-    ModelArray(BumpVec<'a, VariantEntry<'a>>),
+pub enum ModelVariant {
+    SingleModel(VariantEntry),
+    ModelArray(Vec<VariantEntry>),
 }
 
 #[derive(Debug)]
 
-pub struct Variants<'a> {
-    variants: BumpVec<'a, (BlockProperties<'a>, ModelVariant<'a>)>,
+pub struct Variants {
+    variants: Vec<(String, ModelVariant)>,
 }
 
 #[derive(Debug, Clone)]
-pub struct VariantEntry<'a> {
-    pub model_path: ResourcePath<'a>,
+pub struct VariantEntry {
+    pub model_path: ResourcePath,
     pub rotation_x: Option<BlockRotation>,
     pub rotation_y: Option<BlockRotation>,
     pub uv_lock: Option<UvLock>,
     pub weight: Option<Weight>,
 }
 
-impl<'a> Variants<'a> {
-    pub fn get_model_variants(&self, block_state: &BlockProperties<'a>) -> Vec<ModelVariant> {
+impl Variants {
+    pub fn get_model_variants(&self, block_properties: &str) -> Vec<ModelVariant> {
         //dbg!(&block_state);
 
         let mut a: Vec<_> = self
             .variants
             .iter()
             .filter_map(|(block_state_, model)| {
-                if block_state == block_state_ {
+                if block_properties == block_state_ {
                     Some(model.clone())
                 } else {
                     None
@@ -96,10 +94,10 @@ impl<'a> Variants<'a> {
             })
             .collect();
 
-        if a.len() == 0 && self.variants.len() != 0 {
+        if a.is_empty() && !self.variants.is_empty() {
             a.push(self.variants[0].1.clone());
         }
-        if a.len() == 0 {
+        if a.is_empty() {
             error!("uh");
         }
         a
@@ -110,84 +108,67 @@ impl<'a> Variants<'a> {
         let (model_type, remaining_str) = remaining_str
             .split_once("/")
             .unwrap_or(("block", remaining_str));
-        String::from(
-            ASSET_PATH.to_string()
-                + namespace
-                + "/"
-                + "models/"
-                + model_type
-                + "/"
-                + remaining_str
-                + ".json",
-        )
+        let mut path = ASSET_PATH.to_string();
+        path.push_str(namespace);
+        path.push('/');
+        path.push_str("models/");
+        path.push_str(model_type);
+        path.push('/');
+        path.push_str(remaining_str);
+        path.push_str(".json");
+        path
     }
 }
 
-impl<'a> ModelVariant<'a> {
-    pub fn from_json_value(value: &Value, bump: &'a Bump) -> Result<Self, ResourceErrorKind> {
+impl ModelVariant {
+    pub fn from_json_value(value: &Value) -> Result<Self, ResourceErrorKind> {
         match value.is_array() {
             true => {
                 let entries = parse_type::<Vec<Value>>(value)
                     .unwrap()
                     .iter()
-                    .map(|entry| VariantEntry::from_json_value(entry, bump))
-                    .collect_in::<Result<BumpVec<'a, _>, ResourceErrorKind>>(bump)?;
+                    .map(|entry| VariantEntry::from_json_value(entry))
+                    .collect::<Result<Vec<_>, ResourceErrorKind>>()?;
 
                 Ok(ModelVariant::ModelArray(entries))
             }
             false => Ok(ModelVariant::SingleModel(VariantEntry::from_json_value(
-                value, bump,
+                value,
             )?)),
         }
     }
 }
-impl<'a> Variants<'a> {
-    pub(crate) fn from_json_value(
-        value: &Value,
-        bump: &'a Bump,
-    ) -> Result<Self, ResourceErrorKind> {
-        let model_variants: BumpVec<(BlockProperties, ModelVariant)> =
-            parse_type::<Map<String, Value>>(value)?
-                .iter()
-                .map(|(properties, model)| {
-                    let test_state = BlockProperties::from_str(properties, bump)?;
-                    let model = ModelVariant::from_json_value(model, &bump)?;
-                    Ok((test_state, model))
-                })
-                .collect_in::<Result<BumpVec<'a, (BlockProperties, ModelVariant)>, _>>(&bump)?;
+impl Variants {
+    pub(crate) fn from_json_value(value: &Value) -> Result<Self, ResourceErrorKind> {
+        let model_variants: Vec<(String, ModelVariant)> = parse_type::<Map<String, Value>>(value)?
+            .iter()
+            .map(|(properties, model)| {
+                let test_state = String::from(properties);
+                let model = ModelVariant::from_json_value(model)?;
+                Ok((test_state, model))
+            })
+            .collect::<Result<Vec<(String, ModelVariant)>, ResourceErrorKind>>()?;
 
-        return Ok(Variants {
+        Ok(Variants {
             variants: model_variants,
-        });
+        })
     }
 }
 
-impl<'a> VariantEntry<'a> {
-    fn from_json_value(value: &Value, bump: &'a Bump) -> Result<Self, ResourceErrorKind> {
+impl VariantEntry {
+    fn from_json_value(value: &Value) -> Result<Self, ResourceErrorKind> {
         let model_path_str = parse_type::<&str>(try_get_field(value, "model")?)?;
-        let model_path = ResourcePath::BlockModel(BumpString::from_str_in(model_path_str, bump));
+        let model_path = ResourcePath::BlockModel(String::from(model_path_str));
 
-        let y_rotation = value
-            .get("y")
-            .map(|value| BlockRotation::try_from(value))
-            .transpose()?;
-        let x_rotation = value
-            .get("x")
-            .map(|value| BlockRotation::try_from(value))
-            .transpose()?;
-        let uv_lock = value
-            .get("uvlock")
-            .map(|value| UvLock::try_from(value))
-            .transpose()?;
-        let weight = value
-            .get("weight")
-            .map(|value| Weight::try_from(value))
-            .transpose()?;
+        let y_rotation = value.get("y").map(BlockRotation::try_from).transpose()?;
+        let x_rotation = value.get("x").map(BlockRotation::try_from).transpose()?;
+        let uv_lock = value.get("uvlock").map(UvLock::try_from).transpose()?;
+        let weight = value.get("weight").map(Weight::try_from).transpose()?;
         Ok(VariantEntry {
             model_path,
             rotation_x: x_rotation,
             rotation_y: y_rotation,
-            uv_lock: uv_lock,
+            uv_lock,
             weight,
         })
     }

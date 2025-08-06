@@ -1,13 +1,3 @@
-#![warn(
-    clippy::all,
-    clippy::restriction,
-    clippy::pedantic,
-    clippy::nursery,
-    clippy::cargo
-)]
-use bumpalo::collections::String as BumpString;
-use bumpalo::collections::Vec as BumpVec;
-use bumpalo::{collections::CollectIn, Bump};
 use serde_json::{Map, Value};
 use smol_str::SmolStr;
 
@@ -52,29 +42,29 @@ impl From<[f32; 4]> for Uv {
 }
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 
-struct TextureVariable<'a> {
-    pub value: BumpString<'a>,
+pub struct TextureVariable {
+    pub value: String,
 }
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-struct TexturePath<'a> {
-    pub value: BumpString<'a>,
+pub struct TexturePath {
+    pub value: String,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub enum TextureVariableEnum<'a> {
-    Variable(TextureVariable<'a>),
-    ResourcePath(TexturePath<'a>),
+pub enum TextureVariableEnum {
+    Variable(TextureVariable),
+    ResourcePath(TexturePath),
 }
 
 #[derive(Debug, Clone)]
-pub struct BlockTextureMap<'a> {
-    pub texture_variables: BumpVec<'a, (TextureVariable<'a>, TextureVariableEnum<'a>)>,
+pub struct BlockTextureMap {
+    pub texture_variables: Vec<(TextureVariable, TextureVariableEnum)>,
 }
 
-impl<'a> BlockTextureMap<'a> {
-    pub fn combine(&mut self, other: BlockTextureMap<'a>) {
+impl BlockTextureMap {
+    pub fn combine(&mut self, other: BlockTextureMap) {
         for texture in &other.texture_variables {
-            if !self.texture_variables.contains(&texture) {
+            if !self.texture_variables.contains(texture) {
                 self.texture_variables.push(texture.clone());
             }
         }
@@ -85,7 +75,7 @@ impl<'a> BlockTextureMap<'a> {
 
     fn to_path(variable: &TextureVariableEnum) -> SmolStr {
         let inner_str = match variable {
-            TextureVariableEnum::Variable(texture_variable) => {
+            TextureVariableEnum::Variable(_texture_variable) => {
                 panic!("cannot resolve a texture variable to a path")
             }
             TextureVariableEnum::ResourcePath(texture_path) => texture_path.value.as_str(),
@@ -96,31 +86,31 @@ impl<'a> BlockTextureMap<'a> {
         let (texture_type, remaining_str) = remaining_str
             .split_once("/")
             .expect("invalid path for texture");
-        SmolStr::from(
-            ASSET_PATH.to_string()
-                + namespace
-                + "/"
-                + "textures/"
-                + texture_type
-                + "/"
-                + remaining_str
-                + ".png",
-        )
+        let mut path = ASSET_PATH.to_string();
+        path.push_str(namespace);
+        path.push('/');
+        path.push_str("textures/");
+        path.push_str(texture_type);
+        path.push('/');
+        path.push_str(remaining_str);
+        path.push_str(".png");
+
+        SmolStr::from(path)
     }
 
-    pub fn try_from_json(value: &Value, bump: &'a Bump) -> Result<Self, ResourceErrorKind> {
+    pub fn try_from_json(value: &Value) -> Result<Self, ResourceErrorKind> {
         let json_object = parse_type::<Map<_, _>>(value)?;
         let a = json_object
             .iter()
             .map(|(var1, var2)| {
                 let var = TextureVariable {
-                    value: BumpString::from_str_in(&var1, bump),
+                    value: String::from(var1),
                 };
 
-                let texture = TextureVariableEnum::try_from_in(var2, bump)?;
+                let texture = TextureVariableEnum::try_from(var2)?;
                 Ok((var, texture))
             })
-            .collect_in::<Result<BumpVec<'a, _>, ResourceErrorKind>>(bump)?;
+            .collect::<Result<Vec<_>, ResourceErrorKind>>()?;
 
         Ok(BlockTextureMap {
             texture_variables: a,
@@ -128,25 +118,22 @@ impl<'a> BlockTextureMap<'a> {
     }
 }
 
-impl<'a> TextureVariableEnum<'a> {
-    pub(crate) fn try_from_in(value: &Value, bump: &'a Bump) -> Result<Self, ResourceErrorKind> {
+impl TextureVariableEnum {
+    pub(crate) fn try_from(value: &Value) -> Result<Self, ResourceErrorKind> {
         let val = parse_type::<&str>(value)?;
 
-        let first_char = val
-            .chars()
-            .nth(0)
-            .ok_or(ResourceErrorKind::InvalidField(format!(
-                "Empty str for texture"
-            )))?;
+        let first_char = val.chars().nth(0).ok_or(ResourceErrorKind::InvalidField(
+            "Empty str for texture".to_string(),
+        ))?;
 
         if first_char == '#' {
-            return Ok(TextureVariableEnum::Variable(TextureVariable {
-                value: BumpString::from_str_in(val.strip_prefix('#').unwrap(), bump),
-            }));
+            Ok(TextureVariableEnum::Variable(TextureVariable {
+                value: String::from(val.strip_prefix('#').unwrap()),
+            }))
         } else {
-            return Ok(TextureVariableEnum::ResourcePath(TexturePath {
-                value: BumpString::from_str_in(val, bump),
-            }));
+            Ok(TextureVariableEnum::ResourcePath(TexturePath {
+                value: String::from(val),
+            }))
         }
     }
 }

@@ -1,10 +1,9 @@
-pub mod chunk_new;
+pub mod blockstate;
+pub mod chunk;
 pub mod coords;
+pub mod error;
 pub mod model_resources;
 mod nbt;
-mod palette;
-pub mod region_new;
-pub mod resource_loader;
-mod spider_eye_error;
-mod world;
-pub use {model_resources::*, nbt::*, resource_loader::*, spider_eye_error::*, world::*};
+pub mod region;
+pub mod section;
+pub use {model_resources::*, nbt::*};

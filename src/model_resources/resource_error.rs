@@ -1,4 +1,3 @@
-
 pub struct ResourceError {
     pub file: String,
     pub kind: ResourceErrorKind,
@@ -12,20 +11,20 @@ pub enum ResourceErrorKind {
     InvalidField(String),
 }
 
-impl Into<ResourceErrorKind> for std::io::Error {
-    fn into(self) -> ResourceErrorKind {
+impl From<std::io::Error> for ResourceErrorKind {
+    fn from(val: std::io::Error) -> Self {
         ResourceErrorKind::ErrorLoadingFile
     }
 }
 
-impl Into<ResourceErrorKind> for serde_json::Error {
-    fn into(self) -> ResourceErrorKind {
-        ResourceErrorKind::InvalidJSON(self)
+impl From<serde_json::Error> for ResourceErrorKind {
+    fn from(val: serde_json::Error) -> Self {
+        ResourceErrorKind::InvalidJSON(val)
     }
 }
 
-pub fn create_resource_error<'a, T, F: FnOnce() -> Result<T, E>, E: Into<ResourceErrorKind>>(
-    path: &'a str,
+pub fn create_resource_error<T, F: FnOnce() -> Result<T, E>, E: Into<ResourceErrorKind>>(
+    path: &str,
     f: F,
 ) -> Result<T, ResourceError> {
     match f() {

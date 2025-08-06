@@ -28,9 +28,9 @@ pub fn parse_array<T: for<'a> serde::de::Deserialize<'a>, const N: usize>(
     let values: &Vec<Value> = match value.as_array() {
         Some(vec) => vec,
         None => {
-            return Err(ResourceErrorKind::InvalidField(format!(
-                "Attempted to parse a non array value as an array"
-            )))
+            return Err(ResourceErrorKind::InvalidField(
+                "Attempted to parse a non array value as an array".to_string(),
+            ))
         }
     };
     if values.len() != N {
@@ -46,8 +46,7 @@ pub fn parse_array<T: for<'a> serde::de::Deserialize<'a>, const N: usize>(
             Ok(t) => t,
             Err(err) => {
                 return Err(ResourceErrorKind::InvalidField(format!(
-                    "Could not deserialize values in array: json error {}",
-                    err
+                    "Could not deserialize values in array: json error {err}"
                 )))
             }
         });
@@ -62,8 +61,7 @@ pub fn try_get_field<'a>(
     match value.get(field_name) {
         Some(field) => Ok(field),
         None => Err(ResourceErrorKind::MissingField(format!(
-            "Field name \"{}\" was missing",
-            field_name
+            "Field name \"{field_name}\" was missing"
         ))),
     }
 }
@@ -87,4 +85,3 @@ pub fn parse_type<'a, T: serde::de::Deserialize<'a>>(
         ))),
     }
 }
-

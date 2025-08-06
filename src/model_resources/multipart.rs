@@ -1,59 +1,42 @@
-use bumpalo::collections::String as BumpString;
-use bumpalo::collections::Vec as BumpVec;
-use bumpalo::{collections::CollectIn, Bump};
 use serde_json::{Map, Value};
 
 use super::utils::try_get_field;
-use super::{
-    block_states::BlockProperties, resource_error::ResourceErrorKind, utils::parse_type,
-    variant::ModelVariant,
-};
+use super::{resource_error::ResourceErrorKind, utils::parse_type, variant::ModelVariant};
 
-struct MultipartInner {}
-
-#[derive(Debug, Clone)]
-pub struct Multipart<'a> {
-    cases: BumpVec<'a, Case<'a>>,
+pub struct Multipart {
+    cases: Vec<Case>,
 }
 
-#[derive(Debug, Clone)]
-
-pub struct Case<'a> {
-    when: Option<When<'a>>,
-    apply: Apply<'a>,
+pub struct Case {
+    when: Option<When>,
+    apply: Apply,
 }
-impl<'a> Case<'a> {
-    pub fn check(&self, block_state: &BlockProperties) -> bool {
-        if self
-            .when
+impl Case {
+    pub fn check(&self, block_properties: &str) -> bool {
+        self.when
             .as_ref()
-            .is_none_or(|when| when.check(block_state))
-        {
-            return true;
-        } else {
-            return false;
-        }
+            .is_none_or(|when| when.check(block_properties))
     }
 }
 #[derive(Debug, Clone)]
 
-pub struct Apply<'a> {
-    variant: ModelVariant<'a>,
+pub struct Apply {
+    variant: ModelVariant,
 }
 
 #[derive(Debug, Clone)]
-pub struct TestStates<'a> {
-    pub names_values: BumpVec<'a, (BumpString<'a>, BumpString<'a>)>,
+pub struct TestProperties {
+    names_values: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone)]
-pub enum When<'a> {
-    OrCase(BumpVec<'a, TestStates<'a>>),
-    AndCase(BumpVec<'a, TestStates<'a>>),
-    SingleCase(TestStates<'a>),
+pub enum When {
+    OrCase(Vec<TestProperties>),
+    AndCase(Vec<TestProperties>),
+    SingleCase(TestProperties),
 }
-impl<'a> When<'a> {
-    pub fn check(&self, block_state: &BlockProperties<'a>) -> bool {
+impl When {
+    pub fn check(&self, block_properties: &str) -> bool {
         match self {
             When::OrCase(test_block_states) => {
                 todo!()
@@ -68,35 +51,35 @@ impl<'a> When<'a> {
     }
 }
 
-impl<'a> Multipart<'a> {
-    pub fn try_from_json(value: &Value, bump: &'a Bump) -> Result<Self, ResourceErrorKind> {
+impl Multipart {
+    pub fn try_from_json(value: &Value) -> Result<Self, ResourceErrorKind> {
         let cases = parse_type::<Vec<Value>>(value)?
             .iter()
-            .map(|value| Case::try_from_json(value, bump))
-            .collect_in::<Result<BumpVec<'a, _>, ResourceErrorKind>>(bump)?;
+            .map(Case::try_from_json)
+            .collect::<Result<Vec<_>, ResourceErrorKind>>()?;
 
-        Ok(Multipart { cases: cases })
+        Ok(Multipart { cases })
     }
 
-    pub(crate) fn load_models(&self, properties: &BlockProperties<'_>) -> Vec<ModelVariant<'_>> {
+    pub(crate) fn load_models(&self, properties: &str) -> Vec<ModelVariant> {
         todo!()
     }
 }
 
-impl<'a> Case<'a> {
-    pub fn try_from_json(value: &Value, bump: &'a Bump) -> Result<Self, ResourceErrorKind> {
+impl Case {
+    pub fn try_from_json(value: &Value) -> Result<Self, ResourceErrorKind> {
         let when = value
             .get("when")
             .map(|value| {
                 if let Some(value) = value.get("OR") {
                     //"Or" and "And" case are a list of test states, which are a json object containing an indeterminate number of fields in the format "state name" : "state_value(s)"
-                    let test_states = Case::collect_test_states(value, bump)?;
+                    let test_states = Case::collect_test_states(value)?;
                     Ok(When::OrCase(test_states))
                 } else if let Some(value) = value.get("AND") {
-                    let test_states = Case::collect_test_states(value, bump)?;
+                    let test_states = Case::collect_test_states(value)?;
                     Ok(When::AndCase(test_states))
                 } else {
-                    let test_states = Case::collect_test_states(value, bump)?;
+                    let test_states = Case::collect_test_states(value)?;
                     if test_states.len() > 0 {
                         return Err(ResourceErrorKind::InvalidField(
                             "Error parsing Case, empty single case".to_owned(),
@@ -108,31 +91,25 @@ impl<'a> Case<'a> {
             })
             .transpose()?;
 
-        let variant = ModelVariant::from_json_value(try_get_field(value, "apply")?, bump)?;
-        let apply = Apply { variant: variant };
+        let variant = ModelVariant::from_json_value(try_get_field(value, "apply")?)?;
+        let apply = Apply { variant };
 
-        Ok(Case { when, apply: apply })
+        Ok(Case { when, apply })
     }
 
-    pub fn collect_test_states(
-        value: &Value,
-        bump: &'a Bump,
-    ) -> Result<BumpVec<'a, TestStates<'a>>, ResourceErrorKind> {
+    pub fn collect_test_states(value: &Value) -> Result<Vec<TestProperties>, ResourceErrorKind> {
         parse_type::<Vec<Value>>(value)?
             .iter()
             .map(|value| {
                 let names_values = parse_type::<Map<String, Value>>(value)?
                     .iter()
-                    .map(|(state_name, values)| {
-                        let values_str = parse_type::<&str>(values)?;
-                        Ok((
-                            BumpString::from_str_in(&state_name, bump),
-                            BumpString::from_str_in(values_str, bump),
-                        ))
+                    .map(|(state_name, state_value)| {
+                        let values_str = parse_type::<&str>(state_value)?;
+                        Ok((String::from(state_name), String::from(values_str)))
                     })
-                    .collect_in::<Result<BumpVec<_>, ResourceErrorKind>>(bump)?; // if we fail parsing at any point we want to just return an error for the whole thing
-                Ok(TestStates { names_values })
+                    .collect::<Result<Vec<_>, ResourceErrorKind>>()?; // if we fail parsing at any point we want to just return an error for the whole thing
+                Ok(TestProperties { names_values })
             })
-            .collect_in::<Result<BumpVec<'a, _>, ResourceErrorKind>>(bump)
+            .collect::<Result<Vec<_>, ResourceErrorKind>>()
     }
 }
