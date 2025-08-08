@@ -2,7 +2,7 @@ use std::{error::Error, time::Instant};
 
 use spider_eye::{
     borrow::nbt_compound::RootNBTCompound, chunk::borrow::Chunk, region::borrow::Region,
-    resource_loader::load_folder, section::borrow::Section,
+    resource_loader::load_resource_folder, section::borrow::Section,
 };
 
 pub fn main() -> Result<(), Box<dyn Error>> {
@@ -62,6 +62,6 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     chunk_data_vec.iter().for_each(|f| sum += f.len());
     println!("{}", sum / 1000);
 
-    let _ = load_folder("./test_assets/assets/");
+    let _ = load_resource_folder("./test_assets/assets/");
     Ok(())
 }
