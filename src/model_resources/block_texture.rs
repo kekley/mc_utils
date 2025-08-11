@@ -1,5 +1,5 @@
+use compact_str::CompactString;
 use serde_json::{Map, Value};
-use smol_str::SmolStr;
 
 use super::{
     block_models::ASSET_PATH,
@@ -73,7 +73,7 @@ impl BlockTextureMap {
         self.texture_variables.as_slice()
     }
 
-    fn to_path(variable: &TextureVariableEnum) -> SmolStr {
+    fn to_path(variable: &TextureVariableEnum) -> CompactString {
         let inner_str = match variable {
             TextureVariableEnum::Variable(_texture_variable) => {
                 panic!("cannot resolve a texture variable to a path")
@@ -95,7 +95,7 @@ impl BlockTextureMap {
         path.push_str(remaining_str);
         path.push_str(".png");
 
-        SmolStr::from(path)
+        CompactString::from(path)
     }
 
     pub fn try_from_json(value: &Value) -> Result<Self, ResourceErrorKind> {

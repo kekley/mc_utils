@@ -1,5 +1,3 @@
-use bumpalo::collections::Vec as BumpVec;
-use bumpalo::{collections::CollectIn, Bump};
 use serde_json::{Map, Value};
 
 use crate::utils::parse_type;
@@ -49,8 +47,9 @@ impl BlockFace {
             .collect::<Result<Vec<_>, ResourceErrorKind>>()?;
 
         let mut array = [NONE_VALUE; 6];
-        vec.iter()
-            .for_each(|face| array[face.name as usize] = Some(face.clone()));
+        for face in vec.iter() {
+            array[face.name as usize] = Some(face.clone());
+        }
         Ok(array)
     }
 }

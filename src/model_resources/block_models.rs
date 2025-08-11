@@ -1,4 +1,4 @@
-use std::fs;
+use std::{fs, path::Path};
 use tracing::debug;
 
 use serde_json::Value;
@@ -148,8 +148,7 @@ impl IntermediateBlockModel {
         path
     }
 
-    pub fn from_json(path: &str) -> Result<IntermediateBlockModel, ResourceError> {
-        debug!("loading block model from file:{}", &path);
+    pub fn from_json(path: &Path) -> Result<IntermediateBlockModel, ResourceError> {
         let file_string = create_resource_error(path, || fs::read_to_string(path))?;
 
         let json_value =

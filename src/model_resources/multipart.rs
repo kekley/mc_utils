@@ -3,10 +3,12 @@ use serde_json::{Map, Value};
 use super::utils::try_get_field;
 use super::{resource_error::ResourceErrorKind, utils::parse_type, variant::ModelVariant};
 
+#[derive(Debug)]
 pub struct Multipart {
     cases: Vec<Case>,
 }
 
+#[derive(Debug)]
 pub struct Case {
     when: Option<When>,
     apply: Apply,
@@ -80,7 +82,7 @@ impl Case {
                     Ok(When::AndCase(test_states))
                 } else {
                     let test_states = Case::collect_test_states(value)?;
-                    if test_states.len() > 0 {
+                    if !test_states.is_empty() {
                         return Err(ResourceErrorKind::InvalidField(
                             "Error parsing Case, empty single case".to_owned(),
                         ));

@@ -1,5 +1,4 @@
-use std::fs;
-use tracing::info;
+use std::{fs, path::Path};
 
 use serde_json::Value;
 
@@ -18,18 +17,18 @@ pub enum ResourcePath {
     BlockState(String),
 }
 
+#[derive(Debug)]
 pub enum ModelVariants {
-    MultipartVariant(Multipart),
-    StandardVariant(Variants),
+    Multipart(Multipart),
+    Standard(Variants),
 }
 
 impl ModelVariants {
-    pub(crate) fn load_from_json_in(path: &str) -> Result<ModelVariants, ResourceError> {
-        info!("loading block state from disk: {}", path);
+    pub(crate) fn load_from_json(path: &Path) -> Result<ModelVariants, ResourceError> {
         let file = fs::read_to_string(path);
         let Ok(file) = file else {
             return Err(ResourceError {
-                file: path.to_string(),
+                file: path.to_string_lossy().to_string(),
                 kind: crate::resource_error::ResourceErrorKind::ErrorLoadingFile,
             });
         };
@@ -38,25 +37,23 @@ impl ModelVariants {
             Ok(value) => value,
             Err(err) => {
                 return Err(ResourceError {
-                    file: path.to_string(),
+                    file: path.to_string_lossy().to_string(),
                     kind: crate::resource_error::ResourceErrorKind::InvalidJSON(err),
                 })
             }
         };
 
         Ok(match get_optional_field(&value, "variants") {
-            Some(variants) => ModelVariants::StandardVariant(create_resource_error(path, || {
+            Some(variants) => ModelVariants::Standard(create_resource_error(path, || {
                 Variants::from_json_value(variants)
             })?),
             None => match get_optional_field(&value, "multipart") {
-                Some(multipart) => {
-                    ModelVariants::MultipartVariant(create_resource_error(path, || {
-                        Multipart::try_from_json(multipart)
-                    })?)
-                }
+                Some(multipart) => ModelVariants::Multipart(create_resource_error(path, || {
+                    Multipart::try_from_json(multipart)
+                })?),
                 None => {
                     return Err(ResourceError {
-                        file: path.to_string(),
+                        file: path.to_string_lossy().to_string(),
                         kind: ResourceErrorKind::MissingField(
                             "No variant or multipart field".to_string(),
                         ),

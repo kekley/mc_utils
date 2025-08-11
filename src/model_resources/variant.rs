@@ -7,8 +7,6 @@ use super::{
     resource_error::ResourceErrorKind,
     utils::{parse_type, try_get_field},
 };
-use bumpalo::collections::String as BumpString;
-use bumpalo::collections::Vec as BumpVec;
 #[derive(Debug, Clone)]
 
 pub struct Weight(f32);

@@ -1,3 +1,5 @@
+use std::path::Path;
+
 pub struct ResourceError {
     pub file: String,
     pub kind: ResourceErrorKind,
@@ -24,13 +26,13 @@ impl From<serde_json::Error> for ResourceErrorKind {
 }
 
 pub fn create_resource_error<T, F: FnOnce() -> Result<T, E>, E: Into<ResourceErrorKind>>(
-    path: &str,
+    path: &Path,
     f: F,
 ) -> Result<T, ResourceError> {
     match f() {
         Ok(t) => Ok(t),
         Err(err) => Err(ResourceError {
-            file: path.to_string(),
+            file: path.to_string_lossy().to_string(),
             kind: err.into(),
         }),
     }
