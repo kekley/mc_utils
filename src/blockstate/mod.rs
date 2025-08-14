@@ -3,9 +3,8 @@ pub mod owned;
 
 pub trait BlockStateTrait {
     type StringType;
-    type PropertiesIter;
 
     fn name(&self) -> Self::StringType;
 
-    fn iter_properties(&self) -> Self::PropertiesIter;
+    fn iter_properties(&self) -> impl Iterator<Item = (&Self::StringType, &Self::StringType)>;
 }

@@ -53,13 +53,12 @@ impl<'a, 'root_nbt> Iterator for PropertiesIter<'a, 'root_nbt> {
 
 impl<'a, 'root_nbt> BlockStateTrait for BlockState<'a, 'root_nbt> {
     type StringType = &'a NBTStr;
-    type PropertiesIter = PropertiesIter<'a, 'root_nbt>;
 
     fn name(&self) -> Self::StringType {
         self.name
     }
 
-    fn iter_properties(&self) -> Self::PropertiesIter {
-        self.iter_properties()
+    fn iter_properties(&self) -> impl Iterator<Item = (&Self::StringType, &Self::StringType)> {
+        todo!()
     }
 }
