@@ -90,16 +90,15 @@ pub struct Section<'a, 'root_nbt> {
     data: Option<&'a [BigEndianLong]>,
 }
 
-pub struct SectionBlockStateIter<'a, 'root_nbt> {
+pub struct SectionIndexIter<'a> {
     data: Option<&'a [BigEndianLong]>,
-    palette: Palette<'a, 'root_nbt>,
     bits_per_index: u8,
     packing_type: PackingType,
     index: usize,
 }
 
-impl<'a, 'root_nbt> Iterator for SectionBlockStateIter<'a, 'root_nbt> {
-    type Item = BlockState<'a, 'root_nbt>;
+impl<'a> Iterator for SectionIndexIter<'a> {
+    type Item = u16;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.index >= 4096 {
@@ -118,10 +117,7 @@ impl<'a, 'root_nbt> Iterator for SectionBlockStateIter<'a, 'root_nbt> {
             0
         };
         self.index += 1;
-
-        let block_state = self.palette.get(index);
-
-        block_state
+        Some(index)
     }
 }
 
@@ -169,17 +165,20 @@ impl<'a, 'root_nbt> Section<'a, 'root_nbt> {
         })
     }
 
-    pub fn iter_blocks(&self) -> SectionBlockStateIter<'a, 'root_nbt> {
+    pub fn get_palette(&self) -> Palette<'a, 'root_nbt> {
+        self.palette.clone()
+    }
+
+    pub fn iter_block_indices(&self) -> SectionIndexIter<'a> {
         let Self {
-            palette,
+            palette: _,
             y_index: _,
             bits_per_index,
             data,
             packing_type,
         } = self;
-        SectionBlockStateIter {
+        SectionIndexIter {
             data: *data,
-            palette: palette.clone(),
             bits_per_index: *bits_per_index,
             packing_type: *packing_type,
             index: 0,
@@ -189,13 +188,13 @@ impl<'a, 'root_nbt> Section<'a, 'root_nbt> {
         self.y_index as isize * 16
     }
     #[inline]
-    pub fn get_block_index(&self, x: u8, y: u8, z: u8, packing_type: PackingType) -> u64 {
+    fn get_block_index(&self, x: u8, y: u8, z: u8) -> u16 {
         let x = x as usize;
         let y = y as usize;
         let z = z as usize;
         let index = y * 16 * 16 + z * 16 + x;
         if let Some(data) = self.data {
-            match packing_type {
+            match self.packing_type {
                 PackingType::Pre1_16 => read_packed_index_pre116(data, index, self.bits_per_index)
                     .expect("Index should be between 0 and 4095"),
                 PackingType::Post1_16 => {
@@ -228,8 +227,12 @@ impl<'a, 'root_nbt> Palette<'a, 'root_nbt> {
             .collect();
         Some(Self { entries })
     }
-    pub fn get(&self, index: u64) -> Option<BlockState<'a, 'root_nbt>> {
+    pub fn get(&self, index: u16) -> Option<BlockState<'a, 'root_nbt>> {
         self.entries.get(index as usize).cloned()
+    }
+
+    pub fn as_slice(&self) -> &[BlockState<'a, 'root_nbt>] {
+        &self.entries
     }
 
     fn length(&self) -> usize {
@@ -241,7 +244,7 @@ fn read_packed_index_pre116(
     data: &[BigEndianLong],
     index: usize,
     bits_per_index: u8,
-) -> Option<u64> {
+) -> Option<u16> {
     let bits_per_index = bits_per_index as usize;
     let bit_mask: u64 = u64::MAX.unbounded_shr(u64::BITS - bits_per_index as u32);
 
@@ -262,14 +265,14 @@ fn read_packed_index_pre116(
 
     let shifted = (double_long.unbounded_shr(bit_offset_within_long as u32)) as u64;
 
-    Some(shifted & bit_mask)
+    Some((shifted & bit_mask) as u16)
 }
 #[inline]
 fn read_packed_index_post116(
     data: &[BigEndianLong],
     index: usize,
     bits_per_index: u8,
-) -> Option<u64> {
+) -> Option<u16> {
     let values_per_long = u64::BITS / bits_per_index as u32;
     let long_index = index / values_per_long as usize;
     let shift_right_amount: u32 = bits_per_index as u32 * (index as u32 % values_per_long);
@@ -280,7 +283,7 @@ fn read_packed_index_post116(
     let shifted = (long.cast_unsigned().unbounded_shl(shift_left_amount))
         .unbounded_shr(shift_right_amount + shift_left_amount);
 
-    Some(shifted)
+    Some(shifted as u16)
 }
 
 #[cfg(test)]
@@ -306,7 +309,7 @@ mod test {
             for (i, element) in test_array.iter().enumerate() {
                 let value = read_packed_index_pre116(&dest, i, bits_per_index).unwrap();
 
-                assert_eq!(*element as u64, value);
+                assert_eq!(*element as u16, value);
             }
         }
         let duration = Instant::now().duration_since(start_time);
@@ -332,7 +335,7 @@ mod test {
             for (i, element) in test_array.iter().enumerate() {
                 let value = read_packed_index_post116(&dest, i, bits_per_index).unwrap();
 
-                assert_eq!(*element as u64, value);
+                assert_eq!(*element as u16, value);
             }
         }
         let duration = Instant::now().duration_since(start_time);

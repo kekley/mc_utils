@@ -39,7 +39,7 @@ impl CompressionData {
 }
 
 pub fn decompress_chunk(data: &[u8]) -> Result<Vec<u8>, SpiderEyeError> {
-    let compression_data = CompressionData::new(&data)?;
+    let compression_data = CompressionData::new(data)?;
     match compression_data.scheme {
         CompressionScheme::Gzip => {
             let data_slice = data

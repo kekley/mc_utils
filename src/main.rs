@@ -1,15 +1,31 @@
-use std::{error::Error, path::PathBuf, str::FromStr, time::Instant};
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-use spider_eye::{
-    borrow::nbt_compound::RootNBTCompound, chunk::borrow::Chunk, region::borrow::Region,
-    resource_loader::load_resource_folder, section::borrow::Section,
-};
+use std::{error::Error, path::PathBuf, str::FromStr};
+
+use spider_eye::resource_loader::LoadedResources;
 
 pub fn main() -> Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt::init();
 
     let path = PathBuf::from_str("./test_assets/assets/").unwrap();
 
-    let _ = load_resource_folder(&path);
+    let a = LoadedResources::load_resource_folder(&path)?;
+
+    println!("textures:");
+    for b in a.textures {
+        println!("{loc:?}", loc = b.0);
+    }
+
+    println!("blockstates:");
+    for b in a.variants {
+        println!("{loc:?}", loc = b.0);
+    }
+
+    println!("models:");
+    for b in a.models {
+        println!("{loc:?}", loc = b.0);
+    }
+
     Ok(())
 }

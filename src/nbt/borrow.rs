@@ -308,7 +308,7 @@ pub mod nbt_compound {
 
             NBTCompound {
                 data,
-                elements: &elements,
+                elements,
                 inner_elements,
             }
         }
@@ -1593,7 +1593,10 @@ pub mod nbt_list {
 }
 
 pub mod nbt_string {
-    use std::{borrow::Cow, fmt::Display};
+    use std::{
+        borrow::Cow,
+        fmt::{Debug, Display},
+    };
 
     use tracing::error;
 
@@ -1604,23 +1607,39 @@ pub mod nbt_string {
         data: [u8],
     }
 
+    impl Debug for NBTStr {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(&self.to_str())
+        }
+    }
+
     impl Display for NBTStr {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            f.write_str(&self.to_str_lossy())
+            f.write_str(&self.to_str())
         }
     }
 
     impl NBTStr {
         #[expect(clippy::should_implement_trait)]
+        #[expect(unsafe_code)]
         pub fn from_str(str: &str) -> Cow<'_, NBTStr> {
             match simd_cesu8::encode(str) {
-                Cow::Borrowed(slice) => Cow::Borrowed(NBTStr::from_slice(slice)),
+                Cow::Borrowed(slice) => {
+                    //SAFETY simd_cesu8::encode has checked the validity of our str
+                    let nbt_str = unsafe { NBTStr::from_slice(slice) };
+                    Cow::Borrowed(nbt_str)
+                }
                 Cow::Owned(vec) => Cow::Owned(NBTString::new_from_vec(vec)),
             }
         }
 
         #[expect(unsafe_code)]
-        pub(crate) fn from_slice(as_slice: &[u8]) -> &Self {
+        pub const unsafe fn from_str_unchecked(str: &str) -> &NBTStr {
+            NBTStr::from_slice(str.as_bytes())
+        }
+
+        #[expect(unsafe_code)]
+        pub(crate) const unsafe fn from_slice(as_slice: &[u8]) -> &Self {
             //SAFETY: same layout as a u8 slice
             unsafe { std::mem::transmute(as_slice) }
         }
@@ -1635,6 +1654,9 @@ pub mod nbt_string {
         }
         pub fn to_str_lossy(&self) -> Cow<'_, str> {
             simd_cesu8::decode_lossy(&self.data)
+        }
+        pub fn as_bytes(&self) -> &[u8] {
+            &self.data
         }
     }
 

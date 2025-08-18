@@ -1,3 +1,5 @@
+use std::fmt::{Debug, Display};
+
 use crate::borrow::{
     nbt_compound::{NBTCompound, NBTCompoundIter},
     nbt_string::NBTStr,
@@ -11,7 +13,18 @@ pub struct BlockState<'data, 'root_nbt> {
     properties: Option<NBTCompound<'data, 'root_nbt>>,
 }
 
+#[expect(unsafe_code)]
+const AIR_NAME: &NBTStr = const {
+    //SAFETY: "minecraft:air" is valid mutf8
+    unsafe { NBTStr::from_str_unchecked("minecraft:air") }
+};
+
 impl<'data, 'root_nbt> BlockState<'data, 'root_nbt> {
+    const AIR: BlockState<'static, 'static> = BlockState {
+        name: AIR_NAME,
+        properties: None,
+    };
+
     pub fn get_name(&self) -> &'data NBTStr {
         self.name
     }
@@ -33,6 +46,30 @@ impl<'data, 'root_nbt> BlockState<'data, 'root_nbt> {
     }
 }
 
+impl Debug for BlockState<'_, '_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}", self))
+    }
+}
+
+impl Display for BlockState<'_, '_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Block name: ")?;
+        f.write_str(&self.get_name().to_str())?;
+        f.write_str("\n")?;
+
+        f.write_str("Properties:\n")?;
+
+        for (name, val) in self.iter_properties() {
+            f.write_str(&name.to_str())?;
+            f.write_str(": ")?;
+            f.write_str(&val.to_str())?;
+        }
+
+        Ok(())
+    }
+}
+
 pub struct PropertiesIter<'data, 'root_nbt> {
     iter: Option<NBTCompoundIter<'data, 'root_nbt>>,
 }
@@ -51,14 +88,14 @@ impl<'a, 'root_nbt> Iterator for PropertiesIter<'a, 'root_nbt> {
     }
 }
 
-impl<'a, 'root_nbt> BlockStateTrait for BlockState<'a, 'root_nbt> {
+impl<'a, 'root_nbt> BlockStateTrait<'a> for BlockState<'a, 'root_nbt> {
     type StringType = &'a NBTStr;
 
     fn name(&self) -> Self::StringType {
         self.name
     }
 
-    fn iter_properties(&self) -> impl Iterator<Item = (&Self::StringType, &Self::StringType)> {
-        todo!()
+    fn iter_properties(&self) -> PropertiesIter<'a, 'root_nbt> {
+        todo!();
     }
 }

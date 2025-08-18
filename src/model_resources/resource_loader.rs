@@ -3,19 +3,20 @@ use std::{
     fmt::Debug,
     fs,
     path::{Path, PathBuf},
+    time::Instant,
 };
 
 use compact_str::CompactString;
 use hashbrown::HashMap;
+use lasso::Rodeo;
 
-use crate::error::spider_eye_error::SpiderEyeError;
-
-use super::{
-    block_models::{BlockModel, IntermediateBlockModel},
-    resource::ModelVariants,
+use crate::{
+    error::spider_eye_error::SpiderEyeError,
+    interned::{block_model::BlockModel, blockstate::InternedBlockState},
+    serde::{block_model::RawBlockModel, blockstate::BlockStateType},
 };
 
-const ASSET_FOLDER_NAMES: [&str; 3] = ["blockstates", "models", "textures"];
+const _ASSET_FOLDER_NAMES: [&str; 3] = ["blockstates", "models", "textures"];
 
 #[derive(Debug, Clone, Copy)]
 pub enum ResourceType {
@@ -27,8 +28,7 @@ pub enum ResourceType {
 impl ResourceType {
     pub fn to_extension(&self) -> &'static str {
         match self {
-            ResourceType::BlockStates => "json",
-            ResourceType::Models => "json",
+            ResourceType::BlockStates | ResourceType::Models => "json",
             ResourceType::Textures => "png",
         }
     }
@@ -60,115 +60,159 @@ impl ResourceType {
     }
 }
 
-pub fn load_resource_folder(path: &Path) -> Result<LoadedResources, SpiderEyeError> {
-    let resource_folder = std::fs::read_dir(path)?;
+pub trait InternedResource {
+    type View<'a>: Resource<'a, Interned = Self>;
+}
 
-    let mut all_textures: HashMap<CompactString, Box<[u8]>> = Default::default();
+pub trait Resource<'a>: Send + Debug + Sized {
+    type Interned: InternedResource;
+    fn load(data: &'a mut [u8]) -> Option<Self>;
+    fn folder_name() -> &'static str;
+    fn extension() -> &'static str;
+    fn intern(self, interner: &mut Rodeo) -> Self::Interned;
+}
 
-    let mut all_models: HashMap<CompactString, IntermediateBlockModel> = Default::default();
-
-    let mut all_blockstates: HashMap<CompactString, ModelVariants> = Default::default();
-
-    for folder in resource_folder.flatten() {
-        let namespace_path = folder.path();
-
-        if let Some(textures) =
-            LoadedResources::traverse_folder::<Box<[u8]>>(&namespace_path, &ResourceType::Textures)
-        {
-            all_textures.extend(textures);
-        }
-
-        if let Some(models) = LoadedResources::traverse_folder::<IntermediateBlockModel>(
-            &namespace_path,
-            &ResourceType::Models,
-        ) {
-            all_models.extend(models);
-        }
-
-        if let Some(block_states) = LoadedResources::traverse_folder::<ModelVariants>(
-            &namespace_path,
-            &ResourceType::BlockStates,
-        ) {
-            all_blockstates.extend(block_states);
-        }
+impl Resource<'_> for Box<[u8]> {
+    type Interned = Box<[u8]>;
+    fn load(data: &mut [u8]) -> Option<Self> {
+        Some(data.to_vec().into_boxed_slice())
     }
 
-    dbg!(&all_textures.len());
+    fn folder_name() -> &'static str {
+        "textures"
+    }
 
-    dbg!(&all_models.len());
-    dbg!(&all_blockstates.len());
+    fn extension() -> &'static str {
+        "png"
+    }
 
-    Ok(LoadedResources {
-        textures: all_textures,
-        models: all_models,
-        variants: all_blockstates,
-    })
-}
-
-pub struct Namespace {
-    path: PathBuf,
-}
-
-impl Namespace {
-    fn from_arr(path: PathBuf, mut folders: [Option<ResourceType>; 3]) -> Option<Self> {
-        if folders.iter().any(|f| f.is_none()) {
-            return None;
-        }
-
-        Some(Self { path })
+    fn intern(self, _interner: &mut Rodeo) -> Self::Interned {
+        self
     }
 }
 
-pub trait Resource {
-    type Output: Debug;
+impl<'a> Resource<'a> for BlockStateType<'a> {
+    type Interned = InternedBlockState;
+    fn load(data: &'a mut [u8]) -> Option<BlockStateType<'a>> {
+        simd_json::serde::from_slice(data).ok()?
+    }
 
-    fn load(path: &Path) -> Option<Self::Output>;
-}
+    fn folder_name() -> &'static str {
+        "blockstates"
+    }
 
-impl Resource for Box<[u8]> {
-    type Output = Box<[u8]>;
-    fn load(path: &Path) -> Option<Self::Output> {
-        Some(std::fs::read(path).ok()?.into_boxed_slice())
+    fn extension() -> &'static str {
+        "json"
+    }
+
+    fn intern(self, interner: &mut Rodeo) -> Self::Interned {
+        InternedBlockState::intern_blockstate(self, interner)
     }
 }
 
-impl Resource for ModelVariants {
-    type Output = ModelVariants;
+impl<'a> Resource<'a> for RawBlockModel<'a> {
+    type Interned = BlockModel;
+    fn load(data: &'a mut [u8]) -> Option<RawBlockModel<'a>> {
+        simd_json::serde::from_slice(data).ok()?
+    }
 
-    fn load(path: &Path) -> Option<Self::Output> {
-        ModelVariants::load_from_json(path).ok()
+    fn folder_name() -> &'static str {
+        "models"
+    }
+
+    fn extension() -> &'static str {
+        "json"
+    }
+
+    fn intern(self, interner: &mut Rodeo) -> Self::Interned {
+        BlockModel::intern_block_model(self, interner)
     }
 }
 
-impl Resource for IntermediateBlockModel {
-    type Output = IntermediateBlockModel;
-    fn load(path: &Path) -> Option<Self::Output> {
-        IntermediateBlockModel::from_json(path).ok()
-    }
+impl InternedResource for Box<[u8]> {
+    type View<'a> = Box<[u8]>;
+}
+
+impl InternedResource for BlockModel {
+    type View<'a> = RawBlockModel<'a>;
+}
+
+impl InternedResource for InternedBlockState {
+    type View<'a> = BlockStateType<'a>;
 }
 
 pub struct LoadedResources {
-    textures: HashMap<CompactString, Box<[u8]>>,
-    models: HashMap<CompactString, IntermediateBlockModel>,
-    variants: HashMap<CompactString, ModelVariants>,
+    pub interner: Rodeo,
+    pub textures: HashMap<CompactString, Box<[u8]>>,
+    pub models: HashMap<CompactString, BlockModel>,
+    pub variants: HashMap<CompactString, InternedBlockState>,
 }
 
 impl LoadedResources {
-    pub fn traverse_folder<T: Resource>(
-        folder: &Path,
-        resource_type: &ResourceType,
-    ) -> Option<HashMap<CompactString, T::Output>> {
-        let namespace = folder.file_name()?;
+    pub fn load_resource_folder(path: &Path) -> Result<LoadedResources, SpiderEyeError> {
+        let resource_folder = std::fs::read_dir(path)?;
+        let mut texture_files: HashMap<CompactString, Box<[u8]>> = Default::default();
 
+        let mut model_files: HashMap<CompactString, Box<[u8]>> = Default::default();
+
+        let mut blockstate_files: HashMap<CompactString, Box<[u8]>> = Default::default();
+
+        resource_folder.flatten().for_each(|dir_entry| {
+            let namespace_path = dir_entry.path();
+
+            println!("{namespace_path:?}");
+
+            println!("textures");
+            if let Some(textures) = LoadedResources::traverse_and_load::<Box<[u8]>>(&namespace_path)
+            {
+                texture_files.extend(textures);
+            }
+
+            println!("models");
+            if let Some(models) =
+                LoadedResources::traverse_and_load::<RawBlockModel<'static>>(&namespace_path)
+            {
+                model_files.extend(models);
+            }
+
+            println!("blockstates");
+            if let Some(block_states) =
+                LoadedResources::traverse_and_load::<BlockStateType<'static>>(&namespace_path)
+            {
+                blockstate_files.extend(block_states);
+            }
+        });
+
+        let mut interner = Rodeo::new();
+
+        let models = LoadedResources::parse_and_intern(&mut interner, model_files);
+
+        let textures = texture_files;
+        let variants = LoadedResources::parse_and_intern(&mut interner, blockstate_files);
+
+        Ok(Self {
+            interner,
+            textures,
+            models,
+            variants,
+        })
+    }
+
+    fn traverse_and_load<'a, 'folder_path, T: Resource<'a>>(
+        folder: &'folder_path Path,
+    ) -> Option<HashMap<CompactString, Box<[u8]>>> {
+        let namespace = folder.file_name().unwrap();
         let mut resource_type_path = folder.to_path_buf();
 
-        resource_type_path.push(resource_type.to_asset_type());
-
-        println!("collecting all {type:?} for {namespace}",type =resource_type, namespace = namespace.display());
-
-        let mut result = HashMap::new();
+        resource_type_path.push(T::folder_name());
 
         let mut folder_traversal_queue = VecDeque::new();
+
+        let mut file_queue = Vec::new();
+
+        println!("traversing folders");
+
+        let start = Instant::now();
 
         if let Ok(entries) = fs::read_dir(folder) {
             folder_traversal_queue.extend(
@@ -179,39 +223,82 @@ impl LoadedResources {
             );
         }
 
-        while !folder_traversal_queue.is_empty() {
-            let current_folder = folder_traversal_queue
-                .pop_front()
-                .expect("Queue should not be empty");
-
+        while let Some(current_folder) = folder_traversal_queue.pop_front() {
             if let Ok(dir_entries) = std::fs::read_dir(current_folder) {
                 for entry in dir_entries.flatten() {
-                    let path = entry.path();
-
-                    if path.is_dir() {
-                        folder_traversal_queue.push_back(path);
-                    } else if path.is_file() {
-                        if let Some(extension) = path.extension() {
-                            if extension != resource_type.to_extension() {
-                                continue;
-                            }
-                        }
-                        let mut resource_path = CompactString::new(namespace.to_str()?);
-                        resource_path.push(':');
-
-                        resource_path.push('/');
-                        if let Ok(remainder) = path.strip_prefix(folder) {
-                            if let Some(path_str) = remainder.to_str() {
-                                resource_path.push_str(path_str);
-                                if let Some(resource) = T::load(&path) {
-                                    result.insert(resource_path, resource);
+                    if let Ok(file_type) = entry.file_type() {
+                        if file_type.is_dir() {
+                            let dir_path = entry.path();
+                            folder_traversal_queue.push_back(dir_path);
+                        } else if file_type.is_file() {
+                            let file_path = entry.path();
+                            if let Some(extension) = file_path.extension() {
+                                if extension != T::extension() {
+                                    continue;
                                 }
                             }
+                            file_queue.push(file_path);
                         }
                     }
                 }
             }
         }
+
+        let end = Instant::now();
+
+        println!("time to traverse folders: {:?}", end.duration_since(start));
+
+        println!("Loading start");
+
+        let start = Instant::now();
+
+        let result = file_queue
+            .into_iter()
+            .filter_map(|path| {
+                let name = path.file_stem()?.to_str()?;
+                let mut resource_path = CompactString::new(namespace.to_str()?);
+                resource_path.push(':');
+
+                let remainder = path
+                    .strip_prefix(resource_type_path.as_path())
+                    .ok()?
+                    .parent()?;
+                let path_str = remainder.to_str()?;
+                resource_path.push_str(path_str);
+                if !path_str.is_empty() {
+                    resource_path.push('/');
+                }
+                resource_path.push_str(name);
+
+                let data = fs::read(&path).ok()?;
+
+                Some((resource_path, data.into_boxed_slice()))
+            })
+            .collect::<HashMap<_, _>>();
+
+        let end = Instant::now();
+
+        println!("time spent loading: {:?}", end.duration_since(start));
+
         Some(result)
+    }
+
+    fn parse_and_intern<T>(
+        interner: &mut Rodeo,
+        files: HashMap<CompactString, Box<[u8]>>,
+    ) -> HashMap<CompactString, T>
+    where
+        T: InternedResource,
+    {
+        let resources: HashMap<CompactString, T> = files
+            .into_iter()
+            .filter_map(|(resource_path, mut data)| {
+                let resource = T::View::load(data.as_mut())?;
+                let interned = T::View::intern(resource, interner);
+
+                Some((resource_path, interned))
+            })
+            .collect();
+        resources
     }
 }
