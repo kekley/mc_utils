@@ -1,5 +1,7 @@
 use byteorder::{NativeEndian, ReadBytesExt};
 
+use crate::borrow::nbt_string::NBTStr;
+
 use super::BlockStateTrait;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -9,15 +11,16 @@ pub struct BlockState {
 
 impl BlockState {
     ///Fails if `block_name.len()` does not fit in a u16
-    pub fn new(block_name: &str) -> Self {
-        let mut data: Vec<u8> = Vec::with_capacity(block_name.len() + size_of::<u16>());
+    pub fn new(block_name: &NBTStr) -> Self {
+        let mut data: Vec<u8> = Vec::with_capacity(block_name.as_bytes().len() + size_of::<u16>());
 
         Self::append_str_to_vec(&mut data, block_name);
         Self { data }
     }
 
-    fn append_str_to_vec(vec: &mut Vec<u8>, string: &str) {
+    fn append_str_to_vec(vec: &mut Vec<u8>, string: &NBTStr) {
         let string_length: u16 = string
+            .as_bytes()
             .len()
             .try_into()
             .expect("Blockstate strings should be less than 65535 bytes");
@@ -29,18 +32,44 @@ impl BlockState {
         vec.extend(string.as_bytes());
     }
 
-    pub fn add_property(&mut self, property_name: &str, property_value: &str) {
+    pub fn add_property(&mut self, property_name: &NBTStr, property_value: &NBTStr) {
         Self::append_str_to_vec(&mut self.data, property_name);
 
         Self::append_str_to_vec(&mut self.data, property_value);
     }
 
-    pub fn get_block_name(&self) -> &str {
-        todo!()
+    pub fn get_block_name(&self) -> &NBTStr {
+        let length: [u8; 2] = self
+            .data
+            .get(0..size_of::<u16>())
+            .expect("Blockstate data should not be empty")
+            .try_into()
+            .unwrap();
+        let length = u16::from_ne_bytes(length) as usize;
+        let name_slice: &[u8] = self
+            .data
+            .get(2..2 + length)
+            .expect("Length should be the valid length of the string");
+
+        //SAFETY: only valid utf8 bytes were appended to this buffer
+        NBTStr::from_slice(name_slice)
     }
 
-    pub fn iter_properties(&self) -> PropertiesIterator<'_> {
-        todo!();
+    pub fn properties_iter(&self) -> PropertiesIterator<'_> {
+        let length: [u8; 2] = self
+            .data
+            .get(0..size_of::<u16>())
+            .expect("Blockstate data should not be empty")
+            .try_into()
+            .unwrap();
+        let name_length = u16::from_ne_bytes(length) as usize;
+
+        let offset = size_of::<u16>() + name_length;
+
+        PropertiesIterator {
+            data: &self.data[offset..],
+            offset: 0,
+        }
     }
 }
 
@@ -50,7 +79,7 @@ pub struct PropertiesIterator<'a> {
 }
 
 impl<'a> Iterator for PropertiesIterator<'a> {
-    type Item = (&'a str, &'a str);
+    type Item = (&'a NBTStr, &'a NBTStr);
 
     fn next(&mut self) -> Option<Self::Item> {
         let size_of_short = size_of::<u16>();
@@ -66,7 +95,7 @@ impl<'a> Iterator for PropertiesIterator<'a> {
         let end = self.offset + str_len as usize;
 
         if let Some(str_slice) = self.data.get(start..end) {
-            let property_name = str::from_utf8(str_slice).ok()?;
+            let property_name = NBTStr::from_slice(str_slice);
 
             self.offset += str_len as usize;
 
@@ -80,7 +109,7 @@ impl<'a> Iterator for PropertiesIterator<'a> {
             if let Some(str_slice) = self.data.get(start..end) {
                 self.offset += str_len as usize;
 
-                let property_value = str::from_utf8(str_slice).ok()?;
+                let property_value = NBTStr::from_slice(str_slice);
 
                 Some((property_name, property_value))
             } else {
@@ -92,14 +121,13 @@ impl<'a> Iterator for PropertiesIterator<'a> {
     }
 }
 
-impl<'a> BlockStateTrait<'a> for &'a BlockState {
-    type StringType = &'a str;
-
-    fn name(&self) -> Self::StringType {
-        todo!()
+impl BlockStateTrait for BlockState {
+    fn name(&self) -> &NBTStr {
+        self.get_block_name()
     }
 
-    fn iter_properties(&self) -> PropertiesIterator<'a> {
-        todo!()
+    #[allow(refining_impl_trait)]
+    fn iter_properties(&self) -> PropertiesIterator<'_> {
+        self.properties_iter()
     }
 }

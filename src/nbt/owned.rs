@@ -4,6 +4,7 @@ pub mod nbt_string {
     use crate::borrow::nbt_string::NBTStr;
 
     #[derive(Debug, Clone, Hash, PartialEq, Eq)]
+    //Data is validated when converting to/from str/String
     pub struct NBTString {
         pub data: Vec<u8>,
     }
@@ -12,10 +13,15 @@ pub mod nbt_string {
         pub fn new_from_vec(bytes: Vec<u8>) -> Self {
             Self { data: bytes }
         }
+        pub fn extend(&mut self, bytes: &[u8]) {
+            self.data.extend(bytes);
+        }
         pub fn new_from_str(str: &str) -> Self {
-            let string = str.to_string();
-            NBTString {
-                data: string.into_bytes(),
+            match simd_cesu8::encode(str) {
+                std::borrow::Cow::Borrowed(slice) => NBTString {
+                    data: slice.to_owned(),
+                },
+                std::borrow::Cow::Owned(vec) => NBTString { data: vec },
             }
         }
 

@@ -192,7 +192,7 @@ mod tests {
                 let b = a.map_err(|err| eprintln!("{err:?}")).unwrap();
                 let mut interner = Rodeo::new();
 
-                let c = InternedBlockState::intern_blockstate(&b, &mut interner);
+                let c = InternedBlockState::intern_blockstate(b, &mut interner);
             }
         }
     }

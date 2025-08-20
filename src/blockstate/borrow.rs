@@ -1,8 +1,13 @@
 use std::fmt::{Debug, Display};
 
-use crate::borrow::{
-    nbt_compound::{NBTCompound, NBTCompoundIter},
-    nbt_string::NBTStr,
+use cesu8_str::java::JavaStr;
+
+use crate::{
+    borrow::{
+        nbt_compound::{NBTCompound, NBTCompoundIter},
+        nbt_string::NBTStr,
+    },
+    owned::nbt_string::NBTString,
 };
 
 use super::BlockStateTrait;
@@ -13,34 +18,67 @@ pub struct BlockState<'data, 'root_nbt> {
     properties: Option<NBTCompound<'data, 'root_nbt>>,
 }
 
-#[expect(unsafe_code)]
-const AIR_NAME: &NBTStr = const {
-    //SAFETY: "minecraft:air" is valid mutf8
-    unsafe { NBTStr::from_str_unchecked("minecraft:air") }
-};
+const AIR_NAME: &NBTStr = const { NBTStr::from_slice(b"minecraft:air") };
+const WATERLOGGED: &NBTStr = const { NBTStr::from_slice(b"waterlogged") };
 
 impl<'data, 'root_nbt> BlockState<'data, 'root_nbt> {
-    const AIR: BlockState<'static, 'static> = BlockState {
-        name: AIR_NAME,
-        properties: None,
-    };
-
-    pub fn get_name(&self) -> &'data NBTStr {
+    pub fn get_name(&self) -> &NBTStr {
         self.name
     }
-    pub fn iter_properties(&self) -> PropertiesIter<'data, 'root_nbt> {
-        let iter = self.properties.as_ref().map(|compound| compound.iter());
-        PropertiesIter { iter }
+
+    pub fn to_mapped_state(&self) -> NBTString {
+        let mut vec: Vec<u8> = Vec::new();
+        self.write_mapped_state(&mut vec);
+        NBTString::new_from_vec(vec)
+    }
+
+    pub fn write_mapped_state(&self, mut out: impl std::io::Write) {
+        let block_name = self.name;
+        let _ = out.write_all(block_name.as_bytes());
+        let _ = out.write_all(b"#");
+        let mut i = 0;
+        let mut to_sort: Vec<_> = self
+            .properties_iter()
+            .filter(|(name, _value)| *name != WATERLOGGED)
+            .collect();
+
+        to_sort.sort_by(|a, b| {
+            let a = unsafe { JavaStr::from_java_cesu8_unchecked(a.0.as_bytes()) };
+            let b = unsafe { JavaStr::from_java_cesu8_unchecked(b.0.as_bytes()) };
+
+            a.cmp(b)
+        });
+
+        for (name, value) in to_sort {
+            println!("name: {name}, value:{value}");
+            if i > 0 {
+                let _ = out.write_all(b",");
+            }
+
+            name.write_lowercase(&mut out);
+
+            let _ = out.write_all(b"=");
+
+            value.write_lowercase(&mut out);
+            i += 1;
+        }
+        if i == 0 {
+            let _ = out.write_all(b"normal");
+        }
+    }
+
+    pub fn properties_iter(&self) -> PropertiesIter<'_, '_> {
+        PropertiesIter {
+            compound_iter: self.properties.as_ref().map(|compound| compound.iter()),
+        }
     }
     pub fn from_compound(compound: NBTCompound<'data, 'root_nbt>) -> Option<Self> {
-        let name = compound.get_tag("Name")?;
-        let name = name.get_string()?;
+        let name_tag = compound.get_tag("Name")?;
+        let name = name_tag.get_string()?;
 
-        let properties = if let Some(properties) = compound.get_tag("Properties") {
-            properties.get_compound()
-        } else {
-            None
-        };
+        let properties = compound
+            .get_tag("Properties")
+            .and_then(|tag| tag.get_compound());
 
         Some(Self { name, properties })
     }
@@ -54,48 +92,36 @@ impl Debug for BlockState<'_, '_> {
 
 impl Display for BlockState<'_, '_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Block name: ")?;
-        f.write_str(&self.get_name().to_str())?;
-        f.write_str("\n")?;
-
-        f.write_str("Properties:\n")?;
-
-        for (name, val) in self.iter_properties() {
-            f.write_str(&name.to_str())?;
-            f.write_str(": ")?;
-            f.write_str(&val.to_str())?;
-        }
-
-        Ok(())
+        f.write_str(&self.to_mapped_state().as_str().to_str())
     }
 }
 
 pub struct PropertiesIter<'data, 'root_nbt> {
-    iter: Option<NBTCompoundIter<'data, 'root_nbt>>,
+    compound_iter: Option<NBTCompoundIter<'data, 'root_nbt>>,
 }
 
-impl<'a, 'root_nbt> Iterator for PropertiesIter<'a, 'root_nbt> {
-    type Item = (&'a NBTStr, &'a NBTStr);
+impl<'data> Iterator for PropertiesIter<'data, '_> {
+    type Item = (&'data NBTStr, &'data NBTStr);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let tmp = self.iter.as_mut()?;
-        for (name, tag) in tmp.by_ref() {
-            if let Some(value) = tag.get_string() {
-                return Some((name, value));
+        if let Some(iter) = &mut self.compound_iter {
+            while let Some((name, tag)) = iter.next() {
+                if let Some(value) = tag.get_string() {
+                    return Some((name, value));
+                }
             }
         }
         None
     }
 }
 
-impl<'a, 'root_nbt> BlockStateTrait<'a> for BlockState<'a, 'root_nbt> {
-    type StringType = &'a NBTStr;
-
-    fn name(&self) -> Self::StringType {
+impl<'data, 'root_nbt> BlockStateTrait for BlockState<'data, 'root_nbt> {
+    fn name(&self) -> &'data NBTStr {
         self.name
     }
 
-    fn iter_properties(&self) -> PropertiesIter<'a, 'root_nbt> {
-        todo!();
+    #[allow(refining_impl_trait)]
+    fn iter_properties(&self) -> impl Iterator<Item = (&NBTStr, &NBTStr)> {
+        self.properties_iter()
     }
 }

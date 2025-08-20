@@ -1,6 +1,7 @@
 use crate::blockstate::borrow::BlockState;
 use crate::borrow::nbt_compound::unaligned_types::BigEndianLong;
 use crate::borrow::nbt_compound::NBTCompound;
+use crate::borrow::nbt_compound::NBTCompoundIter;
 use crate::borrow::nbt_list::CompoundList;
 use crate::borrow::nbt_list::CompoundListIter;
 use crate::borrow::nbt_list::ListType;
@@ -11,9 +12,9 @@ pub struct SectionTower<'a, 'root_nbt> {
     packing_type: PackingType,
 }
 
-impl<'a, 'root_nbt> SectionTower<'a, 'root_nbt> {
+impl<'data, 'root_nbt> SectionTower<'data, 'root_nbt> {
     pub fn from_compound_list(
-        section_list: CompoundList<'a, 'root_nbt>,
+        section_list: CompoundList<'data, 'root_nbt>,
         packing_type: PackingType,
     ) -> Self {
         Self {
@@ -32,7 +33,7 @@ impl<'a, 'root_nbt> SectionTower<'a, 'root_nbt> {
                 -1
             }
     }
-    pub fn get_section_for_y(&self, y: isize) -> Option<Section<'a, 'root_nbt>> {
+    pub fn get_section_for_y(&self, y: isize) -> Option<Section<'data, 'root_nbt>> {
         let y = Self::y_to_section_index(y);
 
         let compound = self.sections.iter().find(|section_compound| {
@@ -56,7 +57,7 @@ impl<'a, 'root_nbt> SectionTower<'a, 'root_nbt> {
         }
     }
 
-    pub fn iter_sections(&self) -> SectionTowerIter<'a, 'root_nbt> {
+    pub fn iter_sections(&self) -> SectionTowerIter<'data, 'root_nbt> {
         SectionTowerIter {
             iter: self.sections.iter().clone(),
             packing_type: self.packing_type,
@@ -69,8 +70,8 @@ pub struct SectionTowerIter<'a, 'root_nbt> {
     packing_type: PackingType,
 }
 
-impl<'a, 'root_nbt> Iterator for SectionTowerIter<'a, 'root_nbt> {
-    type Item = Section<'a, 'root_nbt>;
+impl<'data, 'root_nbt> Iterator for SectionTowerIter<'data, 'root_nbt> {
+    type Item = Section<'data, 'root_nbt>;
 
     fn next(&mut self) -> Option<Self::Item> {
         for compound in &mut self.iter {
@@ -107,12 +108,12 @@ impl<'a> Iterator for SectionIndexIter<'a> {
         let index = if let Some(data) = self.data {
             match self.packing_type {
                 PackingType::Pre1_16 => {
-                    read_packed_index_pre116(data, self.index, self.bits_per_index)
+                    read_packed_index_pre116(data, self.index, self.bits_per_index)?
                 }
                 PackingType::Post1_16 => {
-                    read_packed_index_post116(data, self.index, self.bits_per_index)
+                    read_packed_index_post116(data, self.index, self.bits_per_index)?
                 }
-            }?
+            }
         } else {
             0
         };
@@ -121,9 +122,9 @@ impl<'a> Iterator for SectionIndexIter<'a> {
     }
 }
 
-impl<'a, 'root_nbt> Section<'a, 'root_nbt> {
+impl<'data, 'root_nbt> Section<'data, 'root_nbt> {
     pub fn from_compound(
-        compound: NBTCompound<'a, 'root_nbt>,
+        compound: NBTCompound<'data, 'root_nbt>,
         packing_type: PackingType,
     ) -> Option<Self> {
         let block_states_tag = compound.get_tag("block_states")?;
@@ -136,8 +137,8 @@ impl<'a, 'root_nbt> Section<'a, 'root_nbt> {
         } else {
             return None;
         };
-        let palette = Palette::from_compound_list(palette_compound_list)?;
-        let palette_length = palette.length();
+        let palette = Palette::from_compound_list(palette_compound_list);
+        let palette_length = palette.iter().count();
         let bits_per_index = (palette_length as f32).log2().ceil() as u32;
 
         let data = if let Some(tag) = compound.get_tag("data") {
@@ -165,11 +166,11 @@ impl<'a, 'root_nbt> Section<'a, 'root_nbt> {
         })
     }
 
-    pub fn get_palette(&self) -> Palette<'a, 'root_nbt> {
+    pub fn get_palette(&self) -> Palette<'data, 'root_nbt> {
         self.palette.clone()
     }
 
-    pub fn iter_block_indices(&self) -> SectionIndexIter<'a> {
+    pub fn iter_block_indices(&self) -> SectionIndexIter<'data> {
         let Self {
             palette: _,
             y_index: _,
@@ -214,31 +215,41 @@ pub enum PackingType {
     Post1_16,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Palette<'a, 'root_nbt> {
-    entries: Vec<BlockState<'a, 'root_nbt>>,
+    entries: CompoundListIter<'a, 'root_nbt>,
 }
 
 impl<'a, 'root_nbt> Palette<'a, 'root_nbt> {
-    pub fn from_compound_list(palette_compound_list: CompoundList<'a, 'root_nbt>) -> Option<Self> {
-        let entries: Vec<_> = palette_compound_list
-            .iter()
-            .filter_map(BlockState::from_compound)
-            .collect();
-        Some(Self { entries })
+    pub fn from_compound_list(palette_compound_list: CompoundList<'a, 'root_nbt>) -> Self {
+        Self {
+            entries: palette_compound_list.iter(),
+        }
     }
-    pub fn get(&self, index: u16) -> Option<BlockState<'a, 'root_nbt>> {
-        self.entries.get(index as usize).cloned()
-    }
-
-    pub fn as_slice(&self) -> &[BlockState<'a, 'root_nbt>] {
-        &self.entries
-    }
-
-    fn length(&self) -> usize {
-        self.entries.len()
+    pub fn iter(&self) -> PaletteIter {
+        PaletteIter {
+            iter: self.entries.clone(),
+        }
     }
 }
+
+pub struct PaletteIter<'a, 'root_nbt> {
+    iter: CompoundListIter<'a, 'root_nbt>,
+}
+
+impl<'data, 'root_nbt> Iterator for PaletteIter<'data, 'root_nbt> {
+    type Item = BlockState<'data, 'root_nbt>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(compound) = self.iter.next() {
+            if let Some(blockstate) = BlockState::from_compound(compound) {
+                return Some(blockstate);
+            }
+        }
+        None
+    }
+}
+
 #[inline]
 fn read_packed_index_pre116(
     data: &[BigEndianLong],

@@ -1596,13 +1596,52 @@ pub mod nbt_string {
     use std::{
         borrow::Cow,
         fmt::{Debug, Display},
+        io::Write,
     };
 
+    const MAX_ONE_B: u32 = 0x80;
+    const MAX_TWO_B: u32 = 0x800;
+    const MAX_THREE_B: u32 = 0x10000;
+    const TAG_TWO_B: u8 = 0b1100_0000;
+    const TAG_THREE_B: u8 = 0b1110_0000;
+    const TAG_FOUR_B: u8 = 0b1111_0000;
+    const TAG_CONT: u8 = 0b1000_0000;
+
+    #[inline]
+    pub fn encode_utf8_raw(char: char, mut out: impl std::io::Write) {
+        let code = char as u32;
+        // Marked #[inline] to allow llvm optimizing it away
+        if code < MAX_ONE_B {
+            let _ = out.write_all(std::slice::from_ref(&(code as u8)));
+        } else if code < MAX_TWO_B {
+            let _ = out.write_all(std::slice::from_ref(
+                &((code >> 6 & 0x1F) as u8 | TAG_TWO_B),
+            ));
+            let _ = out.write_all(std::slice::from_ref(&((code & 0x3F) as u8 | TAG_CONT)));
+        } else if code < MAX_THREE_B {
+            let _ = out.write_all(std::slice::from_ref(
+                &((code >> 12 & 0x0F) as u8 | TAG_THREE_B),
+            ));
+            let _ = out.write_all(std::slice::from_ref(&((code >> 6 & 0x3F) as u8 | TAG_CONT)));
+            let _ = out.write_all(std::slice::from_ref(&((code & 0x3F) as u8 | TAG_CONT)));
+        } else {
+            let _ = out.write_all(std::slice::from_ref(
+                &((code >> 18 & 0x07) as u8 | TAG_FOUR_B),
+            ));
+            let _ = out.write_all(std::slice::from_ref(
+                &((code >> 12 & 0x3F) as u8 | TAG_CONT),
+            ));
+            let _ = out.write_all(std::slice::from_ref(&((code >> 6 & 0x3F) as u8 | TAG_CONT)));
+            let _ = out.write_all(std::slice::from_ref(&((code & 0x3F) as u8 | TAG_CONT)));
+        }
+    }
+
+    use cesu8_str::java::JavaStr;
     use tracing::error;
 
     use crate::owned::nbt_string::NBTString;
 
-    #[derive(PartialEq, Eq)]
+    #[derive(PartialEq, Eq, Hash)]
     pub struct NBTStr {
         data: [u8],
     }
@@ -1621,30 +1660,20 @@ pub mod nbt_string {
 
     impl NBTStr {
         #[expect(clippy::should_implement_trait)]
-        #[expect(unsafe_code)]
         pub fn from_str(str: &str) -> Cow<'_, NBTStr> {
-            match simd_cesu8::encode(str) {
-                Cow::Borrowed(slice) => {
-                    //SAFETY simd_cesu8::encode has checked the validity of our str
-                    let nbt_str = unsafe { NBTStr::from_slice(slice) };
-                    Cow::Borrowed(nbt_str)
-                }
+            match simd_cesu8::mutf8::encode(str) {
+                Cow::Borrowed(slice) => Cow::Borrowed(NBTStr::from_slice(slice)),
                 Cow::Owned(vec) => Cow::Owned(NBTString::new_from_vec(vec)),
             }
         }
 
         #[expect(unsafe_code)]
-        pub const unsafe fn from_str_unchecked(str: &str) -> &NBTStr {
-            NBTStr::from_slice(str.as_bytes())
-        }
-
-        #[expect(unsafe_code)]
-        pub(crate) const unsafe fn from_slice(as_slice: &[u8]) -> &Self {
+        pub const fn from_slice(as_slice: &[u8]) -> &Self {
             //SAFETY: same layout as a u8 slice
             unsafe { std::mem::transmute(as_slice) }
         }
         pub fn to_str(&self) -> Cow<'_, str> {
-            match simd_cesu8::decode(&self.data) {
+            match simd_cesu8::mutf8::decode(&self.data) {
                 Ok(str) => str,
                 Err(err) => {
                     error!("{err}");
@@ -1652,11 +1681,26 @@ pub mod nbt_string {
                 }
             }
         }
-        pub fn to_str_lossy(&self) -> Cow<'_, str> {
-            simd_cesu8::decode_lossy(&self.data)
-        }
         pub fn as_bytes(&self) -> &[u8] {
             &self.data
+        }
+        #[inline]
+        pub fn write_lowercase(&self, mut out: impl Write) {
+            match simd_cesu8::mutf8::decode_strict(&self.data) {
+                Ok(_) => {
+                    unsafe { JavaStr::from_java_cesu8_unchecked(&self.data) }
+                        .chars()
+                        .for_each(|char| {
+                            for char in char.to_lowercase() {
+                                encode_utf8_raw(char, &mut out);
+                            }
+                        });
+                }
+                Err(err) => {
+                    println!("error!");
+                    println!("mutf8 decode error,{err}");
+                }
+            }
         }
     }
 

@@ -1,10 +1,11 @@
+use crate::borrow::nbt_string::NBTStr;
+
 pub mod borrow;
 pub mod owned;
 
-pub trait BlockStateTrait<'a> {
-    type StringType: 'a;
+#[allow(refining_impl_trait)]
+pub trait BlockStateTrait {
+    fn name(&self) -> &NBTStr;
 
-    fn name(&self) -> Self::StringType;
-
-    fn iter_properties(&self) -> impl Iterator<Item = (Self::StringType, Self::StringType)>;
+    fn iter_properties(&self) -> impl Iterator<Item = (&NBTStr, &NBTStr)>;
 }

@@ -117,7 +117,7 @@ mod tests {
 
                 println!("{b:?}");
 
-                let c = BlockModel::intern_block_model(&b, &mut interner);
+                let c = BlockModel::intern_block_model(b, &mut interner);
                 black_box(&c);
             }
         }
