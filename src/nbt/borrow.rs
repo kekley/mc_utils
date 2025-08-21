@@ -408,6 +408,7 @@ pub mod nbt_compound {
                 data: bytes,
             })
         }
+        #[inline]
         pub fn get_tag<'root>(&'root self, name: &str) -> Option<NBTTag<'a, 'root>> {
             let name = NBTStr::from_str(name);
             let name = name.as_ref();

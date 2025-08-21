@@ -185,6 +185,7 @@ impl<'data, 'root_nbt> Section<'data, 'root_nbt> {
             index: 0,
         }
     }
+    /// Gets the lowest Y block in the section
     pub fn get_lowest_y(&self) -> isize {
         self.y_index as isize * 16
     }

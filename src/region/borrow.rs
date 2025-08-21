@@ -1,5 +1,7 @@
 use std::error::Error;
 
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
+
 use crate::compression::decompress_chunk;
 
 type RegionResult = Result<Region, Box<dyn Error>>;
@@ -44,5 +46,17 @@ impl Region {
         let decompressed_bytes = decompress_chunk(chunk_data_slice).ok()?;
 
         Some(decompressed_bytes)
+    }
+    pub fn load_all_chunk_data(&self) -> [Option<Vec<u8>>; 1024] {
+        let a = (0..32)
+            .into_par_iter()
+            .flat_map(move |z| {
+                (0..32)
+                    .into_par_iter()
+                    .map(move |x| self.load_chunk_data(x as u8, z as u8))
+            })
+            .collect::<Vec<_>>();
+
+        a.try_into().unwrap()
     }
 }

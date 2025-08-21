@@ -9,6 +9,7 @@ use std::{
 use compact_str::CompactString;
 use hashbrown::HashMap;
 use lasso::Rodeo;
+use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
     error::spider_eye_error::SpiderEyeError,
@@ -185,10 +186,20 @@ impl LoadedResources {
 
         let mut interner = Rodeo::new();
 
+        let start = Instant::now();
         let models = LoadedResources::parse_and_intern(&mut interner, model_files);
+        let end = Instant::now();
+        println!("interned models: {:?}", end.duration_since(start));
 
+        let start = Instant::now();
         let textures = texture_files;
+        let end = Instant::now();
+        println!("interned textures {:?}", end.duration_since(start));
+
+        let start = Instant::now();
         let variants = LoadedResources::parse_and_intern(&mut interner, blockstate_files);
+        let end = Instant::now();
+        println!("interned variants {:?}", end.duration_since(start));
 
         Ok(Self {
             interner,
@@ -248,12 +259,10 @@ impl LoadedResources {
 
         println!("time to traverse folders: {:?}", end.duration_since(start));
 
-        println!("Loading start");
-
         let start = Instant::now();
 
         let result = file_queue
-            .into_iter()
+            .par_iter()
             .filter_map(|path| {
                 let name = path.file_stem()?.to_str()?;
                 let mut resource_path = CompactString::new(namespace.to_str()?);

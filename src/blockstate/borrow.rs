@@ -50,7 +50,6 @@ impl<'data, 'root_nbt> BlockState<'data, 'root_nbt> {
         });
 
         for (name, value) in to_sort {
-            println!("name: {name}, value:{value}");
             if i > 0 {
                 let _ = out.write_all(b",");
             }
