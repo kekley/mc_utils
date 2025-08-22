@@ -139,9 +139,9 @@ impl<'data, 'root_nbt> Section<'data, 'root_nbt> {
         };
         let palette = Palette::from_compound_list(palette_compound_list);
         let palette_length = palette.iter().count();
-        let bits_per_index = (palette_length as f32).log2().ceil() as u32;
+        let bits_per_index = ((palette_length as f32).log2().ceil() as u32).max(4);
 
-        let data = if let Some(tag) = compound.get_tag("data") {
+        let data = if let Some(tag) = block_states_compound.get_tag("data") {
             tag.get_long_array()
         } else {
             None
@@ -257,6 +257,7 @@ fn read_packed_index_pre116(
     index: usize,
     bits_per_index: u8,
 ) -> Option<u16> {
+    println!("pre");
     let bits_per_index = bits_per_index as usize;
     let bit_mask: u64 = u64::MAX.unbounded_shr(u64::BITS - bits_per_index as u32);
 
