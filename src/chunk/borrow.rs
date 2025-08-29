@@ -3,6 +3,7 @@ use crate::{
     section::borrow::{PackingType, SectionTower},
 };
 
+#[derive(Debug)]
 pub struct Chunk<'a> {
     compound: RootNBTCompound<'a>,
     packing_type: PackingType,

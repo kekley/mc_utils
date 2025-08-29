@@ -290,6 +290,7 @@ pub mod nbt_compound {
         }
     }
 
+    #[derive(Debug)]
     pub struct RootNBTCompound<'a> {
         name: &'a NBTStr,
         elements: Vec<Element>,

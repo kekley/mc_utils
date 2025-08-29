@@ -210,7 +210,7 @@ impl<'data, 'root_nbt> Section<'data, 'root_nbt> {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum PackingType {
     Pre1_16,
     Post1_16,
