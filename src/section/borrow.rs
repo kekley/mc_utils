@@ -189,6 +189,9 @@ impl<'data, 'root_nbt> Section<'data, 'root_nbt> {
     pub fn get_lowest_y(&self) -> isize {
         self.y_index as isize * 16
     }
+    pub fn get_y_index(&self) -> i8 {
+        self.y_index
+    }
     #[inline]
     fn get_block_index(&self, x: u8, y: u8, z: u8) -> u16 {
         let x = x as usize;
