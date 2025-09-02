@@ -1,22 +1,47 @@
-use std::error::Error;
+use std::{error::Error, path::Path};
 
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
-use crate::compression::decompress_chunk;
+use crate::{compression::decompress_chunk, error::spider_eye_error::SpiderEyeError};
 
 type RegionResult = Result<Region, Box<dyn Error>>;
 
 const SECTOR_SIZE: usize = 4096;
 
 pub struct Region {
+    x: i32,
+    z: i32,
     data: Vec<u8>,
 }
 
 impl Region {
-    pub fn load_from_file(path: &str) -> RegionResult {
+    pub fn load_from_file(path: &Path) -> RegionResult {
+        //TODO proper errors
+        let file_name = path.file_name().ok_or(SpiderEyeError::DEFAULT)?;
+
+        let str = file_name.to_str().ok_or(SpiderEyeError::DEFAULT)?;
+
+        let mut split = str.split(".");
+
+        let _r = split.next();
+        let x: i32 = split.next().unwrap().parse().unwrap();
+        let z: i32 = split.next().unwrap().parse().unwrap();
+
         let file_data = std::fs::read(path)?;
 
-        Ok(Region { data: file_data })
+        Ok(Region {
+            data: file_data,
+            x,
+            z,
+        })
+    }
+
+    pub fn get_region_x(&self) -> i32 {
+        self.x
+    }
+
+    pub fn get_region_z(&self) -> i32 {
+        self.z
     }
 
     fn get_chunk_header_offset(x: u8, z: u8) -> usize {
