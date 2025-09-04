@@ -100,7 +100,7 @@ pub struct SectionIndexIter<'a> {
 
 impl<'a> Iterator for SectionIndexIter<'a> {
     type Item = u16;
-
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if self.index >= 4096 {
             return None;
@@ -170,6 +170,7 @@ impl<'data, 'root_nbt> Section<'data, 'root_nbt> {
         self.palette.clone()
     }
 
+    #[inline]
     pub fn iter_block_indices(&self) -> SectionIndexIter<'data> {
         let Self {
             palette: _,
@@ -243,7 +244,7 @@ pub struct PaletteIter<'a, 'root_nbt> {
 
 impl<'data, 'root_nbt> Iterator for PaletteIter<'data, 'root_nbt> {
     type Item = BlockState<'data, 'root_nbt>;
-
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(compound) = self.iter.next() {
             if let Some(blockstate) = BlockState::from_compound(compound) {
@@ -260,7 +261,6 @@ fn read_packed_index_pre116(
     index: usize,
     bits_per_index: u8,
 ) -> Option<u16> {
-    println!("pre");
     let bits_per_index = bits_per_index as usize;
     let bit_mask: u64 = u64::MAX.unbounded_shr(u64::BITS - bits_per_index as u32);
 
@@ -296,8 +296,8 @@ fn read_packed_index_post116(
 
     let long = data.get(long_index)?.to_aligned_ne();
 
-    let shifted = (long.cast_unsigned().unbounded_shl(shift_left_amount))
-        .unbounded_shr(shift_right_amount + shift_left_amount);
+    let shifted =
+        (long.cast_unsigned() << shift_left_amount) >> (shift_right_amount + shift_left_amount);
 
     Some(shifted as u16)
 }

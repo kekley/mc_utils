@@ -787,11 +787,13 @@ pub mod nbt_compound {
             type AlignedType = i64;
 
             ///Copies into an aligned, native endian type
+            #[inline]
             fn to_aligned_ne(self) -> Self::AlignedType {
                 let bytes = self.0.to_ne_bytes();
 
                 i64::from_be_bytes(bytes)
             }
+            #[inline]
             fn from_ne(from: Self::AlignedType) -> Self {
                 Self(from.to_be().cast_unsigned())
             }
@@ -803,7 +805,6 @@ pub mod nbt_compound {
 
         impl UnalignedType for BigEndianDouble {
             type AlignedType = f64;
-
             fn to_aligned_ne(self) -> Self::AlignedType {
                 let bytes = self.0.to_ne_bytes();
 
