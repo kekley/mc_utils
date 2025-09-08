@@ -31,7 +31,7 @@ impl<'data, 'root_nbt> BlockState<'data, 'root_nbt> {
         self.write_mapped_state(&mut vec);
         NBTString::new_from_vec(vec)
     }
-
+    #[expect(unsafe_code)]
     pub fn write_mapped_state(&self, mut out: impl std::io::Write) {
         let block_name = self.name;
         let _ = out.write_all(block_name.as_bytes());

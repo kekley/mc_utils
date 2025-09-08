@@ -208,8 +208,6 @@ mod tests {
             include_str!("../../../test_assets/assets/minecraft/models/block/bamboo4_age0.json");
         let a: Result<RawBlockModel<'static>, serde_json::Error> = serde_json::de::from_str(file);
         let b = a.map_err(|err| eprintln!("{err:?}")).unwrap();
-
-        println!("{b:?}");
     }
 
     #[test]
@@ -220,7 +218,6 @@ mod tests {
             let path = entry.path();
 
             if path.is_file() && path.extension().unwrap() == "json" {
-                println!("{path}", path = path.display());
                 let file = std::fs::read_to_string(path).unwrap();
 
                 let a: Result<RawBlockModel<'_>, serde_json::Error> =

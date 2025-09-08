@@ -3,7 +3,7 @@ use hashbrown::HashMap;
 use lasso::{Rodeo, Spur};
 
 #[derive(Debug)]
-pub struct BlockModel {
+pub struct InternedBlockModel {
     parent: Option<Spur>,
     ambient_occlusion: bool,
     display: HashMap<DisplayPosition, PositionData>,
@@ -11,7 +11,17 @@ pub struct BlockModel {
     elements: Vec<InternedElement>,
 }
 
-impl BlockModel {
+impl InternedBlockModel {
+    pub fn get_parent_location(&self) -> Option<Spur> {
+        self.parent
+    }
+    pub fn get_textures(&self) -> &HashMap<Spur, Spur> {
+        &self.textures
+    }
+    pub fn get_elements(&self) -> &[InternedElement] {
+        &self.elements
+    }
+
     pub fn intern_block_model(block_model: RawBlockModel<'_>, interner: &mut Rodeo) -> Self {
         let parent = block_model
             .get_parent()
@@ -19,7 +29,7 @@ impl BlockModel {
         let ambient_occlusion = block_model.ambient_occlusion();
         let display = block_model
             .display()
-            .map(|(position, data)| (position.clone(), data.clone()))
+            .map(|(position, data)| (*position, data.clone()))
             .collect();
         let textures = block_model
             .textures()
@@ -81,6 +91,21 @@ pub struct InternedElement {
     faces: HashMap<FaceName, InternedFaceData>,
 }
 
+impl InternedElement {
+    pub fn from(&self) -> &[f64; 3] {
+        &self.from
+    }
+    pub fn to(&self) -> &[f64; 3] {
+        &self.to
+    }
+    pub fn rotation(&self) -> Option<&Rotation> {
+        self.rotation.as_ref()
+    }
+    pub fn faces(&self) -> &HashMap<FaceName, InternedFaceData> {
+        &self.faces
+    }
+}
+
 #[derive(Debug)]
 pub struct InternedFaceData {
     uv: [f64; 4],
@@ -90,13 +115,28 @@ pub struct InternedFaceData {
     tintindex: i32,
 }
 
+impl InternedFaceData {
+    pub fn uv(&self) -> &[f64; 4] {
+        &self.uv
+    }
+    pub fn texture(&self) -> Spur {
+        self.texture
+    }
+    pub fn rotation(&self) -> i32 {
+        self.rotation
+    }
+    pub fn tint_index(&self) -> i32 {
+        self.tintindex
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::hint::black_box;
 
     use lasso::Rodeo;
 
-    use crate::{interned::block_model::BlockModel, serde::block_model::RawBlockModel};
+    use crate::{interned::block_model::InternedBlockModel, serde::block_model::RawBlockModel};
 
     #[test]
     fn conversion_test() {
@@ -107,7 +147,6 @@ mod tests {
             let path = entry.path();
 
             if path.is_file() && path.extension().unwrap() == "json" {
-                println!("{path}", path = path.display());
                 let file = std::fs::read_to_string(path).unwrap();
 
                 let a: Result<RawBlockModel<'_>, serde_json::Error> =
@@ -115,9 +154,7 @@ mod tests {
 
                 let b = a.map_err(|err| eprintln!("{err:?}")).unwrap();
 
-                println!("{b:?}");
-
-                let c = BlockModel::intern_block_model(b, &mut interner);
+                let c = InternedBlockModel::intern_block_model(b, &mut interner);
                 black_box(&c);
             }
         }

@@ -46,7 +46,7 @@ impl<'a> Chunk<'a> {
         self.z_pos as isize
     }
 
-    pub fn get_sections<'root_nbt>(&'root_nbt self) -> Option<SectionTower<'a, 'root_nbt>> {
+    pub fn get_section_tower<'root_nbt>(&'root_nbt self) -> Option<SectionTower<'a, 'root_nbt>> {
         let tag = self.compound.get_tag("sections")?;
 
         let list = tag.get_list()?;

@@ -138,8 +138,6 @@ mod tests {
                 eprintln!("{err}:?");
             })
             .unwrap();
-
-        println!("{b:?}");
     }
     #[test]
     fn test_mc_blockstates() {
@@ -149,7 +147,6 @@ mod tests {
             let path = entry.path();
 
             if path.is_file() && path.extension().unwrap() == "json" {
-                println!("{path}", path = path.display());
                 let file = std::fs::read_to_string(path).unwrap();
 
                 let a: Result<BlockStateType<'_>, serde_json::Error> =
