@@ -30,13 +30,13 @@ pub mod nbt_string {
                 data: bytes.to_owned(),
             }
         }
-        pub fn as_str(&self) -> &NBTStr {
+        pub fn as_nbt_str(&self) -> &NBTStr {
             NBTStr::from_slice(self.data.as_slice())
         }
     }
     impl Borrow<NBTStr> for NBTString {
         fn borrow(&self) -> &NBTStr {
-            self.as_str()
+            self.as_nbt_str()
         }
     }
 }
@@ -70,7 +70,7 @@ pub mod nbt_compound {
             let name = NBTStr::from_str(tag_name);
             let name = name.as_ref();
 
-            let tag = self.children.iter().find(|a| a.0.as_str() == name);
+            let tag = self.children.iter().find(|a| a.0.as_nbt_str() == name);
             if let Some(child) = tag {
                 Some(&child.1)
             } else {
@@ -125,7 +125,7 @@ pub mod nbt_compound {
                 for _tab in 0..tabs {
                     out.push('\t');
                 }
-                out.push_str(&name.as_str().to_str());
+                out.push_str(&name.as_nbt_str().to_str());
                 out.push_str(" : ");
                 if let NBTTag::Compound(nbtcompound) = tag {
                     nbtcompound.pretty_print_inner(out, tabs + 1);

@@ -18,19 +18,26 @@ pub struct BlockState<'data, 'root_nbt> {
     properties: Option<NBTCompound<'data, 'root_nbt>>,
 }
 
-const AIR_NAME: &NBTStr = const { NBTStr::from_slice(b"minecraft:air") };
-const WATERLOGGED: &NBTStr = const { NBTStr::from_slice(b"waterlogged") };
+const AIR_BLOCK_NAME: &NBTStr = const { NBTStr::from_slice(b"minecraft:air") };
+const WATERLOGGED_NAME: &NBTStr = const { NBTStr::from_slice(b"waterlogged") };
+const TRUE_VALUE: &NBTStr = const { NBTStr::from_slice(b"true") };
 
 impl<'data, 'root_nbt> BlockState<'data, 'root_nbt> {
     pub fn get_name(&self) -> &NBTStr {
         self.name
     }
-
+    pub fn is_waterlogged(&self) -> bool {
+        self.properties_iter()
+            .any(|(name, value)| name == WATERLOGGED_NAME && value == TRUE_VALUE)
+    }
     pub fn to_mapped_state(&self) -> NBTString {
         let mut vec: Vec<u8> = Vec::new();
         self.write_mapped_state(&mut vec);
         NBTString::new_from_vec(vec)
     }
+    ///A mapped state follows the format ``namespace:block_name#prop1=value,prop2=value`` ...
+    ///If there are no properties, the property string is just "default" as in
+    ///minecraft:air#default
     #[expect(unsafe_code)]
     pub fn write_mapped_state(&self, mut out: impl std::io::Write) {
         let block_name = self.name;
@@ -39,7 +46,7 @@ impl<'data, 'root_nbt> BlockState<'data, 'root_nbt> {
         let mut i = 0;
         let mut to_sort: Vec<_> = self
             .properties_iter()
-            .filter(|(name, _value)| *name != WATERLOGGED)
+            .filter(|(name, _value)| *name != WATERLOGGED_NAME)
             .collect();
 
         to_sort.sort_by(|a, b| {
@@ -91,7 +98,7 @@ impl Debug for BlockState<'_, '_> {
 
 impl Display for BlockState<'_, '_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.to_mapped_state().as_str().to_str())
+        f.write_str(&self.to_mapped_state().as_nbt_str().to_str())
     }
 }
 

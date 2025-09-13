@@ -2,13 +2,13 @@ use crate::serde::block_model::{DisplayPosition, FaceName, PositionData, RawBloc
 use hashbrown::HashMap;
 use lasso::{Rodeo, Spur};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct InternedBlockModel {
-    parent: Option<Spur>,
-    ambient_occlusion: bool,
-    display: HashMap<DisplayPosition, PositionData>,
-    textures: HashMap<Spur, Spur>,
-    elements: Vec<InternedElement>,
+    pub parent: Option<Spur>,
+    pub ambient_occlusion: bool,
+    pub display: HashMap<DisplayPosition, PositionData>,
+    pub textures: HashMap<Spur, Spur>,
+    pub elements: Vec<InternedElement>,
 }
 
 impl InternedBlockModel {
@@ -81,7 +81,7 @@ impl InternedBlockModel {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct InternedElement {
     from: [f64; 3],
     to: [f64; 3],
@@ -106,7 +106,7 @@ impl InternedElement {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct InternedFaceData {
     uv: [f64; 4],
     texture: Spur,

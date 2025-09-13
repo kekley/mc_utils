@@ -17,7 +17,7 @@ use crate::{
     error::spider_eye_error::SpiderEyeError,
     interned::{
         block_model::InternedBlockModel,
-        blockstate::{InternedBlockState, InternedCase, InternedVariantType, VariantModelType},
+        blockstate::{InternedBlockVariants, InternedCase, InternedVariantType, VariantModelType},
     },
     serde::{block_model::RawBlockModel, blockstate::BlockStateType},
 };
@@ -98,7 +98,7 @@ impl Resource<'_> for Box<[u8]> {
 }
 
 impl<'a> Resource<'a> for BlockStateType<'a> {
-    type Interned = InternedBlockState;
+    type Interned = InternedBlockVariants;
     fn load(data: &'a mut [u8]) -> Option<BlockStateType<'a>> {
         simd_json::serde::from_slice(data).ok()?
     }
@@ -112,7 +112,7 @@ impl<'a> Resource<'a> for BlockStateType<'a> {
     }
 
     fn intern(self, interner: &mut Rodeo) -> Self::Interned {
-        InternedBlockState::intern_blockstate(self, interner)
+        InternedBlockVariants::intern_blockstate(self, interner)
     }
 }
 
@@ -143,7 +143,7 @@ impl InternedResource for InternedBlockModel {
     type View<'a> = RawBlockModel<'a>;
 }
 
-impl InternedResource for InternedBlockState {
+impl InternedResource for InternedBlockVariants {
     type View<'a> = BlockStateType<'a>;
 }
 
@@ -151,7 +151,7 @@ pub struct LoadedResources {
     pub interner: Rodeo,
     pub textures: HashMap<CompactString, Box<[u8]>>,
     pub models: HashMap<CompactString, InternedBlockModel>,
-    pub variants: HashMap<CompactString, InternedBlockState>,
+    pub variants: HashMap<CompactString, InternedBlockVariants>,
 }
 
 impl LoadedResources {
@@ -168,8 +168,10 @@ impl LoadedResources {
         };
 
         let variant_type = match variants {
-            InternedBlockState::Variants(hash_map) => self.get_variants(hash_map, variant_string),
-            InternedBlockState::Multipart(interned_cases) => {
+            InternedBlockVariants::Variants(hash_map) => {
+                self.get_variants(hash_map, variant_string)
+            }
+            InternedBlockVariants::Multipart(interned_cases) => {
                 self.get_multiparts(interned_cases, variant_string)
             }
         };
@@ -225,7 +227,7 @@ impl LoadedResources {
         self.models.get(resource_location)
     }
 
-    pub fn get_variant_data(&self, resource_location: &str) -> Option<&InternedBlockState> {
+    pub fn get_variant_data(&self, resource_location: &str) -> Option<&InternedBlockVariants> {
         self.variants.get(resource_location)
     }
 

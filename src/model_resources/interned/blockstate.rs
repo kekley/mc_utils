@@ -5,18 +5,50 @@ use lasso::{Rodeo, Spur};
 
 use crate::serde::blockstate::{BlockStateType, ModelProperties};
 
-#[derive(Debug)]
-pub enum InternedBlockState {
-    Variants(HashMap<Spur, InternedVariantType>),
-    Multipart(Vec<InternedCase>),
-}
-
 pub enum VariantModelType<'a> {
     SingleModel(&'a [InternedModelProperties]),
     Multipart(Vec<&'a [InternedModelProperties]>),
 }
+#[derive(Debug)]
+pub enum InternedBlockVariants {
+    Variants(HashMap<Spur, InternedVariantType>),
+    Multipart(Vec<InternedCase>),
+}
 
-impl InternedBlockState {
+impl InternedBlockVariants {
+    pub fn get_model_properties_for_mapped_state(
+        &self,
+        mapped_state_spur: Spur,
+        mapped_state_str: &str,
+        interner: &Rodeo,
+    ) -> Option<VariantModelType<'_>> {
+        match self {
+            InternedBlockVariants::Variants(hash_map) => {
+                let Some(variant_type) = hash_map.get(&mapped_state_spur) else {
+                    eprintln!("mapped state {mapped_state_str} not found in variant map");
+                    return None;
+                };
+                match variant_type {
+                    InternedVariantType::SingleVariant(interned_model_properties) => Some(
+                        VariantModelType::SingleModel(slice::from_ref(interned_model_properties)),
+                    ),
+                    InternedVariantType::MultiVariant(items) => {
+                        Some(VariantModelType::SingleModel(items))
+                    }
+                }
+            }
+            InternedBlockVariants::Multipart(interned_cases) => Some(VariantModelType::Multipart(
+                interned_cases
+                    .iter()
+                    .filter(|case| case.test_variant_string(mapped_state_str, interner))
+                    .map(|case| case.get_models())
+                    .collect::<Vec<_>>(),
+            )),
+        }
+    }
+}
+
+impl InternedBlockVariants {
     pub fn intern_blockstate(blockstate: BlockStateType<'_>, interner: &mut Rodeo) -> Self {
         match blockstate {
             BlockStateType::Variants(hash_map) => {
@@ -42,9 +74,9 @@ impl InternedBlockState {
                         (interner.get_or_intern(properties), variants)
                     })
                     .collect();
-                InternedBlockState::Variants(interned_map)
+                InternedBlockVariants::Variants(interned_map)
             }
-            BlockStateType::Multipart(cases) => InternedBlockState::Multipart(
+            BlockStateType::Multipart(cases) => InternedBlockVariants::Multipart(
                 cases
                     .iter()
                     .map(|case| {
@@ -120,13 +152,13 @@ impl InternedBlockState {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum InternedVariantType {
     SingleVariant(InternedModelProperties),
     MultiVariant(Vec<InternedModelProperties>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct InternedModelProperties {
     model: Spur,
     x: i32,
@@ -178,9 +210,9 @@ pub struct InternedCase {
     apply: InternedApply,
 }
 impl InternedCase {
-    pub fn test_variant_string(&self, variant_string: &str, rodeo: &Rodeo) -> bool {
+    pub fn test_variant_string(&self, mapped_state_str: &str, rodeo: &Rodeo) -> bool {
         if let Some(when) = &self.when {
-            when.test_variant_string(variant_string, rodeo)
+            when.test_variant_string(mapped_state_str, rodeo)
         } else {
             true
         }
@@ -266,7 +298,7 @@ impl InternedWhen {
 mod tests {
     use lasso::Rodeo;
 
-    use crate::{interned::blockstate::InternedBlockState, serde::blockstate::BlockStateType};
+    use crate::{interned::blockstate::InternedBlockVariants, serde::blockstate::BlockStateType};
 
     #[test]
     fn test_interned_mc_blockstates() {
@@ -284,7 +316,7 @@ mod tests {
                 let b = a.map_err(|err| eprintln!("{err:?}")).unwrap();
                 let mut interner = Rodeo::new();
 
-                let c = InternedBlockState::intern_blockstate(b, &mut interner);
+                let c = InternedBlockVariants::intern_blockstate(b, &mut interner);
             }
         }
     }

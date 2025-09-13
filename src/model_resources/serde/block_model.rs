@@ -187,6 +187,21 @@ pub struct Rotation {
     rescale: bool,
 }
 
+impl Rotation {
+    pub fn origin(&self) -> &[f64; 3] {
+        &self.origin
+    }
+    pub fn axis(&self) -> Axis {
+        self.axis
+    }
+    pub fn angle(&self) -> f64 {
+        self.angle
+    }
+    pub fn rescale(&self) -> bool {
+        self.rescale
+    }
+}
+
 #[derive(Deserialize, Debug, Clone, Copy)]
 pub enum Axis {
     #[serde(alias = "x")]
