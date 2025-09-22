@@ -1,46 +1,27 @@
-use std::{error::Error, path::Path};
+use std::{error::Error, path::Path, rc::Rc};
 
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::{compression::decompress_chunk, error::spider_eye_error::SpiderEyeError};
 
-type RegionResult = Result<Region, Box<dyn Error>>;
-
 const SECTOR_SIZE: usize = 4096;
 
-pub struct Region {
-    x: i32,
-    z: i32,
-    data: Vec<u8>,
+pub struct Region<'a> {
+    x: i64,
+    z: i64,
+    data: &'a [u8],
 }
 
-impl Region {
-    pub fn load_from_file(path: &Path) -> RegionResult {
-        //TODO proper errors
-        let file_name = path.file_name().ok_or(SpiderEyeError::DEFAULT)?;
-
-        let str = file_name.to_str().ok_or(SpiderEyeError::DEFAULT)?;
-
-        let mut split = str.split(".");
-
-        let _r = split.next();
-        let x: i32 = split.next().unwrap().parse().unwrap();
-        let z: i32 = split.next().unwrap().parse().unwrap();
-
-        let file_data = std::fs::read(path)?;
-
-        Ok(Region {
-            data: file_data,
-            x,
-            z,
-        })
+impl<'a> Region<'a> {
+    pub fn from_bytes(data: &'a [u8], x: i64, z: i64) -> Region<'a> {
+        Region { x, z, data }
     }
 
-    pub fn get_region_x(&self) -> i32 {
+    pub fn get_region_x(&self) -> i64 {
         self.x
     }
 
-    pub fn get_region_z(&self) -> i32 {
+    pub fn get_region_z(&self) -> i64 {
         self.z
     }
 
