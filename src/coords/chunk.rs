@@ -12,6 +12,22 @@ impl ChunkCoords {
     }
 }
 
+///coordinates from 0-32 local to a region
+#[derive(Debug, Default, Hash, PartialEq, Eq, Clone, Copy)]
+pub struct LocalChunkCoords {
+    pub x: u8,
+    pub z: u8,
+}
+
+impl From<ChunkCoords> for LocalChunkCoords {
+    fn from(value: ChunkCoords) -> Self {
+        LocalChunkCoords {
+            x: (value.x % 32) as u8,
+            z: (value.z % 32) as u8,
+        }
+    }
+}
+
 ///Gets the chunk the block resides in
 impl From<BlockCoords> for ChunkCoords {
     fn from(value: BlockCoords) -> Self {
