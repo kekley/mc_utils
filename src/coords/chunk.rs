@@ -6,6 +6,26 @@ pub struct ChunkCoords {
     pub z: i64,
 }
 
+#[derive(Debug, Default, Hash, PartialEq, Eq, Clone, Copy)]
+pub struct LocalChunkCoords {
+    pub x: u8,
+    pub z: u8,
+}
+
+impl From<ChunkCoords> for LocalChunkCoords {
+    fn from(value: ChunkCoords) -> Self {
+        let abs_x = value.x.abs();
+
+        let abs_z = value.z.abs();
+
+        let x = (abs_x % 16) as u8;
+
+        let z = (abs_z % 16) as u8;
+
+        LocalChunkCoords { x, z }
+    }
+}
+
 impl ChunkCoords {
     pub fn new(x: i64, z: i64) -> Self {
         Self { x, z }

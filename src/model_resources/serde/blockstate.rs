@@ -38,10 +38,10 @@ impl<'a> ModelProperties<'a> {
     pub fn model(&self) -> &'a str {
         self.model
     }
-    pub fn x(&self) -> i32 {
+    pub fn x_rotation(&self) -> i32 {
         self.x
     }
-    pub fn y(&self) -> i32 {
+    pub fn y_rotation(&self) -> i32 {
         self.y
     }
 

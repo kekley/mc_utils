@@ -8,6 +8,7 @@ pub struct RegionCoords {
 
 ///Get the region the chunk resides in
 impl From<ChunkCoords> for RegionCoords {
+    #[inline]
     fn from(value: ChunkCoords) -> Self {
         Self {
             x: value.x >> 5,
@@ -18,6 +19,7 @@ impl From<ChunkCoords> for RegionCoords {
 
 ///Get the region the block resides in
 impl From<BlockCoords> for RegionCoords {
+    #[inline]
     fn from(value: BlockCoords) -> Self {
         Self {
             x: value.x >> 10,

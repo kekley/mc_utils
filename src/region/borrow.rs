@@ -2,7 +2,10 @@ use std::{error::Error, path::Path, rc::Rc};
 
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
-use crate::{compression::decompress_chunk, error::spider_eye_error::SpiderEyeError};
+use crate::{
+    compression::decompress_chunk, coords::region::RegionCoords,
+    error::spider_eye_error::SpiderEyeError,
+};
 
 const SECTOR_SIZE: usize = 4096;
 
@@ -13,8 +16,12 @@ pub struct Region<'a> {
 }
 
 impl<'a> Region<'a> {
-    pub fn from_bytes(data: &'a [u8], x: i64, z: i64) -> Region<'a> {
-        Region { x, z, data }
+    pub fn from_bytes(data: &'a [u8], coords: RegionCoords) -> Region<'a> {
+        Region {
+            x: coords.x,
+            z: coords.z,
+            data,
+        }
     }
 
     pub fn get_region_x(&self) -> i64 {
@@ -29,7 +36,7 @@ impl<'a> Region<'a> {
         4 * ((x as usize & 31) + ((z as usize & 31) << 5))
     }
 
-    pub fn load_chunk_data(&self, x: u8, z: u8) -> Option<Vec<u8>> {
+    pub fn load_chunk_data(&self, x: u8, z: u8) -> Option<Box<[u8]>> {
         let header_offset = Self::get_chunk_header_offset(x, z);
 
         let buf: [u8; 4] = self
@@ -51,9 +58,9 @@ impl<'a> Region<'a> {
 
         let decompressed_bytes = decompress_chunk(chunk_data_slice).ok()?;
 
-        Some(decompressed_bytes)
+        Some(decompressed_bytes.into_boxed_slice())
     }
-    pub fn load_all_chunk_data(&self) -> [Option<Vec<u8>>; 1024] {
+    pub fn load_all_chunk_data(&self) -> [Option<Box<[u8]>>; 1024] {
         let a = (0..32)
             .into_par_iter()
             .flat_map(move |z| {

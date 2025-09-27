@@ -170,8 +170,8 @@ pub struct InternedModelProperties {
 impl InternedModelProperties {
     pub fn intern(model_properties: &ModelProperties<'_>, interner: &mut Rodeo) -> Self {
         let model = interner.get_or_intern(model_properties.model());
-        let x = model_properties.x();
-        let y = model_properties.y();
+        let x = model_properties.x_rotation();
+        let y = model_properties.y_rotation();
         let uvlock = model_properties.uvlock();
         let weight = model_properties.weight();
 
