@@ -83,8 +83,8 @@ impl InternedBlockModel {
 
 #[derive(Debug, Clone)]
 pub struct InternedElement {
-    from: [f64; 3],
-    to: [f64; 3],
+    from: [f32; 3],
+    to: [f32; 3],
     rotation: Option<Rotation>,
     shade: bool,
     light_emission: i32,
@@ -92,10 +92,10 @@ pub struct InternedElement {
 }
 
 impl InternedElement {
-    pub fn from(&self) -> &[f64; 3] {
+    pub fn from(&self) -> &[f32; 3] {
         &self.from
     }
-    pub fn to(&self) -> &[f64; 3] {
+    pub fn to(&self) -> &[f32; 3] {
         &self.to
     }
     pub fn rotation(&self) -> Option<&Rotation> {
@@ -108,7 +108,7 @@ impl InternedElement {
 
 #[derive(Debug, Clone)]
 pub struct InternedFaceData {
-    uv: [f64; 4],
+    uv: [f32; 4],
     texture: Spur,
     cullface: Option<FaceName>,
     rotation: i32,
@@ -116,7 +116,7 @@ pub struct InternedFaceData {
 }
 
 impl InternedFaceData {
-    pub fn uv(&self) -> &[f64; 4] {
+    pub fn uv(&self) -> &[f32; 4] {
         &self.uv
     }
     pub fn texture(&self) -> Spur {

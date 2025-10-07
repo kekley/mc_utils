@@ -45,13 +45,13 @@ impl<'a> RawBlockModel<'a> {
 #[derive(Debug, Deserialize, Clone)]
 pub struct PositionData {
     #[serde(default)]
-    rotation: [f64; 3],
-    translation: [f64; 3],
+    rotation: [f32; 3],
+    translation: [f32; 3],
     #[serde(default = "default_scale")]
-    scale: [f64; 3],
+    scale: [f32; 3],
 }
 
-fn default_scale() -> [f64; 3] {
+fn default_scale() -> [f32; 3] {
     [1.0, 1.0, 1.0]
 }
 
@@ -77,8 +77,8 @@ pub enum DisplayPosition {
 
 #[derive(Deserialize, Debug)]
 pub struct Element<'a> {
-    from: [f64; 3],
-    to: [f64; 3],
+    from: [f32; 3],
+    to: [f32; 3],
     #[serde(default)]
     rotation: Option<Rotation>,
     #[serde(default)]
@@ -92,12 +92,12 @@ pub struct Element<'a> {
 
 impl<'a> Element<'a> {
     #[inline]
-    pub fn from(&self) -> [f64; 3] {
+    pub fn from(&self) -> [f32; 3] {
         self.from
     }
 
     #[inline]
-    pub fn to(&self) -> [f64; 3] {
+    pub fn to(&self) -> [f32; 3] {
         self.to
     }
 
@@ -141,7 +141,7 @@ pub enum FaceName {
 #[derive(Deserialize, Debug)]
 pub struct FaceData<'a> {
     #[serde(default = "default_uv")]
-    uv: [f64; 4],
+    uv: [f32; 4],
     #[serde(borrow)]
     texture: &'a str,
     #[serde(default)]
@@ -153,7 +153,7 @@ pub struct FaceData<'a> {
 }
 
 impl<'a> FaceData<'a> {
-    pub fn uv(&self) -> [f64; 4] {
+    pub fn uv(&self) -> [f32; 4] {
         self.uv
     }
     pub fn texture(&self) -> &'a str {
@@ -170,7 +170,7 @@ impl<'a> FaceData<'a> {
     }
 }
 
-fn default_uv() -> [f64; 4] {
+fn default_uv() -> [f32; 4] {
     [0.0, 0.0, 16.0, 16.0]
 }
 
@@ -180,21 +180,21 @@ fn default_tint() -> i32 {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Rotation {
-    origin: [f64; 3],
+    origin: [f32; 3],
     axis: Axis,
-    angle: f64,
+    angle: f32,
     #[serde(default)]
     rescale: bool,
 }
 
 impl Rotation {
-    pub fn origin(&self) -> &[f64; 3] {
+    pub fn origin(&self) -> &[f32; 3] {
         &self.origin
     }
     pub fn axis(&self) -> Axis {
         self.axis
     }
-    pub fn angle(&self) -> f64 {
+    pub fn angle(&self) -> f32 {
         self.angle
     }
     pub fn rescale(&self) -> bool {
