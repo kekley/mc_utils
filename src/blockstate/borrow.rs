@@ -111,7 +111,7 @@ impl<'data> Iterator for PropertiesIter<'data, '_> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(iter) = &mut self.compound_iter {
-            while let Some((name, tag)) = iter.next() {
+            for (name, tag) in iter.by_ref() {
                 if let Some(value) = tag.get_string() {
                     return Some((name, value));
                 }

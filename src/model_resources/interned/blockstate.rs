@@ -220,7 +220,7 @@ impl InternedCase {
     pub fn get_models(&self) -> &[InternedModelProperties] {
         match &self.apply {
             InternedApply::Single(interned_model_properties) => {
-                slice::from_ref(&interned_model_properties)
+                slice::from_ref(interned_model_properties)
             }
             InternedApply::Many(items) => items.as_slice(),
         }
@@ -244,8 +244,8 @@ pub enum InternedWhen {
 impl InternedWhen {
     pub fn test_variant_string(&self, variant_string: &str, rodeo: &Rodeo) -> bool {
         match self {
-            InternedWhen::Or(hash_maps) => Self::or_case(&hash_maps, variant_string, rodeo),
-            InternedWhen::And(hash_maps) => Self::and_case(&hash_maps, variant_string, rodeo),
+            InternedWhen::Or(hash_maps) => Self::or_case(hash_maps, variant_string, rodeo),
+            InternedWhen::And(hash_maps) => Self::and_case(hash_maps, variant_string, rodeo),
             InternedWhen::SingleState(hash_map) => {
                 Self::single_case(hash_map.iter(), variant_string, rodeo)
             }

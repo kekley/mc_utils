@@ -231,7 +231,7 @@ impl<'a, 'root_nbt> Palette<'a, 'root_nbt> {
             entries: palette_compound_list.iter(),
         }
     }
-    pub fn iter(&self) -> PaletteIter {
+    pub fn iter(&self) -> PaletteIter<'a, 'root_nbt> {
         PaletteIter {
             iter: self.entries.clone(),
         }
@@ -246,7 +246,7 @@ impl<'data, 'root_nbt> Iterator for PaletteIter<'data, 'root_nbt> {
     type Item = BlockState<'data, 'root_nbt>;
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some(compound) = self.iter.next() {
+        for compound in self.iter.by_ref() {
             if let Some(blockstate) = BlockState::from_compound(compound) {
                 return Some(blockstate);
             }

@@ -1,11 +1,6 @@
-use std::{error::Error, path::Path, rc::Rc};
-
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
-use crate::{
-    compression::decompress_chunk, coords::region::RegionCoords,
-    error::spider_eye_error::SpiderEyeError,
-};
+use crate::{compression::decompress_chunk, coords::region::RegionCoords};
 
 const SECTOR_SIZE: usize = 4096;
 
