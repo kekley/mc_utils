@@ -20,8 +20,7 @@ pub enum VariantType<'a> {
 }
 
 #[derive(Debug, Deserialize)]
-
-pub struct ModelProperties<'a> {
+pub(crate) struct ModelProperties<'a> {
     #[serde(borrow)]
     model: &'a str,
     #[serde(default)]
@@ -124,7 +123,7 @@ pub enum When<'a, 'b> {
 
 #[cfg(test)]
 mod tests {
-    use crate::serde::blockstate::BlockStateType;
+    use crate::block_state::serde::BlockStateType;
 
     #[test]
     fn test_block_state() {

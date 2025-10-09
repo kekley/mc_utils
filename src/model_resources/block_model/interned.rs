@@ -1,4 +1,11 @@
-use crate::serde::block_model::{DisplayPosition, FaceName, PositionData, RawBlockModel, Rotation};
+use crate::face::interned::{InternedFace, InternedFaceData};
+use crate::{
+    block_model::{
+        common::{DisplayPosition, PositionData},
+        serde::RawBlockModel,
+    },
+    element::interned::InternedElement,
+};
 use hashbrown::HashMap;
 use lasso::{Rodeo, Spur};
 
@@ -48,7 +55,7 @@ impl InternedBlockModel {
 
                 let light_emission = element.light_emission();
 
-                let faces = element
+                let faces: Vec<InternedFace> = element
                     .faces()
                     .map(|(face_name, face_data)| {
                         let face_data = InternedFaceData {
@@ -58,16 +65,20 @@ impl InternedBlockModel {
                             rotation: face_data.rotation(),
                             tintindex: face_data.tintindex(),
                         };
-                        (*face_name, face_data)
+                        InternedFace {
+                            face_name: *face_name,
+                            data: face_data.clone(),
+                        }
                     })
                     .collect();
+                let face_array = todo!();
                 InternedElement {
                     from,
                     to,
                     rotation,
                     shade,
                     light_emission,
-                    faces,
+                    faces: face_array,
                 }
             })
             .collect();
@@ -81,62 +92,13 @@ impl InternedBlockModel {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct InternedElement {
-    from: [f32; 3],
-    to: [f32; 3],
-    rotation: Option<Rotation>,
-    shade: bool,
-    light_emission: i32,
-    faces: HashMap<FaceName, InternedFaceData>,
-}
-
-impl InternedElement {
-    pub fn from(&self) -> &[f32; 3] {
-        &self.from
-    }
-    pub fn to(&self) -> &[f32; 3] {
-        &self.to
-    }
-    pub fn rotation(&self) -> Option<&Rotation> {
-        self.rotation.as_ref()
-    }
-    pub fn faces(&self) -> &HashMap<FaceName, InternedFaceData> {
-        &self.faces
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct InternedFaceData {
-    uv: [f32; 4],
-    texture: Spur,
-    cullface: Option<FaceName>,
-    rotation: i32,
-    tintindex: i32,
-}
-
-impl InternedFaceData {
-    pub fn uv(&self) -> &[f32; 4] {
-        &self.uv
-    }
-    pub fn texture(&self) -> Spur {
-        self.texture
-    }
-    pub fn rotation(&self) -> i32 {
-        self.rotation
-    }
-    pub fn tint_index(&self) -> i32 {
-        self.tintindex
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::hint::black_box;
 
     use lasso::Rodeo;
 
-    use crate::{interned::block_model::InternedBlockModel, serde::block_model::RawBlockModel};
+    use crate::block_model::{interned::InternedBlockModel, serde::RawBlockModel};
 
     #[test]
     fn conversion_test() {

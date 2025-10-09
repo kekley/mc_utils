@@ -3,7 +3,7 @@ use std::slice;
 use hashbrown::HashMap;
 use lasso::{Rodeo, Spur};
 
-use crate::serde::blockstate::{BlockStateType, ModelProperties};
+use crate::block_state::serde::{Apply, BlockStateType, ModelProperties, VariantType, When};
 
 pub enum VariantModelType<'a> {
     SingleModel(&'a [InternedModelProperties]),
@@ -56,12 +56,13 @@ impl InternedBlockVariants {
                     .iter()
                     .map(|(properties, variants)| {
                         let variants = match variants {
-                            crate::serde::blockstate::VariantType::SingleVariant(
-                                model_properties,
-                            ) => InternedVariantType::SingleVariant(
-                                InternedModelProperties::intern(model_properties, interner),
-                            ),
-                            crate::serde::blockstate::VariantType::MultiVariant(items) => {
+                            VariantType::SingleVariant(model_properties) => {
+                                InternedVariantType::SingleVariant(InternedModelProperties::intern(
+                                    model_properties,
+                                    interner,
+                                ))
+                            }
+                            VariantType::MultiVariant(items) => {
                                 let interned_items = items
                                     .iter()
                                     .map(|model_properties| {
@@ -81,7 +82,7 @@ impl InternedBlockVariants {
                     .iter()
                     .map(|case| {
                         let when = case.when().map(|when| match when.condition() {
-                            crate::serde::blockstate::When::Or(hash_maps) => InternedWhen::Or(
+                            When::Or(hash_maps) => InternedWhen::Or(
                                 hash_maps
                                     .iter()
                                     .map(|hashmap| {
@@ -97,7 +98,7 @@ impl InternedBlockVariants {
                                     })
                                     .collect(),
                             ),
-                            crate::serde::blockstate::When::And(hash_maps) => InternedWhen::And(
+                            When::And(hash_maps) => InternedWhen::And(
                                 hash_maps
                                     .iter()
                                     .map(|hashmap| {
@@ -113,28 +114,20 @@ impl InternedBlockVariants {
                                     })
                                     .collect(),
                             ),
-                            crate::serde::blockstate::When::Single(hash_map) => {
-                                InternedWhen::SingleState(
-                                    hash_map
-                                        .iter()
-                                        .map(|(name, prop)| {
-                                            (
-                                                interner.get_or_intern(name),
-                                                interner.get_or_intern(prop),
-                                            )
-                                        })
-                                        .collect(),
-                                )
-                            }
+                            When::Single(hash_map) => InternedWhen::SingleState(
+                                hash_map
+                                    .iter()
+                                    .map(|(name, prop)| {
+                                        (interner.get_or_intern(name), interner.get_or_intern(prop))
+                                    })
+                                    .collect(),
+                            ),
                         });
                         let apply = match case.apply() {
-                            crate::serde::blockstate::Apply::Single(model_properties) => {
-                                InternedApply::Single(InternedModelProperties::intern(
-                                    model_properties,
-                                    interner,
-                                ))
-                            }
-                            crate::serde::blockstate::Apply::Many(items) => InternedApply::Many(
+                            Apply::Single(model_properties) => InternedApply::Single(
+                                InternedModelProperties::intern(model_properties, interner),
+                            ),
+                            Apply::Many(items) => InternedApply::Many(
                                 items
                                     .iter()
                                     .map(|model_properties| {
@@ -298,7 +291,7 @@ impl InternedWhen {
 mod tests {
     use lasso::Rodeo;
 
-    use crate::{interned::blockstate::InternedBlockVariants, serde::blockstate::BlockStateType};
+    use crate::block_state::{interned::InternedBlockVariants, serde::BlockStateType};
 
     #[test]
     fn test_interned_mc_blockstates() {

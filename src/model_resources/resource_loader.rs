@@ -1,3 +1,6 @@
+use crate::block_state::interned::InternedCase;
+use crate::block_state::interned::InternedVariantType;
+use crate::block_state::interned::VariantModelType;
 use std::{
     collections::VecDeque,
     fmt::Debug,
@@ -13,13 +16,10 @@ use lasso::{Rodeo, Spur};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
+    block_model::{interned::InternedBlockModel, serde::RawBlockModel},
+    block_state::{interned::InternedBlockVariants, serde::BlockStateType},
     borrow::nbt_string::NBTStr,
     error::spider_eye_error::SpiderEyeError,
-    interned::{
-        block_model::InternedBlockModel,
-        blockstate::{InternedBlockVariants, InternedCase, InternedVariantType, VariantModelType},
-    },
-    serde::{block_model::RawBlockModel, blockstate::BlockStateType},
 };
 
 const _ASSET_FOLDER_NAMES: [&str; 3] = ["blockstates", "models", "textures"];

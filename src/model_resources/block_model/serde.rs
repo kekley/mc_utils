@@ -1,6 +1,11 @@
 use hashbrown::HashMap;
 use serde::Deserialize;
 
+use crate::{
+    block_model::common::{DisplayPosition, PositionData},
+    face::common::{face_name::FaceName, rotation::Rotation},
+};
+
 #[derive(Deserialize, Debug)]
 pub struct RawBlockModel<'a> {
     #[serde(default)]
@@ -14,7 +19,7 @@ pub struct RawBlockModel<'a> {
     #[serde(borrow)]
     textures: HashMap<&'a str, &'a str>,
     #[serde(default)]
-    elements: Vec<Element<'a>>,
+    elements: Vec<RawElement<'a>>,
 }
 
 impl<'a> RawBlockModel<'a> {
@@ -32,7 +37,7 @@ impl<'a> RawBlockModel<'a> {
     }
 
     #[inline]
-    pub fn elements(&self) -> &[Element<'a>] {
+    pub fn elements(&self) -> &[RawElement<'a>] {
         &self.elements
     }
 
@@ -42,41 +47,8 @@ impl<'a> RawBlockModel<'a> {
     }
 }
 
-#[derive(Debug, Deserialize, Clone)]
-pub struct PositionData {
-    #[serde(default)]
-    rotation: [f32; 3],
-    translation: [f32; 3],
-    #[serde(default = "default_scale")]
-    scale: [f32; 3],
-}
-
-fn default_scale() -> [f32; 3] {
-    [1.0, 1.0, 1.0]
-}
-
-#[derive(Deserialize, Debug, Eq, PartialEq, Hash, Clone, Copy)]
-pub enum DisplayPosition {
-    #[serde(alias = "thirdperson_righthand")]
-    ThirdPersonRightHand,
-    #[serde(alias = "thirdperson_lefthand")]
-    ThirdPersonLeftHand,
-    #[serde(alias = "firstperson_righthand")]
-    FirstPersonRightHand,
-    #[serde(alias = "firstperson_lefthand")]
-    FirstPersonLeftHand,
-    #[serde(alias = "gui")]
-    Gui,
-    #[serde(alias = "head")]
-    Head,
-    #[serde(alias = "ground")]
-    Ground,
-    #[serde(alias = "fixed")]
-    Fixed,
-}
-
 #[derive(Deserialize, Debug)]
-pub struct Element<'a> {
+pub struct RawElement<'a> {
     from: [f32; 3],
     to: [f32; 3],
     #[serde(default)]
@@ -87,10 +59,10 @@ pub struct Element<'a> {
     light_emission: i32,
     #[serde(default)]
     #[serde(borrow)]
-    faces: HashMap<FaceName, FaceData<'a>>,
+    faces: HashMap<FaceName, RawFaceData<'a>>,
 }
 
-impl<'a> Element<'a> {
+impl<'a> RawElement<'a> {
     #[inline]
     pub fn from(&self) -> [f32; 3] {
         self.from
@@ -112,34 +84,13 @@ impl<'a> Element<'a> {
         self.light_emission
     }
 
-    pub fn faces(&self) -> impl Iterator<Item = (&FaceName, &FaceData<'a>)> {
+    pub fn faces(&self) -> impl Iterator<Item = (&FaceName, &RawFaceData<'a>)> {
         self.faces.iter()
     }
 }
 
-#[derive(Deserialize, Debug, Hash, PartialEq, Eq, Clone, Copy)]
-pub enum FaceName {
-    #[serde(alias = "down")]
-    Down = 2,
-
-    #[serde(alias = "up")]
-    Up = 3,
-
-    #[serde(alias = "north")]
-    North = 4,
-
-    #[serde(alias = "south")]
-    South = 5,
-
-    #[serde(alias = "west")]
-    West = 0,
-
-    #[serde(alias = "east")]
-    East = 1,
-}
-
 #[derive(Deserialize, Debug)]
-pub struct FaceData<'a> {
+pub struct RawFaceData<'a> {
     #[serde(default = "default_uv")]
     uv: [f32; 4],
     #[serde(borrow)]
@@ -152,7 +103,7 @@ pub struct FaceData<'a> {
     tintindex: i32,
 }
 
-impl<'a> FaceData<'a> {
+impl<'a> RawFaceData<'a> {
     pub fn uv(&self) -> [f32; 4] {
         self.uv
     }
@@ -178,44 +129,9 @@ fn default_tint() -> i32 {
     -1
 }
 
-#[derive(Deserialize, Debug, Clone)]
-pub struct Rotation {
-    origin: [f32; 3],
-    axis: Axis,
-    angle: f32,
-    #[serde(default)]
-    rescale: bool,
-}
-
-impl Rotation {
-    pub fn origin(&self) -> &[f32; 3] {
-        &self.origin
-    }
-    pub fn axis(&self) -> Axis {
-        self.axis
-    }
-    pub fn angle(&self) -> f32 {
-        self.angle
-    }
-    pub fn rescale(&self) -> bool {
-        self.rescale
-    }
-}
-
-#[derive(Deserialize, Debug, Clone, Copy)]
-pub enum Axis {
-    #[serde(alias = "x")]
-    X,
-
-    #[serde(alias = "y")]
-    Y,
-
-    #[serde(alias = "z")]
-    Z,
-}
 #[cfg(test)]
 mod tests {
-    use crate::serde::block_model::RawBlockModel;
+    use crate::block_model::serde::RawBlockModel;
 
     #[test]
     fn test_block_model() {
