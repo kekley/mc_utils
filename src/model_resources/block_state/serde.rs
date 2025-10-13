@@ -5,7 +5,7 @@ use serde::Deserialize;
 pub enum BlockStateType<'a> {
     #[serde(borrow)]
     #[serde(alias = "variants")]
-    Variants(HashMap<&'a str, VariantType<'a>>),
+    Variants(HashMap<&'a str, RawVariantType<'a>>),
 
     #[serde(alias = "multipart")]
     Multipart(Vec<Case<'a>>),
@@ -13,7 +13,7 @@ pub enum BlockStateType<'a> {
 
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
-pub enum VariantType<'a> {
+pub enum RawVariantType<'a> {
     #[serde(borrow)]
     SingleVariant(ModelProperties<'a>),
     MultiVariant(Vec<ModelProperties<'a>>),

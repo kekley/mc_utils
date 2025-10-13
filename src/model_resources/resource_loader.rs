@@ -1,6 +1,6 @@
 use crate::block_state::interned::InternedCase;
+use crate::block_state::interned::InternedModelResult;
 use crate::block_state::interned::InternedVariantType;
-use crate::block_state::interned::VariantModelType;
 use std::{
     collections::VecDeque,
     fmt::Debug,
@@ -158,7 +158,7 @@ impl LoadedResources {
     pub fn get_models_for_block_properties(
         &self,
         mapped_state: &NBTStr,
-    ) -> Option<VariantModelType<'_>> {
+    ) -> Option<InternedModelResult<'_>> {
         let mapped_state_str = mapped_state.to_str();
         let (resource_location, variant_string) = mapped_state_str.split_once("#")?;
 
@@ -183,18 +183,18 @@ impl LoadedResources {
         &self,
         variant_map: &'a HashMap<Spur, InternedVariantType>,
         variant_string: &str,
-    ) -> Option<VariantModelType<'a>> {
+    ) -> Option<InternedModelResult<'a>> {
         let spur = self.interner.get(variant_string)?;
 
         variant_map
             .get(&spur)
             .map(|interned_variant| match interned_variant {
-                InternedVariantType::SingleVariant(interned_model_properties) => {
-                    VariantModelType::SingleModel(slice::from_ref(interned_model_properties))
+                InternedVariantType::SingleModel(interned_model_properties) => {
+                    InternedModelResult::SingleModel(slice::from_ref(interned_model_properties))
                 }
 
-                InternedVariantType::MultiVariant(items) => {
-                    VariantModelType::SingleModel(items.as_slice())
+                InternedVariantType::MultiModel(items) => {
+                    InternedModelResult::SingleModel(items.as_slice())
                 }
             })
     }
@@ -202,7 +202,7 @@ impl LoadedResources {
         &self,
         interned_cases: &'a [InternedCase],
         variant_string: &str,
-    ) -> Option<VariantModelType<'a>> {
+    ) -> Option<InternedModelResult<'a>> {
         let models = interned_cases
             .iter()
             .filter(|case| case.test_variant_string(variant_string, &self.interner))
@@ -213,7 +213,7 @@ impl LoadedResources {
             return None;
         }
 
-        Some(VariantModelType::Multipart(models))
+        Some(InternedModelResult::Multipart(models))
     }
 
     pub fn try_get_spur(&self, str: &str) -> Option<Spur> {

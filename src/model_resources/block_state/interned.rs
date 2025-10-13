@@ -3,11 +3,11 @@ use std::slice;
 use hashbrown::HashMap;
 use lasso::{Rodeo, Spur};
 
-use crate::block_state::serde::{Apply, BlockStateType, ModelProperties, VariantType, When};
+use crate::block_state::serde::{Apply, BlockStateType, ModelProperties, RawVariantType, When};
 
-pub enum VariantModelType<'a> {
+pub enum InternedModelResult<'a> {
     SingleModel(&'a [InternedModelProperties]),
-    Multipart(Vec<&'a [InternedModelProperties]>),
+    Multipart(Vec<&'a InternedVariantType>),
 }
 #[derive(Debug)]
 pub enum InternedBlockVariants {
@@ -21,7 +21,7 @@ impl InternedBlockVariants {
         mapped_state_spur: Spur,
         mapped_state_str: &str,
         interner: &Rodeo,
-    ) -> Option<VariantModelType<'_>> {
+    ) -> Option<InternedModelResult<'_>> {
         match self {
             InternedBlockVariants::Variants(hash_map) => {
                 let Some(variant_type) = hash_map.get(&mapped_state_spur) else {
@@ -29,21 +29,25 @@ impl InternedBlockVariants {
                     return None;
                 };
                 match variant_type {
-                    InternedVariantType::SingleVariant(interned_model_properties) => Some(
-                        VariantModelType::SingleModel(slice::from_ref(interned_model_properties)),
-                    ),
-                    InternedVariantType::MultiVariant(items) => {
-                        Some(VariantModelType::SingleModel(items))
+                    InternedVariantType::SingleModel(interned_model_properties) => {
+                        Some(InternedModelResult::SingleModel(slice::from_ref(
+                            interned_model_properties,
+                        )))
+                    }
+                    InternedVariantType::MultiModel(items) => {
+                        Some(InternedModelResult::SingleModel(items))
                     }
                 }
             }
-            InternedBlockVariants::Multipart(interned_cases) => Some(VariantModelType::Multipart(
-                interned_cases
-                    .iter()
-                    .filter(|case| case.test_variant_string(mapped_state_str, interner))
-                    .map(|case| case.get_models())
-                    .collect::<Vec<_>>(),
-            )),
+            InternedBlockVariants::Multipart(interned_cases) => {
+                Some(InternedModelResult::Multipart(
+                    interned_cases
+                        .iter()
+                        .filter(|case| case.test_variant_string(mapped_state_str, interner))
+                        .map(|case| case.get_models())
+                        .collect::<Vec<_>>(),
+                ))
+            }
         }
     }
 }
@@ -56,20 +60,20 @@ impl InternedBlockVariants {
                     .iter()
                     .map(|(properties, variants)| {
                         let variants = match variants {
-                            VariantType::SingleVariant(model_properties) => {
-                                InternedVariantType::SingleVariant(InternedModelProperties::intern(
+                            RawVariantType::SingleVariant(model_properties) => {
+                                InternedVariantType::SingleModel(InternedModelProperties::intern(
                                     model_properties,
                                     interner,
                                 ))
                             }
-                            VariantType::MultiVariant(items) => {
+                            RawVariantType::MultiVariant(items) => {
                                 let interned_items = items
                                     .iter()
                                     .map(|model_properties| {
                                         InternedModelProperties::intern(model_properties, interner)
                                     })
                                     .collect();
-                                InternedVariantType::MultiVariant(interned_items)
+                                InternedVariantType::MultiModel(interned_items)
                             }
                         };
                         (interner.get_or_intern(properties), variants)
@@ -124,17 +128,24 @@ impl InternedBlockVariants {
                             ),
                         });
                         let apply = match case.apply() {
-                            Apply::Single(model_properties) => InternedApply::Single(
-                                InternedModelProperties::intern(model_properties, interner),
-                            ),
-                            Apply::Many(items) => InternedApply::Many(
-                                items
-                                    .iter()
-                                    .map(|model_properties| {
-                                        InternedModelProperties::intern(model_properties, interner)
-                                    })
-                                    .collect(),
-                            ),
+                            Apply::Single(model_properties) => InternedApply {
+                                inner: InternedVariantType::SingleModel(
+                                    InternedModelProperties::intern(model_properties, interner),
+                                ),
+                            },
+                            Apply::Many(items) => InternedApply {
+                                inner: InternedVariantType::MultiModel(
+                                    items
+                                        .iter()
+                                        .map(|model_properties| {
+                                            InternedModelProperties::intern(
+                                                model_properties,
+                                                interner,
+                                            )
+                                        })
+                                        .collect(),
+                                ),
+                            },
                         };
 
                         InternedCase { when, apply }
@@ -145,19 +156,20 @@ impl InternedBlockVariants {
     }
 }
 
+///A Variant type can have a single model or multiple models from which one is chosen at random
 #[derive(Debug, Clone)]
 pub enum InternedVariantType {
-    SingleVariant(InternedModelProperties),
-    MultiVariant(Vec<InternedModelProperties>),
+    SingleModel(InternedModelProperties),
+    MultiModel(Vec<InternedModelProperties>),
 }
 
 #[derive(Debug, Clone)]
 pub struct InternedModelProperties {
-    model: Spur,
-    x: i32,
-    y: i32,
-    uvlock: bool,
-    weight: i32,
+    pub(crate) model: Spur,
+    pub(crate) x: i32,
+    pub(crate) y: i32,
+    pub(crate) uvlock: bool,
+    pub(crate) weight: i32,
 }
 
 impl InternedModelProperties {
@@ -199,39 +211,29 @@ fn default_weight() -> i32 {
 
 #[derive(Debug)]
 pub struct InternedCase {
-    when: Option<InternedWhen>,
-    apply: InternedApply,
+    pub(crate) when: InternedWhen,
+    pub(crate) apply: InternedApply,
 }
 impl InternedCase {
-    pub fn test_variant_string(&self, mapped_state_str: &str, rodeo: &Rodeo) -> bool {
-        if let Some(when) = &self.when {
-            when.test_variant_string(mapped_state_str, rodeo)
-        } else {
-            true
-        }
+    pub fn test_variant_string(&self, variant_str: &str, rodeo: &Rodeo) -> bool {
+        self.when.test_variant_string(variant_str, rodeo)
     }
-    pub fn get_models(&self) -> &[InternedModelProperties] {
-        match &self.apply {
-            InternedApply::Single(interned_model_properties) => {
-                slice::from_ref(interned_model_properties)
-            }
-            InternedApply::Many(items) => items.as_slice(),
-        }
+    pub fn get_models(&self) -> &InternedVariantType {
+        &self.apply.inner
     }
 }
 
 #[derive(Debug)]
-pub enum InternedApply {
-    Single(InternedModelProperties),
-    Many(Vec<InternedModelProperties>),
+pub struct InternedApply {
+    inner: InternedVariantType,
 }
 
-//TODO deserialize this better
 #[derive(Debug)]
 pub enum InternedWhen {
     Or(Vec<HashMap<Spur, Spur>>),
     And(Vec<HashMap<Spur, Spur>>),
     SingleState(HashMap<Spur, Spur>),
+    Empty,
 }
 
 impl InternedWhen {
@@ -242,6 +244,7 @@ impl InternedWhen {
             InternedWhen::SingleState(hash_map) => {
                 Self::single_case(hash_map.iter(), variant_string, rodeo)
             }
+            InternedWhen::Empty => true,
         }
     }
     fn or_case(cases: &[HashMap<Spur, Spur>], variant_string: &str, rodeo: &Rodeo) -> bool {
