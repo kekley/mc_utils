@@ -2,108 +2,6 @@ use hashbrown::HashMap;
 
 use crate::block_state::common::BlockRotation;
 
-mod conversion {
-    use lasso::{Rodeo, RodeoResolver};
-
-    use crate::block_state::interned::{
-        InternedApply, InternedBlockVariants, InternedCase, InternedModelProperties,
-        InternedVariantType, InternedWhen,
-    };
-
-    use super::*;
-    fn from_interned_variants<'data>(
-        interned: &InternedBlockVariants,
-        interner: &'data RodeoResolver,
-    ) -> BlockVariants<'data> {
-        match interned {
-            InternedBlockVariants::Variants(hash_map) => from_variants(hash_map, interner),
-            InternedBlockVariants::Multipart(interned_cases) => todo!(),
-        }
-    }
-
-    fn from_multipart<'data>(
-        cases: &[InternedCase],
-        interner: &'data RodeoResolver,
-    ) -> BlockVariants<'data> {
-        BlockVariants::Multipart(
-            cases
-                .iter()
-                .map(|case| from_case(case, interner))
-                .collect::<Vec<_>>(),
-        )
-    }
-
-    fn from_case<'data>(case: &InternedCase, interner: &'data RodeoResolver) -> Case<'data> {
-        let InternedCase { when, apply } = case;
-
-        Case {
-            when: from_when(when, interner),
-            apply: (),
-        }
-    }
-
-    fn from_when<'data>(when: &InternedWhen, interner: &'data RodeoResolver) -> When<'data> {
-        todo!()
-    }
-    fn from_apply<'data>(apply: &InternedApply, interner: &'data RodeoResolver) -> Apply<'data> {
-        todo!()
-    }
-
-    fn from_variants<'data>(
-        hash_map: &HashMap<lasso::Spur, crate::block_state::interned::InternedVariantType>,
-        interner: &'data RodeoResolver,
-    ) -> BlockVariants<'data> {
-        let new_map = hash_map
-            .iter()
-            .map(|(k, v)| {
-                let new_key = interner.resolve(k);
-                let new_val = from_variant_types(v, interner);
-
-                (new_key, new_val)
-            })
-            .collect::<HashMap<_, _>>();
-        BlockVariants::Variants(new_map)
-    }
-
-    fn from_variant_types<'data>(
-        types: &InternedVariantType,
-        interner: &'data RodeoResolver,
-    ) -> VariantType<'data> {
-        match types {
-            InternedVariantType::SingleModel(interned_model_properties) => {
-                VariantType::SingleModel(from_model_properties(interned_model_properties, interner))
-            }
-            InternedVariantType::MultiModel(items) => VariantType::MultiModel(
-                items
-                    .iter()
-                    .map(|properties| from_model_properties(properties, interner))
-                    .collect::<Vec<_>>(),
-            ),
-        }
-    }
-
-    fn from_model_properties<'data>(
-        model_properties: &InternedModelProperties,
-        interner: &'data RodeoResolver,
-    ) -> ModelProperties<'data> {
-        let InternedModelProperties {
-            model,
-            x,
-            y,
-            uvlock,
-            weight,
-        } = model_properties;
-
-        ModelProperties {
-            model_resource_path: interner.resolve(&model),
-            x_rotation: BlockRotation::try_from(x).unwrap(),
-            y_rotation: BlockRotation::try_from(y).unwrap(),
-            uvlock: *uvlock,
-            weight: *weight,
-        }
-    }
-}
-
 ///A structure for getting the "resource path" for a block model from a block's data
 #[derive(Debug, Clone)]
 pub enum BlockVariants<'data> {
@@ -111,9 +9,32 @@ pub enum BlockVariants<'data> {
     Multipart(Vec<Case<'data>>),
 }
 
-pub enum ModelResult<'variants, 'data> {
-    SingleModel(&'variants [ModelProperties<'data>]),
-    Multipart(Vec<&'variants VariantType<'data>>),
+impl BlockVariants<'_> {
+    pub fn get_models_for_block_properties<'a>(
+        &'a self,
+        variant_str: &str,
+    ) -> Option<ModelResult<'a>> {
+        Some(match self {
+            BlockVariants::Variants(hash_map) => match hash_map.get(variant_str)? {
+                VariantType::SingleModel(model_properties) => {
+                    ModelResult::SingleModel(std::slice::from_ref(model_properties))
+                }
+                VariantType::MultiModel(items) => ModelResult::SingleModel(items),
+            },
+            BlockVariants::Multipart(cases) => ModelResult::Multipart(
+                cases
+                    .iter()
+                    .filter(|case| case.when.test_variant_string(variant_str))
+                    .map(|case| case.apply.to_slice())
+                    .collect::<Vec<_>>(),
+            ),
+        })
+    }
+}
+
+pub enum ModelResult<'data> {
+    SingleModel(&'data [ModelProperties<'data>]),
+    Multipart(Vec<&'data [ModelProperties<'data>]>),
 }
 
 ///A Variant type can have a single model or multiple models from which one is chosen at random
@@ -126,8 +47,18 @@ pub enum VariantType<'data> {
 ///A "Case" consists of a "When" clause and a model to "Apply" when that clause is met
 #[derive(Debug, Clone)]
 pub struct Case<'data> {
-    when: When<'data>,
-    apply: Apply<'data>,
+    pub(crate) when: When<'data>,
+    pub(crate) apply: Apply<'data>,
+}
+
+impl Case<'_> {
+    pub fn test_variant_string(&self, variant_str: &str) -> bool {
+        self.when.test_variant_string(variant_str)
+    }
+
+    pub(crate) fn get_models(&self) -> &[ModelProperties<'_>] {
+        self.apply.to_slice()
+    }
 }
 
 ///A list of blockstates that are to be matched for the "When" clause to be met
@@ -135,7 +66,7 @@ pub struct Case<'data> {
 pub enum When<'data> {
     Or(WhenStateList<'data>),
     And(WhenStateList<'data>),
-    SingleState(&'data str, &'data str),
+    SingleState(WhenStateList<'data>),
     Empty,
 }
 
@@ -144,8 +75,8 @@ impl When<'_> {
         match self {
             When::Or(when_state_list) => when_state_list.or_case(variant_str),
             When::And(when_state_list) => when_state_list.and_case(variant_str),
-            When::SingleState(name, prop) => {
-                WhenStateList::test_single_case(std::iter::once((*name, *prop)), variant_str)
+            When::SingleState(case) => {
+                WhenStateList::test_single_case(case.iter_states().next().unwrap(), variant_str)
             }
             When::Empty => true,
         }
@@ -159,13 +90,22 @@ pub enum Apply<'data> {
     Many(Vec<ModelProperties<'data>>),
 }
 
+impl Apply<'_> {
+    pub fn to_slice(&self) -> &[ModelProperties<'_>] {
+        match self {
+            Apply::Single(model_properties) => std::slice::from_ref(model_properties),
+            Apply::Many(items) => items,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ModelProperties<'data> {
-    model_resource_path: &'data str,
-    x_rotation: BlockRotation,
-    y_rotation: BlockRotation,
-    uvlock: bool,
-    weight: i32,
+    pub(crate) model_resource_path: &'data str,
+    pub(crate) x_rotation: BlockRotation,
+    pub(crate) y_rotation: BlockRotation,
+    pub(crate) uvlock: bool,
+    pub(crate) weight: i32,
 }
 
 impl<'data> ModelProperties<'data> {
@@ -188,12 +128,12 @@ impl<'data> ModelProperties<'data> {
 
 #[derive(Debug, Clone)]
 pub struct WhenStateList<'data> {
-    data: Vec<WhenState<'data>>,
+    pub(crate) data: Vec<WhenElement<'data>>,
 }
 
 ///Iterates through the properties in a single "blockstate" of the ones present in a "when" clause
 pub struct CaseIter<'data, 'list> {
-    data: &'list [WhenState<'data>],
+    data: &'list [WhenElement<'data>],
 }
 
 impl<'a, 'list> Iterator for CaseIter<'a, 'list> {
@@ -201,8 +141,8 @@ impl<'a, 'list> Iterator for CaseIter<'a, 'list> {
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.data.first()? {
-            WhenState::End => None,
-            WhenState::State(name, value) => {
+            WhenElement::End => None,
+            WhenElement::Property(name, value) => {
                 self.data = &self.data[1..];
                 Some((name, value))
             }
@@ -247,7 +187,7 @@ impl<'data> WhenStateList<'data> {
 }
 
 pub struct WhenStatesIter<'a, 'list> {
-    data: &'list [WhenState<'a>],
+    data: &'list [WhenElement<'a>],
 }
 
 impl<'a, 'list> Iterator for WhenStatesIter<'list, 'a>
@@ -264,8 +204,8 @@ where
             .data
             .iter()
             .position(|state| match state {
-                WhenState::End => true,
-                WhenState::State(_, _) => false,
+                WhenElement::End => true,
+                WhenElement::Property(_, _) => false,
             })
             .expect("Invalid When clause iterator");
 
@@ -277,10 +217,10 @@ where
     }
 }
 
-///Either a (property_name, property_value) tuple or a sentinel for the end of the current
+///Either a (`property_name`,`property_value`) tuple or a sentinel for the end of the current
 ///"blockstate"
 #[derive(Debug, Clone)]
-enum WhenState<'a> {
+pub(crate) enum WhenElement<'a> {
     End,
-    State(&'a str, &'a str),
+    Property(&'a str, &'a str),
 }

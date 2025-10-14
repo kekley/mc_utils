@@ -1,24 +1,21 @@
-use crate::block_state::interned::InternedCase;
-use crate::block_state::interned::InternedModelResult;
-use crate::block_state::interned::InternedVariantType;
+use crate::block_model::intern::intern_block_model;
+use crate::block_state::borrow::{BlockVariants, Case, ModelResult, VariantType};
+use crate::block_state::intern::intern_blockstate_type;
+use crate::{block_model::borrow::BlockModel, block_state::common::UniqueStrings};
+use hashbrown::HashMap;
 use std::{
     collections::VecDeque,
     fmt::Debug,
     fs,
     path::{Path, PathBuf},
-    slice,
     time::Instant,
 };
 
 use compact_str::CompactString;
-use hashbrown::HashMap;
-use lasso::{Rodeo, Spur};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
-    block_model::{interned::InternedBlockModel, serde::RawBlockModel},
-    block_state::{interned::InternedBlockVariants, serde::BlockStateType},
-    borrow::nbt_string::NBTStr,
+    block_model::serde::RawBlockModel, block_state::serde::RawBlockVariants,
     error::spider_eye_error::SpiderEyeError,
 };
 
@@ -66,16 +63,28 @@ impl ResourceType {
     }
 }
 
-pub trait InternedResource {
+trait InternedResource<'b> {
     type View<'a>: Resource<'a, Interned = Self>;
 }
 
-pub trait Resource<'a>: Send + Debug + Sized {
-    type Interned: InternedResource;
+impl InternedResource<'_> for BlockVariants<'static> {
+    type View<'a> = RawBlockVariants<'a>;
+}
+
+impl InternedResource<'_> for BlockModel<'static> {
+    type View<'a> = RawBlockModel<'a>;
+}
+
+impl InternedResource<'_> for Box<[u8]> {
+    type View<'a> = Box<[u8]>;
+}
+
+trait Resource<'a>: Send + Debug + Sized {
+    type Interned;
     fn load(data: &'a mut [u8]) -> Option<Self>;
     fn folder_name() -> &'static str;
     fn extension() -> &'static str;
-    fn intern(self, interner: &mut Rodeo) -> Self::Interned;
+    fn intern(self, strings: &mut UniqueStrings) -> Self::Interned;
 }
 
 impl Resource<'_> for Box<[u8]> {
@@ -92,14 +101,14 @@ impl Resource<'_> for Box<[u8]> {
         "png"
     }
 
-    fn intern(self, _interner: &mut Rodeo) -> Self::Interned {
+    fn intern(self, _strings: &mut UniqueStrings) -> Self::Interned {
         self
     }
 }
 
-impl<'a> Resource<'a> for BlockStateType<'a> {
-    type Interned = InternedBlockVariants;
-    fn load(data: &'a mut [u8]) -> Option<BlockStateType<'a>> {
+impl<'a> Resource<'a> for RawBlockVariants<'a> {
+    type Interned = BlockVariants<'static>;
+    fn load(data: &'a mut [u8]) -> Option<RawBlockVariants<'a>> {
         simd_json::serde::from_slice(data).ok()?
     }
 
@@ -111,13 +120,13 @@ impl<'a> Resource<'a> for BlockStateType<'a> {
         "json"
     }
 
-    fn intern(self, interner: &mut Rodeo) -> Self::Interned {
-        InternedBlockVariants::intern_blockstate(self, interner)
+    fn intern(self, strings: &mut UniqueStrings) -> Self::Interned {
+        intern_blockstate_type(self, strings)
     }
 }
 
 impl<'a> Resource<'a> for RawBlockModel<'a> {
-    type Interned = InternedBlockModel;
+    type Interned = BlockModel<'static>;
     fn load(data: &'a mut [u8]) -> Option<RawBlockModel<'a>> {
         simd_json::serde::from_slice(data).ok()?
     }
@@ -130,108 +139,20 @@ impl<'a> Resource<'a> for RawBlockModel<'a> {
         "json"
     }
 
-    fn intern(self, interner: &mut Rodeo) -> Self::Interned {
-        InternedBlockModel::intern_block_model(self, interner)
+    fn intern(self, strings: &mut UniqueStrings) -> Self::Interned {
+        intern_block_model(self, strings)
     }
 }
 
-impl InternedResource for Box<[u8]> {
-    type View<'a> = Box<[u8]>;
+pub struct ResourceLoader {
+    _strings: UniqueStrings,
+    textures: HashMap<CompactString, Box<[u8]>>,
+    models: HashMap<CompactString, BlockModel<'static>>,
+    variants: HashMap<CompactString, BlockVariants<'static>>,
 }
 
-impl InternedResource for InternedBlockModel {
-    type View<'a> = RawBlockModel<'a>;
-}
-
-impl InternedResource for InternedBlockVariants {
-    type View<'a> = BlockStateType<'a>;
-}
-
-pub struct LoadedResources {
-    pub interner: Rodeo,
-    pub textures: HashMap<CompactString, Box<[u8]>>,
-    pub models: HashMap<CompactString, InternedBlockModel>,
-    pub variants: HashMap<CompactString, InternedBlockVariants>,
-}
-
-impl LoadedResources {
-    pub fn get_models_for_block_properties(
-        &self,
-        mapped_state: &NBTStr,
-    ) -> Option<InternedModelResult<'_>> {
-        let mapped_state_str = mapped_state.to_str();
-        let (resource_location, variant_string) = mapped_state_str.split_once("#")?;
-
-        let Some(variants) = self.variants.get(resource_location) else {
-            eprintln!("{resource_location} did not have any loaded variants");
-            return None;
-        };
-
-        let variant_type = match variants {
-            InternedBlockVariants::Variants(hash_map) => {
-                self.get_variants(hash_map, variant_string)
-            }
-            InternedBlockVariants::Multipart(interned_cases) => {
-                self.get_multiparts(interned_cases, variant_string)
-            }
-        };
-
-        variant_type
-    }
-
-    fn get_variants<'a>(
-        &self,
-        variant_map: &'a HashMap<Spur, InternedVariantType>,
-        variant_string: &str,
-    ) -> Option<InternedModelResult<'a>> {
-        let spur = self.interner.get(variant_string)?;
-
-        variant_map
-            .get(&spur)
-            .map(|interned_variant| match interned_variant {
-                InternedVariantType::SingleModel(interned_model_properties) => {
-                    InternedModelResult::SingleModel(slice::from_ref(interned_model_properties))
-                }
-
-                InternedVariantType::MultiModel(items) => {
-                    InternedModelResult::SingleModel(items.as_slice())
-                }
-            })
-    }
-    fn get_multiparts<'a>(
-        &self,
-        interned_cases: &'a [InternedCase],
-        variant_string: &str,
-    ) -> Option<InternedModelResult<'a>> {
-        let models = interned_cases
-            .iter()
-            .filter(|case| case.test_variant_string(variant_string, &self.interner))
-            .map(|case| case.get_models())
-            .collect::<Vec<_>>();
-        if models.is_empty() {
-            eprintln!("no models from multipart");
-            return None;
-        }
-
-        Some(InternedModelResult::Multipart(models))
-    }
-
-    pub fn try_get_spur(&self, str: &str) -> Option<Spur> {
-        self.interner.get(str)
-    }
-    pub fn get_texture_data(&self, resource_location: &str) -> Option<&[u8]> {
-        self.textures.get(resource_location).map(|b| b.as_ref())
-    }
-
-    pub fn get_model_data(&self, resource_location: &str) -> Option<&InternedBlockModel> {
-        self.models.get(resource_location)
-    }
-
-    pub fn get_variant_data(&self, resource_location: &str) -> Option<&InternedBlockVariants> {
-        self.variants.get(resource_location)
-    }
-
-    pub fn load_resource_folder(path: &Path) -> Result<LoadedResources, SpiderEyeError> {
+impl ResourceLoader {
+    pub fn load_resource_folder(path: &Path) -> Result<ResourceLoader, SpiderEyeError> {
         let resource_folder = std::fs::read_dir(path)?;
         let mut texture_files: HashMap<CompactString, Box<[u8]>> = Default::default();
 
@@ -245,30 +166,31 @@ impl LoadedResources {
             println!("{namespace_path:?}");
 
             println!("textures");
-            if let Some(textures) = LoadedResources::traverse_and_load::<Box<[u8]>>(&namespace_path)
+            if let Some(textures) = ResourceLoader::traverse_and_load::<Box<[u8]>>(&namespace_path)
             {
                 texture_files.extend(textures);
             }
 
             println!("models");
             if let Some(models) =
-                LoadedResources::traverse_and_load::<RawBlockModel<'static>>(&namespace_path)
+                ResourceLoader::traverse_and_load::<RawBlockModel<'static>>(&namespace_path)
             {
                 model_files.extend(models);
             }
 
             println!("blockstates");
             if let Some(block_states) =
-                LoadedResources::traverse_and_load::<BlockStateType<'static>>(&namespace_path)
+                ResourceLoader::traverse_and_load::<RawBlockVariants<'static>>(&namespace_path)
             {
                 blockstate_files.extend(block_states);
             }
         });
 
-        let mut interner = Rodeo::new();
+        let mut strings = UniqueStrings::new();
 
         let start = Instant::now();
-        let models = LoadedResources::parse_and_intern(&mut interner, model_files);
+        let models =
+            ResourceLoader::parse_and_intern::<BlockModel<'static>>(&mut strings, model_files);
         let end = Instant::now();
         println!("interned models: {:?}", end.duration_since(start));
 
@@ -278,12 +200,15 @@ impl LoadedResources {
         println!("interned textures {:?}", end.duration_since(start));
 
         let start = Instant::now();
-        let variants = LoadedResources::parse_and_intern(&mut interner, blockstate_files);
+        let variants = ResourceLoader::parse_and_intern::<BlockVariants<'static>>(
+            &mut strings,
+            blockstate_files,
+        );
         let end = Instant::now();
         println!("interned variants {:?}", end.duration_since(start));
 
-        Ok(Self {
-            interner,
+        Ok(ResourceLoader {
+            _strings: strings,
             textures,
             models,
             variants,
@@ -359,7 +284,6 @@ impl LoadedResources {
                     resource_path.push('/');
                 }
                 resource_path.push_str(block_name);
-                println!("{resource_path}");
 
                 let data = fs::read(path).ok()?;
 
@@ -375,21 +299,92 @@ impl LoadedResources {
     }
 
     fn parse_and_intern<T>(
-        interner: &mut Rodeo,
+        strings: &mut UniqueStrings,
         files: HashMap<CompactString, Box<[u8]>>,
     ) -> HashMap<CompactString, T>
     where
-        T: InternedResource,
+        T: InternedResource<'static>,
     {
         let resources: HashMap<CompactString, T> = files
             .into_iter()
             .filter_map(|(resource_path, mut data)| {
                 let resource = T::View::load(data.as_mut())?;
-                let interned = T::View::intern(resource, interner);
+                println!("interning:{resource_path}");
+                let interned = T::View::intern(resource, strings);
 
                 Some((resource_path, interned))
             })
             .collect();
         resources
+    }
+}
+
+impl ResourceLoader {
+    pub fn get_model_for_mapped_state<'a>(
+        &'a self,
+        mapped_state_str: &str,
+    ) -> Option<ModelResult<'a>> {
+        let (resource_location, variant_string) = mapped_state_str.split_once("#")?;
+
+        let variants = self.variants.get(resource_location)?;
+
+        match variants {
+            BlockVariants::Variants(hash_map) => Self::get_variants(hash_map, variant_string),
+            BlockVariants::Multipart(cases) => Self::get_multiparts(cases, variant_string),
+        }
+    }
+
+    fn get_variants<'a>(
+        variants: &'a HashMap<&'static str, VariantType<'static>>,
+        variant_string: &str,
+    ) -> Option<ModelResult<'a>> {
+        variants.get(variant_string).map(|variant| match variant {
+            VariantType::SingleModel(interned_model_properties) => {
+                ModelResult::SingleModel(std::slice::from_ref(interned_model_properties))
+            }
+
+            VariantType::MultiModel(items) => ModelResult::SingleModel(items.as_slice()),
+        })
+    }
+    fn get_multiparts<'a>(
+        cases: &'a [Case<'static>],
+        variant_string: &str,
+    ) -> Option<ModelResult<'a>> {
+        let models = cases
+            .iter()
+            .filter(|case| case.test_variant_string(variant_string))
+            .map(|case| case.get_models())
+            .collect::<Vec<_>>();
+        if models.is_empty() {
+            eprintln!("no models from multipart");
+            return None;
+        }
+
+        Some(ModelResult::Multipart(models))
+    }
+    pub fn get_texture_data(&self, resource_location: &str) -> Option<&[u8]> {
+        self.textures.get(resource_location).map(|b| b.as_ref())
+    }
+
+    pub fn get_model_data(&self, resource_location: &str) -> Option<&BlockModel<'_>> {
+        self.models.get(resource_location)
+    }
+
+    pub fn get_variant_data(&self, resource_location: &str) -> Option<&BlockVariants<'_>> {
+        self.variants.get(resource_location)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resource_folder() {
+        let a =
+            ResourceLoader::load_resource_folder(&PathBuf::from("./test_assets/assets/")).unwrap();
+        let models = a.models;
+
+        println!("{:?}", models);
     }
 }

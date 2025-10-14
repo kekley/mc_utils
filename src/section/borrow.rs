@@ -1,7 +1,6 @@
 use crate::blockstate::borrow::BlockState;
 use crate::borrow::nbt_compound::unaligned_types::BigEndianLong;
 use crate::borrow::nbt_compound::NBTCompound;
-use crate::borrow::nbt_compound::NBTCompoundIter;
 use crate::borrow::nbt_list::CompoundList;
 use crate::borrow::nbt_list::CompoundListIter;
 use crate::borrow::nbt_list::ListType;

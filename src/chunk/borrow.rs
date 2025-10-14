@@ -8,7 +8,7 @@ pub struct Chunk<'a> {
     compound: RootNBTCompound<'a>,
     packing_type: PackingType,
     x_pos: i32,
-    y_pos: i32,
+    _y_pos: i32,
     z_pos: i32,
 }
 
@@ -34,7 +34,7 @@ impl<'a> Chunk<'a> {
             compound,
             packing_type,
             x_pos,
-            y_pos,
+            _y_pos: y_pos,
             z_pos,
         })
     }

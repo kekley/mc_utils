@@ -21,6 +21,19 @@ pub mod face_name {
         #[serde(alias = "east")]
         East = 1,
     }
+    impl FaceName {
+        pub fn from_usize(num: usize) -> Option<FaceName> {
+            match num {
+                0 => Some(FaceName::West),
+                1 => Some(FaceName::East),
+                2 => Some(FaceName::Up),
+                3 => Some(FaceName::Down),
+                4 => Some(FaceName::North),
+                5 => Some(FaceName::South),
+                _ => None,
+            }
+        }
+    }
 }
 
 pub mod rotation {

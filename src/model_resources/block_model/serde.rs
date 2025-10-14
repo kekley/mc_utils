@@ -10,16 +10,16 @@ use crate::{
 pub struct RawBlockModel<'a> {
     #[serde(default)]
     #[serde(borrow)]
-    parent: Option<&'a str>,
+    pub(crate) parent: Option<&'a str>,
     #[serde(default)]
-    ambient_occlusion: bool,
+    pub(crate) ambient_occlusion: bool,
     #[serde(default)]
-    display: HashMap<DisplayPosition, PositionData>,
+    pub(crate) display: HashMap<DisplayPosition, PositionData>,
     #[serde(default)]
     #[serde(borrow)]
-    textures: HashMap<&'a str, &'a str>,
+    pub(crate) textures: HashMap<&'a str, &'a str>,
     #[serde(default)]
-    elements: Vec<RawElement<'a>>,
+    pub(crate) elements: Vec<RawElement<'a>>,
 }
 
 impl<'a> RawBlockModel<'a> {
@@ -49,17 +49,17 @@ impl<'a> RawBlockModel<'a> {
 
 #[derive(Deserialize, Debug)]
 pub struct RawElement<'a> {
-    from: [f32; 3],
-    to: [f32; 3],
+    pub(crate) from: [f32; 3],
+    pub(crate) to: [f32; 3],
     #[serde(default)]
-    rotation: Option<Rotation>,
+    pub(crate) rotation: Option<Rotation>,
     #[serde(default)]
-    shade: bool,
+    pub(crate) shade: bool,
     #[serde(default)]
-    light_emission: i32,
+    pub(crate) light_emission: i32,
     #[serde(default)]
     #[serde(borrow)]
-    faces: HashMap<FaceName, RawFaceData<'a>>,
+    pub(crate) faces: HashMap<FaceName, RawFaceData<'a>>,
 }
 
 impl<'a> RawElement<'a> {
@@ -92,15 +92,15 @@ impl<'a> RawElement<'a> {
 #[derive(Deserialize, Debug)]
 pub struct RawFaceData<'a> {
     #[serde(default = "default_uv")]
-    uv: [f32; 4],
+    pub(crate) uv: [f32; 4],
     #[serde(borrow)]
-    texture: &'a str,
+    pub(crate) texture: &'a str,
     #[serde(default)]
-    cullface: Option<FaceName>,
+    pub(crate) cullface: Option<FaceName>,
     #[serde(default)]
-    rotation: i32,
+    pub(crate) rotation: i32,
     #[serde(default = "default_tint")]
-    tintindex: i32,
+    pub(crate) tintindex: i32,
 }
 
 impl<'a> RawFaceData<'a> {
@@ -138,7 +138,7 @@ mod tests {
         let file =
             include_str!("../../../test_assets/assets/minecraft/models/block/bamboo4_age0.json");
         let a: Result<RawBlockModel<'static>, serde_json::Error> = serde_json::de::from_str(file);
-        let b = a.map_err(|err| eprintln!("{err:?}")).unwrap();
+        let _b = a.map_err(|err| eprintln!("{err:?}")).unwrap();
     }
 
     #[test]
@@ -154,7 +154,7 @@ mod tests {
                 let a: Result<RawBlockModel<'_>, serde_json::Error> =
                     serde_json::de::from_str(file.as_str());
 
-                let b = a.map_err(|err| eprintln!("{err:?}")).unwrap();
+                let _b = a.map_err(|err| eprintln!("{err:?}")).unwrap();
             }
         }
     }

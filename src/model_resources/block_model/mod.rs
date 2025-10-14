@@ -1,4 +1,4 @@
 pub mod borrow;
 pub mod common;
-pub mod interned;
+pub(crate) mod intern;
 pub mod serde;

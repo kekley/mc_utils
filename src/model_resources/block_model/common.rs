@@ -3,10 +3,10 @@ use serde::Deserialize;
 #[derive(Debug, Deserialize, Clone)]
 pub struct PositionData {
     #[serde(default)]
-    rotation: [f32; 3],
-    translation: [f32; 3],
+    _rotation: [f32; 3],
+    _translation: [f32; 3],
     #[serde(default = "default_scale")]
-    scale: [f32; 3],
+    _scale: [f32; 3],
 }
 
 fn default_scale() -> [f32; 3] {
