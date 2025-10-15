@@ -33,15 +33,15 @@ impl BlockVariants<'_> {
 }
 
 pub enum ModelResult<'data> {
-    SingleModel(&'data [ModelProperties<'data>]),
-    Multipart(Vec<&'data [ModelProperties<'data>]>),
+    SingleModel(&'data [BlockModelInfo<'data>]),
+    Multipart(Vec<&'data [BlockModelInfo<'data>]>),
 }
 
 ///A Variant type can have a single model or multiple models from which one is chosen at random
 #[derive(Debug, Clone)]
 pub enum VariantType<'data> {
-    SingleModel(ModelProperties<'data>),
-    MultiModel(Vec<ModelProperties<'data>>),
+    SingleModel(BlockModelInfo<'data>),
+    MultiModel(Vec<BlockModelInfo<'data>>),
 }
 
 ///A "Case" consists of a "When" clause and a model to "Apply" when that clause is met
@@ -56,7 +56,7 @@ impl Case<'_> {
         self.when.test_variant_string(variant_str)
     }
 
-    pub(crate) fn get_models(&self) -> &[ModelProperties<'_>] {
+    pub(crate) fn get_models(&self) -> &[BlockModelInfo<'_>] {
         self.apply.to_slice()
     }
 }
@@ -86,12 +86,12 @@ impl When<'_> {
 ///The model to be applied when a "When" clause is met
 #[derive(Debug, Clone)]
 pub enum Apply<'data> {
-    Single(ModelProperties<'data>),
-    Many(Vec<ModelProperties<'data>>),
+    Single(BlockModelInfo<'data>),
+    Many(Vec<BlockModelInfo<'data>>),
 }
 
 impl Apply<'_> {
-    pub fn to_slice(&self) -> &[ModelProperties<'_>] {
+    pub fn to_slice(&self) -> &[BlockModelInfo<'_>] {
         match self {
             Apply::Single(model_properties) => std::slice::from_ref(model_properties),
             Apply::Many(items) => items,
@@ -100,7 +100,7 @@ impl Apply<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub struct ModelProperties<'data> {
+pub struct BlockModelInfo<'data> {
     pub(crate) model_resource_path: &'data str,
     pub(crate) x_rotation: BlockRotation,
     pub(crate) y_rotation: BlockRotation,
@@ -108,7 +108,7 @@ pub struct ModelProperties<'data> {
     pub(crate) weight: i32,
 }
 
-impl<'data> ModelProperties<'data> {
+impl<'data> BlockModelInfo<'data> {
     pub fn get_resource_path(&self) -> &str {
         self.model_resource_path
     }

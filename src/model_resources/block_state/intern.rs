@@ -2,7 +2,7 @@ use hashbrown::HashMap;
 
 use crate::block_state::{
     borrow::{
-        Apply, BlockVariants, Case, ModelProperties, VariantType, When, WhenElement, WhenStateList,
+        Apply, BlockModelInfo, BlockVariants, Case, VariantType, When, WhenElement, WhenStateList,
     },
     common::{BlockRotation, UniqueStrings},
     serde::{
@@ -125,7 +125,7 @@ fn intern_variants(
 fn intern_properties(
     properties: RawModelProperties<'_>,
     strings: &mut UniqueStrings,
-) -> ModelProperties<'static> {
+) -> BlockModelInfo<'static> {
     let RawModelProperties {
         model,
         x,
@@ -136,7 +136,7 @@ fn intern_properties(
 
     let interned = strings.get_or_insert(model);
 
-    ModelProperties {
+    BlockModelInfo {
         model_resource_path: interned,
         x_rotation: BlockRotation::try_from(x).unwrap(),
         y_rotation: BlockRotation::try_from(y).unwrap(),

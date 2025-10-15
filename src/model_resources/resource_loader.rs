@@ -366,7 +366,7 @@ impl ResourceLoader {
         self.textures.get(resource_location).map(|b| b.as_ref())
     }
 
-    pub fn get_model_data(&self, resource_location: &str) -> Option<&BlockModel<'_>> {
+    pub fn get_block_model(&self, resource_location: &str) -> Option<&BlockModel<'_>> {
         self.models.get(resource_location)
     }
 

@@ -4,12 +4,22 @@ use bumpalo::Bump;
 use hashbrown::HashSet;
 
 ///A Rotation at the block level that only works in 90 degree increments
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BlockRotation {
     Zero,
     Ninety,
     OneEighty,
     TwoSeventy,
+}
+impl BlockRotation {
+    pub fn to_degrees(self) -> f32 {
+        match self {
+            BlockRotation::Zero => 0.0,
+            BlockRotation::Ninety => 90.0,
+            BlockRotation::OneEighty => 180.0,
+            BlockRotation::TwoSeventy => 270.0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

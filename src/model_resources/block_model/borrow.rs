@@ -13,3 +13,25 @@ pub struct BlockModel<'a> {
     pub textures: HashMap<&'a str, &'a str>,
     pub elements: Vec<Element<'a>>,
 }
+
+impl BlockModel<'_> {
+    pub fn get_parent(&self) -> Option<&str> {
+        self.parent
+    }
+
+    pub fn get_ambient_occlusion(&self) -> bool {
+        self.ambient_occlusion
+    }
+
+    pub fn get_display(&self) -> &HashMap<DisplayPosition, PositionData> {
+        &self.display
+    }
+
+    pub fn get_textures(&self) -> &HashMap<&str, &str> {
+        &self.textures
+    }
+
+    pub fn get_elements(&self) -> &[Element<'_>] {
+        &self.elements
+    }
+}
