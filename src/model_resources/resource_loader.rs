@@ -128,7 +128,7 @@ impl<'a> Resource<'a> for RawBlockVariants<'a> {
 impl<'a> Resource<'a> for RawBlockModel<'a> {
     type Interned = BlockModel<'static>;
     fn load(data: &'a mut [u8]) -> Option<RawBlockModel<'a>> {
-        simd_json::serde::from_slice(data).ok()?
+        simd_json::serde::from_slice(data).ok().unwrap()
     }
 
     fn folder_name() -> &'static str {
@@ -324,9 +324,16 @@ impl ResourceLoader {
         &'a self,
         mapped_state_str: &str,
     ) -> Option<ModelResult<'a>> {
+        println!("{mapped_state_str}");
         let (resource_location, variant_string) = mapped_state_str.split_once("#")?;
+        println!("{resource_location}, {variant_string}");
 
-        let variants = self.variants.get(resource_location)?;
+        let variants = if let Some(variant) = self.variants.get(resource_location) {
+            variant
+        } else {
+            println!("variants hashmap lookup failed");
+            return None;
+        };
 
         match variants {
             BlockVariants::Variants(hash_map) => Self::get_variants(hash_map, variant_string),
@@ -336,8 +343,11 @@ impl ResourceLoader {
 
     fn get_variants<'a>(
         variants: &'a HashMap<&'static str, VariantType<'static>>,
-        variant_string: &str,
+        mut variant_string: &str,
     ) -> Option<ModelResult<'a>> {
+        if variant_string == "default" {
+            variant_string = "";
+        }
         variants.get(variant_string).map(|variant| match variant {
             VariantType::SingleModel(interned_model_properties) => {
                 ModelResult::SingleModel(std::slice::from_ref(interned_model_properties))
@@ -367,6 +377,7 @@ impl ResourceLoader {
     }
 
     pub fn get_block_model(&self, resource_location: &str) -> Option<&BlockModel<'_>> {
+        println!("looking for model at: {resource_location}");
         self.models.get(resource_location)
     }
 
