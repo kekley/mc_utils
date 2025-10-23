@@ -12,6 +12,7 @@ use crate::{
 
 use super::BlockStateTrait;
 
+///A ``BlockState`` that borrows its data from the NBT data it was read from
 #[derive(Clone)]
 pub struct BlockState<'data, 'root_nbt> {
     name: &'data NBTStr,

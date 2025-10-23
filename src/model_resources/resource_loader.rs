@@ -319,14 +319,29 @@ impl ResourceLoader {
     }
 }
 
+pub struct ModelLookupError {
+    kind: ModelLookupErrorKind,
+}
+
+enum ModelLookupErrorKind {
+    InvalidStateString,
+    NoVariantsFound,
+    EmptyModel,
+}
+
 impl ResourceLoader {
+    /*
+     *failure cases:
+    mapped state string is malformed (no #)
+    variants lookup returned none
+     * */
     pub fn get_model_for_mapped_state<'a>(
         &'a self,
         mapped_state_str: &str,
     ) -> Option<ModelResult<'a>> {
         println!("{mapped_state_str}");
-        let (resource_location, variant_string) = mapped_state_str.split_once("#")?;
-        println!("{resource_location}, {variant_string}");
+        let (resource_location, properties_string) = mapped_state_str.split_once("#")?;
+        println!("{resource_location}, {properties_string}");
 
         let variants = if let Some(variant) = self.variants.get(resource_location) {
             variant
@@ -336,27 +351,32 @@ impl ResourceLoader {
         };
 
         match variants {
-            BlockVariants::Variants(hash_map) => Self::get_variants(hash_map, variant_string),
-            BlockVariants::Multipart(cases) => Self::get_multiparts(cases, variant_string),
-        }
-    }
-
-    fn get_variants<'a>(
-        variants: &'a HashMap<&'static str, VariantType<'static>>,
-        mut variant_string: &str,
-    ) -> Option<ModelResult<'a>> {
-        if variant_string == "default" {
-            variant_string = "";
-        }
-        variants.get(variant_string).map(|variant| match variant {
-            VariantType::SingleModel(interned_model_properties) => {
-                ModelResult::SingleModel(std::slice::from_ref(interned_model_properties))
+            BlockVariants::Variants(hash_map) => {
+                Self::get_model_for_variants(hash_map, properties_string)
             }
-
-            VariantType::MultiModel(items) => ModelResult::SingleModel(items.as_slice()),
-        })
+            BlockVariants::Multipart(cases) => {
+                Self::get_models_for_multipart(cases, properties_string)
+            }
+        }
     }
-    fn get_multiparts<'a>(
+
+    fn get_model_for_variants<'a>(
+        variants: &'a HashMap<&'static str, VariantType<'static>>,
+        mut properties_string: &str,
+    ) -> Option<ModelResult<'a>> {
+        if properties_string == "default" {
+            properties_string = "";
+        }
+        variants
+            .get(properties_string)
+            .map(|variant| match variant {
+                VariantType::SingleModel(interned_model_properties) => {
+                    ModelResult::SingleModel(std::slice::from_ref(interned_model_properties))
+                }
+                VariantType::MultiModel(items) => ModelResult::SingleModel(items.as_slice()),
+            })
+    }
+    fn get_models_for_multipart<'a>(
         cases: &'a [Case<'static>],
         variant_string: &str,
     ) -> Option<ModelResult<'a>> {

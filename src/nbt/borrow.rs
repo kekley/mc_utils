@@ -12,6 +12,7 @@ pub(crate) mod nbt_tag {
         nbt_string::NBTStr,
     };
 
+    ///An element in the NBT that can be any ``NBTTag``
     #[derive(Debug)]
     pub struct NBTTag<'a, 'root> {
         data: &'a [u8],

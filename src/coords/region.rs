@@ -1,5 +1,6 @@
 use super::{block::BlockCoords, chunk::ChunkCoords};
 
+//The coordinates of a region in region units
 #[derive(Debug, Default, Hash, PartialEq, Eq, Clone, Copy)]
 pub struct RegionCoords {
     pub x: i64,

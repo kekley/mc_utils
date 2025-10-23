@@ -9,16 +9,17 @@ pub struct BlockState {
     data: Vec<u8>,
 }
 
+#[allow(dead_code)]
 impl BlockState {
-    ///Fails if `block_name.len()` does not fit in a u16
-    pub fn new(block_name: &NBTStr) -> Self {
+    ///Creates a new ``BlockState`` containing the block name but no properties.
+    pub(crate) fn new(block_name: &NBTStr) -> Self {
         let mut data: Vec<u8> = Vec::with_capacity(block_name.as_bytes().len() + size_of::<u16>());
 
         Self::append_str_to_vec(&mut data, block_name);
         Self { data }
     }
 
-    fn append_str_to_vec(vec: &mut Vec<u8>, string: &NBTStr) {
+    pub(crate) fn append_str_to_vec(vec: &mut Vec<u8>, string: &NBTStr) {
         let string_length: u16 = string
             .as_bytes()
             .len()
@@ -31,8 +32,8 @@ impl BlockState {
 
         vec.extend(string.as_bytes());
     }
-
-    pub fn add_property(&mut self, property_name: &NBTStr, property_value: &NBTStr) {
+    ///Add a name,property value to the blockstate
+    pub(crate) fn add_property(&mut self, property_name: &NBTStr, property_value: &NBTStr) {
         Self::append_str_to_vec(&mut self.data, property_name);
 
         Self::append_str_to_vec(&mut self.data, property_value);
@@ -55,6 +56,7 @@ impl BlockState {
         NBTStr::from_slice(name_slice)
     }
 
+    ///An Iterator over the properties of the blockstate in the format ``(property_name, property_value)``
     pub fn properties_iter(&self) -> PropertiesIterator<'_> {
         let length: [u8; 2] = self
             .data

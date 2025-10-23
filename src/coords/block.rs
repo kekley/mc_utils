@@ -1,5 +1,5 @@
 use super::chunk::ChunkCoords;
-
+///Coordinates of a single block in "world space"
 #[derive(Debug, Default, Hash, PartialEq, Eq, Clone, Copy)]
 pub struct BlockCoords {
     pub x: i64,

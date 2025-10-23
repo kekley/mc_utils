@@ -10,6 +10,7 @@ pub enum BlockVariants<'data> {
 }
 
 impl BlockVariants<'_> {
+    ///Finds the model pertaining to a particular set of comma separated "name=value" strings
     pub fn get_models_for_block_properties<'a>(
         &'a self,
         variant_str: &str,
@@ -33,7 +34,11 @@ impl BlockVariants<'_> {
 }
 
 pub enum ModelResult<'data> {
+    ///A single model is used for this block, if more than one model is present in the slice, then
+    ///the block can use any one of these models
     SingleModel(&'data [BlockModelInfo<'data>]),
+    ///Multiple models are combined into one for this block. Within each element of the vector only
+    ///one of the provided models in the slice should be used
     Multipart(Vec<&'data [BlockModelInfo<'data>]>),
 }
 
@@ -126,6 +131,7 @@ impl<'data> BlockModelInfo<'data> {
     }
 }
 
+///A struct for holding the list of blockstates associated with a case in a multipart
 #[derive(Debug, Clone)]
 pub struct WhenStateList<'data> {
     pub(crate) data: Vec<WhenElement<'data>>,

@@ -12,7 +12,7 @@ pub enum CompressionScheme {
     Zlib = 2,
     Uncompressed = 3,
 }
-
+///Struct for storing data related to chunk decompression
 pub struct CompressionData {
     scheme: CompressionScheme,
     compressed_len: usize,

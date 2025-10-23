@@ -1,5 +1,5 @@
 use super::block::BlockCoords;
-
+///The coordinates of a chunk in chunk units
 #[derive(Debug, Default, Hash, PartialEq, Eq, Clone, Copy)]
 pub struct ChunkCoords {
     pub x: i64,
@@ -12,23 +12,24 @@ impl ChunkCoords {
     }
 }
 
-///coordinates from 0-31 local to a region
+///The coordinates of a chunk from the frame of reference of the region it resides in. In the
+///range 0-31
 #[derive(Debug, Default, Hash, PartialEq, Eq, Clone, Copy)]
-pub struct LocalChunkCoords {
+pub struct RegionLocalChunkCoords {
     pub x: u8,
     pub z: u8,
 }
 
-impl From<ChunkCoords> for LocalChunkCoords {
+impl From<ChunkCoords> for RegionLocalChunkCoords {
     fn from(value: ChunkCoords) -> Self {
-        LocalChunkCoords {
+        RegionLocalChunkCoords {
             x: (value.x.abs() % 32) as u8,
             z: (value.z.abs() % 32) as u8,
         }
     }
 }
 
-///Gets the chunk the block resides in
+///Gets the chunk coordinates for the chunk the block resides in
 impl From<BlockCoords> for ChunkCoords {
     fn from(value: BlockCoords) -> Self {
         Self {

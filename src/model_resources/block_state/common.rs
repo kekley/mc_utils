@@ -64,6 +64,7 @@ impl TryFrom<&i32> for BlockRotation {
     }
 }
 
+///A bump allocated string interner that gives out string slices with the lifetime of the interner
 pub(crate) struct UniqueStrings {
     bump: Bump,
     strings: HashSet<&'static str>,
