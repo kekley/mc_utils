@@ -14,15 +14,15 @@ impl BlockVariants<'_> {
     pub fn get_models_for_block_properties<'a>(
         &'a self,
         variant_str: &str,
-    ) -> Option<ModelResult<'a>> {
+    ) -> Option<BlockstateType<'a>> {
         Some(match self {
             BlockVariants::Variants(hash_map) => match hash_map.get(variant_str)? {
                 VariantType::SingleModel(model_properties) => {
-                    ModelResult::SingleModel(std::slice::from_ref(model_properties))
+                    BlockstateType::SingleModel(std::slice::from_ref(model_properties))
                 }
-                VariantType::MultiModel(items) => ModelResult::SingleModel(items),
+                VariantType::MultiModel(items) => BlockstateType::SingleModel(items),
             },
-            BlockVariants::Multipart(cases) => ModelResult::Multipart(
+            BlockVariants::Multipart(cases) => BlockstateType::Multipart(
                 cases
                     .iter()
                     .filter(|case| case.when.test_variant_string(variant_str))
@@ -33,7 +33,7 @@ impl BlockVariants<'_> {
     }
 }
 
-pub enum ModelResult<'data> {
+pub enum BlockstateType<'data> {
     ///A single model is used for this block, if more than one model is present in the slice, then
     ///the block can use any one of these models
     SingleModel(&'data [BlockModelInfo<'data>]),

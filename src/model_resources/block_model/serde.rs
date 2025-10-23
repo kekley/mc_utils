@@ -135,8 +135,7 @@ mod tests {
 
     #[test]
     fn test_block_model() {
-        let file =
-            include_str!("../../../test_assets/assets/minecraft/models/block/bamboo4_age0.json");
+        let file = todo!();
         let a: Result<RawBlockModel<'static>, serde_json::Error> = serde_json::de::from_str(file);
         let _b = a.map_err(|err| eprintln!("{err:?}")).unwrap();
     }

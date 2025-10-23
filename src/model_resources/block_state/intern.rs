@@ -138,8 +138,8 @@ fn intern_properties(
 
     BlockModelInfo {
         model_resource_path: interned,
-        x_rotation: BlockRotation::try_from(x).unwrap(),
-        y_rotation: BlockRotation::try_from(y).unwrap(),
+        x_rotation: BlockRotation::try_from(x).unwrap_or_default(),
+        y_rotation: BlockRotation::try_from(y).unwrap_or_default(),
         uvlock,
         weight,
     }

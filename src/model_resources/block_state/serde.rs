@@ -99,9 +99,7 @@ mod tests {
 
     #[test]
     fn test_block_state() {
-        let str =
-            include_str!("../../../test_assets/assets/minecraft/blockstates/acacia_button.json");
-
+        let str = todo!();
         let a: Result<RawBlockVariants<'static>, serde_json::Error> = serde_json::de::from_str(str);
 
         let _b = a

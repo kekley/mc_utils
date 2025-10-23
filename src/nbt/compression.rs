@@ -3,7 +3,7 @@ use std::io::Write;
 use byteorder::{BigEndian, ReadBytesExt};
 use num_enum::TryFromPrimitive;
 
-use crate::error::spider_eye_error::SpiderEyeError;
+use crate::error::spider_eye_error::MCUtilsError;
 
 #[derive(Debug, TryFromPrimitive, Clone, Copy)]
 #[repr(u8)]
@@ -19,12 +19,12 @@ pub struct CompressionData {
 }
 
 impl CompressionData {
-    pub fn new(mut data: &[u8]) -> Result<Self, SpiderEyeError> {
+    pub fn new(mut data: &[u8]) -> Result<Self, MCUtilsError> {
         let len = data.read_u32::<BigEndian>()?;
         let scheme = data.read_u8()?;
         let compression_data = Self {
             scheme: CompressionScheme::try_from(scheme)
-                .map_err(|_err| SpiderEyeError::UnknownCompression(scheme))?,
+                .map_err(|_err| MCUtilsError::UnknownCompression(scheme))?,
             compressed_len: (len - 1) as usize,
         };
 
@@ -38,7 +38,7 @@ impl CompressionData {
     }
 }
 
-pub fn decompress_chunk(data: &[u8]) -> Result<Vec<u8>, SpiderEyeError> {
+pub fn decompress_chunk(data: &[u8]) -> Result<Vec<u8>, MCUtilsError> {
     let compression_data = CompressionData::new(data)?;
     match compression_data.scheme {
         CompressionScheme::Gzip => {

@@ -4,8 +4,9 @@ use bumpalo::Bump;
 use hashbrown::HashSet;
 
 ///A Rotation at the block level that only works in 90 degree increments
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum BlockRotation {
+    #[default]
     Zero,
     Ninety,
     OneEighty,

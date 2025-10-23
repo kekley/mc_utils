@@ -1,5 +1,5 @@
 use crate::block_model::intern::intern_block_model;
-use crate::block_state::borrow::{BlockVariants, Case, ModelResult, VariantType};
+use crate::block_state::borrow::{BlockVariants, BlockstateType, Case, VariantType};
 use crate::block_state::intern::intern_blockstate_type;
 use crate::{block_model::borrow::BlockModel, block_state::common::UniqueStrings};
 use hashbrown::HashMap;
@@ -10,13 +10,15 @@ use std::{
     path::{Path, PathBuf},
     time::Instant,
 };
+use thiserror::Error;
+use tracing::{event, instrument, trace, warn, Level};
 
 use compact_str::CompactString;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
     block_model::serde::RawBlockModel, block_state::serde::RawBlockVariants,
-    error::spider_eye_error::SpiderEyeError,
+    error::spider_eye_error::MCUtilsError,
 };
 
 const _ASSET_FOLDER_NAMES: [&str; 3] = ["blockstates", "models", "textures"];
@@ -152,7 +154,7 @@ pub struct ResourceLoader {
 }
 
 impl ResourceLoader {
-    pub fn load_resource_folder(path: &Path) -> Result<ResourceLoader, SpiderEyeError> {
+    pub fn load_resource_folder(path: &Path) -> Result<ResourceLoader, MCUtilsError> {
         let resource_folder = std::fs::read_dir(path)?;
         let mut texture_files: HashMap<CompactString, Box<[u8]>> = Default::default();
 
@@ -214,11 +216,32 @@ impl ResourceLoader {
             variants,
         })
     }
-
+    ///Traverses all the folders in a namespace and returns all map of resource locations and file data
+    ///for the given resource type T
+    #[instrument]
     fn traverse_and_load<'a, 'folder_path, T: Resource<'a>>(
         folder: &'folder_path Path,
     ) -> Option<HashMap<CompactString, Box<[u8]>>> {
-        let namespace = folder.file_name().unwrap();
+        let Some(folder_name) = folder.file_name() else {
+            event!(
+                Level::WARN,
+                "Could not get the namespace component of path: {folder:?}"
+            );
+            return None;
+        };
+        let Some(namespace) = folder_name.to_str() else {
+            event!(
+                Level::WARN,
+                "Namespace folder contained invalid utf8: {folder_name:?}"
+            );
+            return None;
+        };
+
+        event!(
+            Level::INFO,
+            "Attemtping to traverse the namespace: {namespace:?}"
+        );
+
         let mut resource_type_path = folder.to_path_buf();
 
         resource_type_path.push(T::folder_name());
@@ -226,8 +249,6 @@ impl ResourceLoader {
         let mut folder_traversal_queue = VecDeque::new();
 
         let mut file_queue = Vec::new();
-
-        println!("traversing folders");
 
         let start = Instant::now();
 
@@ -263,29 +284,65 @@ impl ResourceLoader {
 
         let end = Instant::now();
 
-        println!("time to traverse folders: {:?}", end.duration_since(start));
+        event!(
+            Level::INFO,
+            "Time to traverse folders in namespace: {:?}",
+            end.duration_since(start)
+        );
 
         let start = Instant::now();
+
+        event!(
+            Level::INFO,
+            "Loading all the files in namespace: {namespace}"
+        );
 
         let result = file_queue
             .par_iter()
             .filter_map(|path| {
-                let block_name = path.file_stem()?.to_str()?;
-                let mut resource_path = CompactString::new(namespace.to_str()?);
+                let Some(file_stem) = path.file_stem() else {
+                    event!(Level::WARN, "File did not have an extension {path:?}");
+                    return None;
+                };
+                let Some(file_name) = file_stem.to_str() else {
+                    event!(
+                        Level::WARN,
+                        "File name contained data that was not valid utf8: {file_stem:?}"
+                    );
+                    return None;
+                };
+                let mut resource_path = CompactString::new(namespace);
                 resource_path.push(':');
 
-                let remainder = path
-                    .strip_prefix(resource_type_path.as_path())
-                    .ok()?
-                    .parent()?;
-                let path_str = remainder.to_str()?;
+                let Ok(prefix_stripped) = path.strip_prefix(resource_type_path.as_path()) else {
+                    event!(
+                        Level::DEBUG,
+                        "Skipped file in non-resource location{path:?}"
+                    );
+                    return None;
+                };
+                let Some(remainder) = prefix_stripped.parent() else {
+                    event!(
+                        Level::WARN,
+                        "Could not strip file name from: {prefix_stripped:?}"
+                    );
+                    return None;
+                };
+                let Some(path_str) = remainder.to_str() else {
+                    event!(Level::WARN, "Resource location invalid utf8:{remainder:?}");
+                    return None;
+                };
+
                 resource_path.push_str(path_str);
                 if !path_str.is_empty() {
                     resource_path.push('/');
                 }
-                resource_path.push_str(block_name);
+                resource_path.push_str(file_name);
 
-                let data = fs::read(path).ok()?;
+                let Ok(data) = fs::read(path) else {
+                    event!(Level::WARN, "Could not load file from path: {path:?}");
+                    return None;
+                };
 
                 Some((resource_path, data.into_boxed_slice()))
             })
@@ -319,43 +376,59 @@ impl ResourceLoader {
     }
 }
 
-pub struct ModelLookupError {
-    kind: ModelLookupErrorKind,
-}
-
-enum ModelLookupErrorKind {
-    InvalidStateString,
-    NoVariantsFound,
-    EmptyModel,
+#[derive(Debug, Error)]
+pub enum BlockstateLookupError {
+    #[error("Mapped state string was not valid: {0}")]
+    InvalidStateString(String),
+    #[error("No variants found for resource location: {0}")]
+    NoVariantsFound(String),
+    #[error("Resulting model was empty: mapped_state: {mapped_state}, variants:{variants:?}")]
+    EmptyModel {
+        mapped_state: String,
+        variants: String,
+    },
 }
 
 impl ResourceLoader {
-    /*
-     *failure cases:
-    mapped state string is malformed (no #)
-    variants lookup returned none
-     * */
-    pub fn get_model_for_mapped_state<'a>(
+    pub fn get_blockstates_for_mapped_state<'a>(
         &'a self,
         mapped_state_str: &str,
-    ) -> Option<ModelResult<'a>> {
-        println!("{mapped_state_str}");
-        let (resource_location, properties_string) = mapped_state_str.split_once("#")?;
+    ) -> Result<BlockstateType<'a>, BlockstateLookupError> {
+        event!(
+            Level::INFO,
+            "Getting the blockstates for mapped state: {mapped_state_str}"
+        );
+        let (resource_location, properties_string) =
+            mapped_state_str
+                .split_once("#")
+                .ok_or(BlockstateLookupError::InvalidStateString(
+                    mapped_state_str.to_string(),
+                ))?;
         println!("{resource_location}, {properties_string}");
 
-        let variants = if let Some(variant) = self.variants.get(resource_location) {
-            variant
-        } else {
-            println!("variants hashmap lookup failed");
-            return None;
-        };
+        let variants =
+            self.variants
+                .get(resource_location)
+                .ok_or(BlockstateLookupError::NoVariantsFound(
+                    resource_location.to_string(),
+                ))?;
 
         match variants {
             BlockVariants::Variants(hash_map) => {
-                Self::get_model_for_variants(hash_map, properties_string)
+                Self::get_model_for_variants(hash_map, properties_string).ok_or(
+                    BlockstateLookupError::EmptyModel {
+                        mapped_state: mapped_state_str.to_string(),
+                        variants: format!("{variants:?}"),
+                    },
+                )
             }
             BlockVariants::Multipart(cases) => {
-                Self::get_models_for_multipart(cases, properties_string)
+                Self::get_models_for_multipart(cases, properties_string).ok_or(
+                    BlockstateLookupError::EmptyModel {
+                        mapped_state: mapped_state_str.to_string(),
+                        variants: format!("{variants:?}"),
+                    },
+                )
             }
         }
     }
@@ -363,23 +436,26 @@ impl ResourceLoader {
     fn get_model_for_variants<'a>(
         variants: &'a HashMap<&'static str, VariantType<'static>>,
         mut properties_string: &str,
-    ) -> Option<ModelResult<'a>> {
+    ) -> Option<BlockstateType<'a>> {
+        //Blockstates without properties will have the string "default" in place of a property
+        //list, but the variants list in the json will be an empty string
         if properties_string == "default" {
             properties_string = "";
         }
+
         variants
             .get(properties_string)
             .map(|variant| match variant {
                 VariantType::SingleModel(interned_model_properties) => {
-                    ModelResult::SingleModel(std::slice::from_ref(interned_model_properties))
+                    BlockstateType::SingleModel(std::slice::from_ref(interned_model_properties))
                 }
-                VariantType::MultiModel(items) => ModelResult::SingleModel(items.as_slice()),
+                VariantType::MultiModel(items) => BlockstateType::SingleModel(items.as_slice()),
             })
     }
     fn get_models_for_multipart<'a>(
         cases: &'a [Case<'static>],
         variant_string: &str,
-    ) -> Option<ModelResult<'a>> {
+    ) -> Option<BlockstateType<'a>> {
         let models = cases
             .iter()
             .filter(|case| case.test_variant_string(variant_string))
@@ -390,14 +466,13 @@ impl ResourceLoader {
             return None;
         }
 
-        Some(ModelResult::Multipart(models))
+        Some(BlockstateType::Multipart(models))
     }
     pub fn get_texture_data(&self, resource_location: &str) -> Option<&[u8]> {
         self.textures.get(resource_location).map(|b| b.as_ref())
     }
 
     pub fn get_block_model(&self, resource_location: &str) -> Option<&BlockModel<'_>> {
-        println!("looking for model at: {resource_location}");
         self.models.get(resource_location)
     }
 
