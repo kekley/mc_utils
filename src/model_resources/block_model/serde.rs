@@ -135,14 +135,54 @@ mod tests {
 
     #[test]
     fn test_block_model() {
-        let file = todo!();
-        let a: Result<RawBlockModel<'static>, serde_json::Error> = serde_json::de::from_str(file);
+        const TEST_MODEL: &str = r##"{
+    "textures": {
+        "particle": "#texture"
+    },
+    "elements": [
+        {
+            "name": "top bar",
+            "from": [7, 12, 7],
+            "to": [16, 15, 9],
+            "faces": {
+                "north": {"uv": [4, 4, 13, 7], "texture": "#texture"},
+                "east": {"uv": [13, 4, 15, 7], "texture": "#texture", "cullface": "east"},
+                "south": {"uv": [4, 4, 13, 7], "texture": "#texture"},
+                "up": {"uv": [13, 7, 15, 16], "rotation": 270, "texture": "#texture"},
+                "down": {"uv": [13, 7, 15, 16], "rotation": 90, "texture": "#texture"}
+            }
+        },
+        {
+            "name": "lower bar",
+            "from": [7, 6, 7],
+            "to": [16, 9, 9],
+            "faces": {
+                "north": {"uv": [4, 4, 13, 7], "texture": "#texture"},
+                "east": {"uv": [13, 4, 15, 7], "texture": "#texture", "cullface": "east"},
+                "south": {"uv": [4, 4, 13, 7], "texture": "#texture"},
+                "up": {"uv": [13, 7, 15, 16], "rotation": 270, "texture": "#texture"},
+                "down": {"uv": [13, 7, 15, 16], "rotation": 90, "texture": "#texture"}
+            }
+        }
+    ],
+    "groups": [
+        {
+            "name": "east",
+            "origin": [0, 0, 0],
+            "color": 0,
+            "children": [0, 1]
+        }
+    ]
+}"##;
+        let a: Result<RawBlockModel<'static>, serde_json::Error> =
+            serde_json::de::from_str(TEST_MODEL);
         let _b = a.map_err(|err| eprintln!("{err:?}")).unwrap();
     }
 
     #[test]
     fn test_mc_models() {
-        let read_dir = std::fs::read_dir("./test_assets/assets/minecraft/models/block/").unwrap();
+        const MODEL_DIR: &str = "../resource_pack/assets/minecraft/models/block/";
+        let read_dir = std::fs::read_dir(MODEL_DIR).unwrap();
 
         for entry in read_dir.flatten() {
             let path = entry.path();

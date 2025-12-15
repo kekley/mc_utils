@@ -200,7 +200,6 @@ pub mod nbt_compound {
     use byteorder::{BigEndian, ReadBytesExt};
     use bytes::Buf;
     use num_enum::TryFromPrimitive;
-    use tracing::instrument;
 
     use super::nbt_string::NBTStr;
     use super::parsing_stack::ParsingError;
@@ -354,7 +353,6 @@ pub mod nbt_compound {
             self.name
         }
 
-        #[instrument]
         pub fn from_bytes(bytes: &'a [u8]) -> Result<Self, NBTError> {
             assert!(bytes.len() as u64 <= 0x00FF_FFFF_FFFF_FFFF);
             let slice = bytes;
@@ -1673,7 +1671,8 @@ pub mod nbt_string {
 
         #[expect(unsafe_code)]
         pub const fn from_slice(as_slice: &[u8]) -> &Self {
-            //SAFETY: same layout as a u8 slice
+            //SAFETY: NBTStr is internally a u8 slice, validation is done when converting to a rust
+            //str
             unsafe { std::mem::transmute(as_slice) }
         }
         pub fn to_str(&self) -> Cow<'_, str> {
@@ -1692,6 +1691,8 @@ pub mod nbt_string {
         pub fn write_lowercase(&self, mut out: impl Write) {
             match simd_cesu8::mutf8::decode_strict(&self.data) {
                 Ok(_) => {
+                    //SAFETY: the bytes were decoded correctly by simd_cesu8
+                    #[expect(unsafe_code)]
                     unsafe { JavaStr::from_java_cesu8_unchecked(&self.data) }
                         .chars()
                         .for_each(|char| {
@@ -1886,19 +1887,4 @@ pub mod parsing_stack {
 mod borrow_test {
 
     use super::nbt_compound::RootNBTCompound;
-
-    #[test]
-    pub fn compound() {
-        let path = "./test_assets/iceandfire_myrmex.dat";
-        let level_dat = std::fs::read(path).unwrap_or_else(|_| panic!("could not find {path}"));
-
-        let compound = RootNBTCompound::from_bytes(&level_dat).expect("NBT parse error");
-        let tag = compound.get_tag("data").expect("Could not get data tag");
-
-        let data_compound = tag.get_compound().expect("Tag was not compound");
-
-        data_compound.iter().for_each(|(name, _tag)| {
-            println!("{name}");
-        });
-    }
 }

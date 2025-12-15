@@ -11,7 +11,7 @@ use std::{
     time::Instant,
 };
 use thiserror::Error;
-use tracing::{event, instrument, trace, warn, Level};
+use tracing::{event, instrument, Level};
 
 use compact_str::CompactString;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -81,9 +81,16 @@ impl InternedResource<'_> for Box<[u8]> {
     type View<'a> = Box<[u8]>;
 }
 
+#[derive(Debug, Error)]
+pub enum ResourceLoadError {
+    #[error("Error parsing json: {0}")]
+    SerdeError(#[from] simd_json::Error),
+}
+
 trait Resource<'a>: Send + Debug + Sized {
     type Interned;
-    fn load(data: &'a mut [u8]) -> Option<Self>;
+    type LoadError;
+    fn load(data: &'a mut [u8]) -> Result<Self, Self::LoadError>;
     fn folder_name() -> &'static str;
     fn extension() -> &'static str;
     fn intern(self, strings: &mut UniqueStrings) -> Self::Interned;
@@ -91,8 +98,9 @@ trait Resource<'a>: Send + Debug + Sized {
 
 impl Resource<'_> for Box<[u8]> {
     type Interned = Box<[u8]>;
-    fn load(data: &mut [u8]) -> Option<Self> {
-        Some(data.to_vec().into_boxed_slice())
+    type LoadError = ();
+    fn load(data: &mut [u8]) -> Result<Self, ()> {
+        Ok(data.to_vec().into_boxed_slice())
     }
 
     fn folder_name() -> &'static str {
@@ -110,8 +118,9 @@ impl Resource<'_> for Box<[u8]> {
 
 impl<'a> Resource<'a> for RawBlockVariants<'a> {
     type Interned = BlockVariants<'static>;
-    fn load(data: &'a mut [u8]) -> Option<RawBlockVariants<'a>> {
-        simd_json::serde::from_slice(data).ok()?
+    type LoadError = ResourceLoadError;
+    fn load(data: &'a mut [u8]) -> Result<RawBlockVariants<'a>, ResourceLoadError> {
+        Ok(simd_json::serde::from_slice::<RawBlockVariants<'_>>(data)?)
     }
 
     fn folder_name() -> &'static str {
@@ -129,8 +138,9 @@ impl<'a> Resource<'a> for RawBlockVariants<'a> {
 
 impl<'a> Resource<'a> for RawBlockModel<'a> {
     type Interned = BlockModel<'static>;
-    fn load(data: &'a mut [u8]) -> Option<RawBlockModel<'a>> {
-        simd_json::serde::from_slice(data).ok().unwrap()
+    type LoadError = ResourceLoadError;
+    fn load(data: &'a mut [u8]) -> Result<RawBlockModel<'a>, ResourceLoadError> {
+        Ok(simd_json::serde::from_slice(data)?)
     }
 
     fn folder_name() -> &'static str {
@@ -146,6 +156,7 @@ impl<'a> Resource<'a> for RawBlockModel<'a> {
     }
 }
 
+#[derive(Debug)]
 pub struct ResourceLoader {
     _strings: UniqueStrings,
     textures: HashMap<CompactString, Box<[u8]>>,
@@ -165,22 +176,22 @@ impl ResourceLoader {
         resource_folder.flatten().for_each(|dir_entry| {
             let namespace_path = dir_entry.path();
 
-            println!("{namespace_path:?}");
+            event!(Level::INFO, "Loading namespace: {namespace_path:?}");
 
-            println!("textures");
+            event!(Level::INFO, "Loading Textures");
             if let Some(textures) = ResourceLoader::traverse_and_load::<Box<[u8]>>(&namespace_path)
             {
                 texture_files.extend(textures);
             }
 
-            println!("models");
+            event!(Level::INFO, "Loading Models");
             if let Some(models) =
                 ResourceLoader::traverse_and_load::<RawBlockModel<'static>>(&namespace_path)
             {
                 model_files.extend(models);
             }
 
-            println!("blockstates");
+            event!(Level::INFO, "Loading Blockstates");
             if let Some(block_states) =
                 ResourceLoader::traverse_and_load::<RawBlockVariants<'static>>(&namespace_path)
             {
@@ -194,12 +205,13 @@ impl ResourceLoader {
         let models =
             ResourceLoader::parse_and_intern::<BlockModel<'static>>(&mut strings, model_files);
         let end = Instant::now();
-        println!("interned models: {:?}", end.duration_since(start));
+        event!(
+            Level::INFO,
+            "Time to intern models: {time:?}",
+            time = end.duration_since(start)
+        );
 
-        let start = Instant::now();
         let textures = texture_files;
-        let end = Instant::now();
-        println!("interned textures {:?}", end.duration_since(start));
 
         let start = Instant::now();
         let variants = ResourceLoader::parse_and_intern::<BlockVariants<'static>>(
@@ -207,7 +219,12 @@ impl ResourceLoader {
             blockstate_files,
         );
         let end = Instant::now();
-        println!("interned variants {:?}", end.duration_since(start));
+
+        event!(
+            Level::INFO,
+            "Time to intern variants: {time:?}",
+            time = end.duration_since(start)
+        );
 
         Ok(ResourceLoader {
             _strings: strings,
@@ -239,7 +256,7 @@ impl ResourceLoader {
 
         event!(
             Level::INFO,
-            "Attemtping to traverse the namespace: {namespace:?}"
+            "Attemtping to traverse the namespace: {namespace:?} to find all resources of type {resource_type}\n",resource_type = T::extension()
         );
 
         let mut resource_type_path = folder.to_path_buf();
@@ -252,7 +269,7 @@ impl ResourceLoader {
 
         let start = Instant::now();
 
-        if let Ok(entries) = fs::read_dir(folder) {
+        if let Ok(entries) = fs::read_dir(&resource_type_path) {
             folder_traversal_queue.extend(
                 entries
                     .flatten()
@@ -261,6 +278,7 @@ impl ResourceLoader {
             );
         }
 
+        folder_traversal_queue.push_front(resource_type_path.clone());
         while let Some(current_folder) = folder_traversal_queue.pop_front() {
             if let Ok(dir_entries) = std::fs::read_dir(current_folder) {
                 for entry in dir_entries.flatten() {
@@ -343,6 +361,11 @@ impl ResourceLoader {
                     event!(Level::WARN, "Could not load file from path: {path:?}");
                     return None;
                 };
+                event!(
+                    Level::INFO,
+                    "Loaded {kind}:{resource_path}",
+                    kind = T::folder_name()
+                );
 
                 Some((resource_path, data.into_boxed_slice()))
             })
@@ -365,8 +388,15 @@ impl ResourceLoader {
         let resources: HashMap<CompactString, T> = files
             .into_iter()
             .filter_map(|(resource_path, mut data)| {
-                let resource = T::View::load(data.as_mut())?;
-                println!("interning:{resource_path}");
+                let Ok(resource) = T::View::load(data.as_mut()) else {
+                    event!(Level::WARN, "Could not load");
+                    return None;
+                };
+                event!(
+                    Level::INFO,
+                    "Interning {kind}: {resource_path}",
+                    kind = T::View::folder_name()
+                );
                 let interned = T::View::intern(resource, strings);
 
                 Some((resource_path, interned))
@@ -404,7 +434,10 @@ impl ResourceLoader {
                 .ok_or(BlockstateLookupError::InvalidStateString(
                     mapped_state_str.to_string(),
                 ))?;
-        println!("{resource_location}, {properties_string}");
+        event!(
+            Level::INFO,
+            "Split mapped state into: {resource_location}, {properties_string}"
+        );
 
         let variants =
             self.variants
@@ -452,6 +485,7 @@ impl ResourceLoader {
                 VariantType::MultiModel(items) => BlockstateType::SingleModel(items.as_slice()),
             })
     }
+    #[instrument]
     fn get_models_for_multipart<'a>(
         cases: &'a [Case<'static>],
         variant_string: &str,
@@ -462,7 +496,6 @@ impl ResourceLoader {
             .map(|case| case.get_models())
             .collect::<Vec<_>>();
         if models.is_empty() {
-            eprintln!("no models from multipart");
             return None;
         }
 
@@ -483,14 +516,13 @@ impl ResourceLoader {
 
 #[cfg(test)]
 mod tests {
+    use tracing_test::traced_test;
+
     use super::*;
 
     #[test]
+    #[traced_test]
     fn resource_folder() {
-        let a =
-            ResourceLoader::load_resource_folder(&PathBuf::from("./test_assets/assets/")).unwrap();
-        let models = a.models;
-
-        println!("{:?}", models);
+        ResourceLoader::load_resource_folder(&PathBuf::from("../resource_pack/assets/")).unwrap();
     }
 }

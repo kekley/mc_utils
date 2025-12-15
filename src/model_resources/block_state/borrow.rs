@@ -1,4 +1,5 @@
 use hashbrown::HashMap;
+use tracing::{event, instrument, Level};
 
 use crate::block_state::common::BlockRotation;
 
@@ -76,14 +77,39 @@ pub enum When<'data> {
 }
 
 impl When<'_> {
+    #[instrument]
     pub fn test_variant_string(&self, variant_str: &str) -> bool {
         match self {
-            When::Or(when_state_list) => when_state_list.or_case(variant_str),
-            When::And(when_state_list) => when_state_list.and_case(variant_str),
+            When::Or(when_state_list) => {
+                event!(
+                    Level::DEBUG,
+                    "Testing OR case: {test:?} and {variant_str}",
+                    test = when_state_list.data
+                );
+                when_state_list.or_case(variant_str)
+            }
+            When::And(when_state_list) => {
+                event!(
+                    Level::DEBUG,
+                    "Testing AND case: {test:?} and {variant_str}",
+                    test = when_state_list.data
+                );
+
+                when_state_list.and_case(variant_str)
+            }
             When::SingleState(case) => {
+                event!(
+                    Level::DEBUG,
+                    "Testing single case: {test:?} and {variant_str}",
+                    test = case.data
+                );
                 WhenStateList::test_single_case(case.iter_states().next().unwrap(), variant_str)
             }
-            When::Empty => true,
+            When::Empty => {
+                event!(Level::DEBUG, "Testing empty case");
+
+                true
+            }
         }
     }
 }

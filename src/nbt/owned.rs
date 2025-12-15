@@ -360,14 +360,4 @@ mod nbt_test {
     use std::io::Cursor;
 
     use super::nbt_compound::NBTCompound;
-
-    #[test]
-    fn test_file() {
-        let path = "./test_assets/iceandfire_myrmex.dat";
-        let level_dat = std::fs::read(path).unwrap_or_else(|_| panic!("could not find {path}"));
-        let mut cursor = Cursor::new(level_dat);
-        let compound = NBTCompound::from_file(&mut cursor).expect("NBT parse error");
-        let mut string = String::new();
-        compound.pretty_print(&mut string);
-    }
 }

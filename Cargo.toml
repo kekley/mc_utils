@@ -19,7 +19,6 @@ serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
 aovec = "1.1.0"
 bytes = "1.10.1"
-tracing-subscriber = "0.3.19"
 tracing = "0.1.41"
 heapless = "0.8.0"
 fastrand = "2.3.0"
@@ -33,6 +32,7 @@ serde_with = "3.14.0"
 rayon = "1.11.0"
 cesu8-str = "1.2.1"
 thiserror = "2.0.17"
+tracing-test = "0.2.5"
 
 
 [profile.release-with-debug]

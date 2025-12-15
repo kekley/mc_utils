@@ -33,4 +33,6 @@ pub enum DisplayPosition {
     Ground,
     #[serde(alias = "fixed")]
     Fixed,
+    #[serde(alias = "on_shelf")]
+    OnShelf,
 }

@@ -56,7 +56,7 @@ fn intern_element(raw_element: RawElement<'_>, strings: &mut UniqueStrings) -> E
 
     let faces: [Option<Face<'static>>; 6] = (0..6)
         .map(|i| {
-            let name = FaceName::from_usize(i).unwrap();
+            let name = FaceName::from_usize(i).expect("0..6 should always give a valid facename");
 
             let face_data = faces.remove(&name)?;
 
@@ -66,7 +66,7 @@ fn intern_element(raw_element: RawElement<'_>, strings: &mut UniqueStrings) -> E
         })
         .collect::<Vec<_>>()
         .try_into()
-        .unwrap();
+        .expect("0..6 should always result in an array of size 6");
     Element {
         from,
         to,

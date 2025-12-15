@@ -96,11 +96,92 @@ pub enum RawWhen<'a, 'b> {
 #[cfg(test)]
 mod tests {
     use crate::block_state::serde::RawBlockVariants;
+    const BLOCKSTATE_DIR: &str = "../resource_pack/assets/minecraft/blockstates";
 
     #[test]
     fn test_block_state() {
-        let str = todo!();
-        let a: Result<RawBlockVariants<'static>, serde_json::Error> = serde_json::de::from_str(str);
+        const BLOCKSTATE_STR: &str = r#" {
+  "variants": {
+    "facing=east,in_wall=false,open=false": {
+      "model": "minecraft:block/acacia_fence_gate",
+      "uvlock": true,
+      "y": 270
+    },
+    "facing=east,in_wall=false,open=true": {
+      "model": "minecraft:block/acacia_fence_gate_open",
+      "uvlock": true,
+      "y": 270
+    },
+    "facing=east,in_wall=true,open=false": {
+      "model": "minecraft:block/acacia_fence_gate_wall",
+      "uvlock": true,
+      "y": 270
+    },
+    "facing=east,in_wall=true,open=true": {
+      "model": "minecraft:block/acacia_fence_gate_wall_open",
+      "uvlock": true,
+      "y": 270
+    },
+    "facing=north,in_wall=false,open=false": {
+      "model": "minecraft:block/acacia_fence_gate",
+      "uvlock": true,
+      "y": 180
+    },
+    "facing=north,in_wall=false,open=true": {
+      "model": "minecraft:block/acacia_fence_gate_open",
+      "uvlock": true,
+      "y": 180
+    },
+    "facing=north,in_wall=true,open=false": {
+      "model": "minecraft:block/acacia_fence_gate_wall",
+      "uvlock": true,
+      "y": 180
+    },
+    "facing=north,in_wall=true,open=true": {
+      "model": "minecraft:block/acacia_fence_gate_wall_open",
+      "uvlock": true,
+      "y": 180
+    },
+    "facing=south,in_wall=false,open=false": {
+      "model": "minecraft:block/acacia_fence_gate",
+      "uvlock": true
+    },
+    "facing=south,in_wall=false,open=true": {
+      "model": "minecraft:block/acacia_fence_gate_open",
+      "uvlock": true
+    },
+    "facing=south,in_wall=true,open=false": {
+      "model": "minecraft:block/acacia_fence_gate_wall",
+      "uvlock": true
+    },
+    "facing=south,in_wall=true,open=true": {
+      "model": "minecraft:block/acacia_fence_gate_wall_open",
+      "uvlock": true
+    },
+    "facing=west,in_wall=false,open=false": {
+      "model": "minecraft:block/acacia_fence_gate",
+      "uvlock": true,
+      "y": 90
+    },
+    "facing=west,in_wall=false,open=true": {
+      "model": "minecraft:block/acacia_fence_gate_open",
+      "uvlock": true,
+      "y": 90
+    },
+    "facing=west,in_wall=true,open=false": {
+      "model": "minecraft:block/acacia_fence_gate_wall",
+      "uvlock": true,
+      "y": 90
+    },
+    "facing=west,in_wall=true,open=true": {
+      "model": "minecraft:block/acacia_fence_gate_wall_open",
+      "uvlock": true,
+      "y": 90
+    }
+  }
+}"#;
+        let a: Result<RawBlockVariants<'static>, serde_json::Error> =
+            serde_json::de::from_str(BLOCKSTATE_STR);
 
         let _b = a
             .map_err(|err| {
@@ -110,7 +191,7 @@ mod tests {
     }
     #[test]
     fn test_mc_blockstates() {
-        let read_dir = std::fs::read_dir("./test_assets/assets/minecraft/blockstates/").unwrap();
+        let read_dir = std::fs::read_dir(BLOCKSTATE_DIR).unwrap();
 
         for entry in read_dir.flatten() {
             let path = entry.path();
