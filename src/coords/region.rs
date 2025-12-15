@@ -7,6 +7,12 @@ pub struct RegionCoords {
     pub z: i64,
 }
 
+impl RegionCoords {
+    pub fn new(x: i64, z: i64) -> Self {
+        Self { x, z }
+    }
+}
+
 ///Get the region the chunk resides in
 impl From<ChunkCoords> for RegionCoords {
     #[inline]

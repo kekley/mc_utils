@@ -613,6 +613,37 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "60302e4db3a61da70c0cb7991976248362f30319e88850c487b9b95bbf059e00"
 
 [[package]]
+name = "mc_utils"
+version = "0.1.0"
+dependencies = [
+ "aovec",
+ "bumpalo",
+ "byteorder",
+ "bytes",
+ "cesu8-str",
+ "compact_str",
+ "env_logger",
+ "fastrand",
+ "flate2",
+ "fxhash",
+ "hashbrown 0.15.5",
+ "heapless",
+ "lasso",
+ "mimalloc",
+ "num_enum",
+ "rayon",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "simd-json",
+ "simd-json-derive",
+ "simd_cesu8",
+ "thiserror",
+ "tracing",
+ "tracing-test",
+]
+
+[[package]]
 name = "memchr"
 version = "2.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1132,37 +1163,6 @@ name = "smallvec"
 version = "1.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
-
-[[package]]
-name = "spider_eye"
-version = "0.1.0"
-dependencies = [
- "aovec",
- "bumpalo",
- "byteorder",
- "bytes",
- "cesu8-str",
- "compact_str",
- "env_logger",
- "fastrand",
- "flate2",
- "fxhash",
- "hashbrown 0.15.5",
- "heapless",
- "lasso",
- "mimalloc",
- "num_enum",
- "rayon",
- "serde",
- "serde_json",
- "serde_with",
- "simd-json",
- "simd-json-derive",
- "simd_cesu8",
- "thiserror",
- "tracing",
- "tracing-test",
-]
 
 [[package]]
 name = "stable_deref_trait"

@@ -1,22 +1,25 @@
+use crate::compression::decompress_chunk;
+use crate::coords::region::RegionCoords;
+use crate::region::SECTOR_SIZE;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
-use crate::{compression::decompress_chunk, coords::region::RegionCoords, region::SECTOR_SIZE};
-
-pub struct Region<'a> {
+pub struct Region {
     x: i64,
     z: i64,
-    data: &'a [u8],
+    data: Box<[u8]>,
 }
 
-impl<'a> Region<'a> {
-    pub fn from_bytes(data: &'a [u8], coords: RegionCoords) -> Region<'a> {
-        Region {
+impl Region {
+    pub fn from_bytes<B>(coords: RegionCoords, b: B) -> Self
+    where
+        B: Into<Box<[u8]>>,
+    {
+        Self {
             x: coords.x,
             z: coords.z,
-            data,
+            data: b.into(),
         }
     }
-
     pub fn get_region_x(&self) -> i64 {
         self.x
     }

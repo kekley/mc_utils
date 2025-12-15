@@ -158,6 +158,7 @@ impl<'a> Resource<'a> for RawBlockModel<'a> {
 
 #[derive(Debug)]
 pub struct ResourceLoader {
+    //The backing store for the strings from deserialized JSON
     _strings: UniqueStrings,
     textures: HashMap<CompactString, Box<[u8]>>,
     models: HashMap<CompactString, BlockModel<'static>>,
