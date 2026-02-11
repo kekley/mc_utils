@@ -13,7 +13,6 @@ byteorder = "1.5.0"
 env_logger = "0.11.8"
 flate2 = "1.1.1"
 fxhash = "0.2.1"
-hashbrown = { version = "0.15.3", features = ["serde", "nightly", "rayon"] }
 num_enum = "0.7.3"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
@@ -33,6 +32,7 @@ rayon = "1.11.0"
 cesu8-str = "1.2.1"
 thiserror = "2.0.17"
 tracing-test = "0.2.5"
+hashbrown = { version = "0.16.1", features = ["rayon", "serde"] }
 
 
 [profile.release-with-debug]

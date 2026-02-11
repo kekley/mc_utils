@@ -25,14 +25,14 @@ pub(crate) fn intern_block_model(
         elements,
     } = model;
 
-    let parent = parent.map(|str| strings.get_or_insert(str));
+    let parent = parent.map(|str| strings.get_or_intern(str));
     let elements = elements
         .into_iter()
         .map(|raw_element| intern_element(raw_element, strings))
         .collect::<Vec<_>>();
     let textures = textures
         .into_iter()
-        .map(|f| (strings.get_or_insert(f.0), strings.get_or_insert(f.1)))
+        .map(|f| (strings.get_or_intern(f.0), strings.get_or_intern(f.1)))
         .collect::<HashMap<_, _>>();
 
     BlockModel {
@@ -44,7 +44,7 @@ pub(crate) fn intern_block_model(
     }
 }
 
-fn intern_element(raw_element: RawElement<'_>, strings: &mut UniqueStrings) -> Element<'static> {
+fn intern_element(raw_element: RawElement<'_>, strings: &UniqueStrings) -> Element<'static> {
     let RawElement {
         from,
         to,
@@ -86,7 +86,7 @@ fn intern_face_data(face_data: RawFaceData<'_>, strings: &mut UniqueStrings) -> 
         tintindex,
     } = face_data;
 
-    let texture = strings.get_or_insert(texture);
+    let texture = strings.get_or_intern(texture);
 
     FaceData {
         uv,

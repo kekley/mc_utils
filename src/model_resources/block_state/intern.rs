@@ -10,16 +10,16 @@ use crate::block_state::{
     },
 };
 
-pub(crate) fn intern_blockstate_type(
+pub(crate) fn intern_blockstate_type<'a>(
     blockstate_type: RawBlockVariants<'_>,
-    strings: &mut UniqueStrings,
-) -> BlockVariants<'static> {
+    strings: &'a UniqueStrings,
+) -> BlockVariants<'a> {
     match blockstate_type {
         RawBlockVariants::Variants(hash_map) => BlockVariants::Variants(
             hash_map
                 .into_iter()
                 .map(|(state_string, variant)| {
-                    let interned = strings.get_or_insert(state_string);
+                    let interned = strings.get_or_intern(state_string);
 
                     (interned, intern_variants(variant, strings))
                 })
@@ -34,7 +34,7 @@ pub(crate) fn intern_blockstate_type(
     }
 }
 
-fn intern_case(case: RawCase<'_>, strings: &mut UniqueStrings) -> Case<'static> {
+fn intern_case(case: RawCase<'_>, strings: &UniqueStrings) -> Case<'static> {
     let RawCase { when, apply } = case;
     let when = if let Some(when) = when {
         intern_when(when, strings)
@@ -48,7 +48,7 @@ fn intern_case(case: RawCase<'_>, strings: &mut UniqueStrings) -> Case<'static> 
     }
 }
 
-fn intern_apply(apply: RawApply<'_>, strings: &mut UniqueStrings) -> Apply<'static> {
+fn intern_apply(apply: RawApply<'_>, strings: &UniqueStrings) -> Apply<'static> {
     match apply {
         RawApply::Single(raw_model_properties) => {
             Apply::Single(intern_properties(raw_model_properties, strings))
@@ -62,7 +62,7 @@ fn intern_apply(apply: RawApply<'_>, strings: &mut UniqueStrings) -> Apply<'stat
     }
 }
 
-fn intern_when(when: WhenStruct<'_>, strings: &mut UniqueStrings) -> When<'static> {
+fn intern_when(when: WhenStruct<'_>, strings: &UniqueStrings) -> When<'static> {
     if let Some(single_state) = when.single_state {
         When::SingleState(WhenStateList {
             data: intern_state_map(single_state, strings),
@@ -96,19 +96,16 @@ fn intern_when(when: WhenStruct<'_>, strings: &mut UniqueStrings) -> When<'stati
     }
 }
 
-fn intern_state_map(
+fn intern_state_map<'a>(
     map: HashMap<&str, &str>,
-    strings: &mut UniqueStrings,
-) -> Vec<WhenElement<'static>> {
+    strings: &'a UniqueStrings,
+) -> Vec<WhenElement<'a>> {
     map.into_iter()
-        .map(|(a, b)| WhenElement::Property(strings.get_or_insert(a), strings.get_or_insert(b)))
+        .map(|(a, b)| WhenElement::Property(strings.get_or_intern(a), strings.get_or_intern(b)))
         .collect()
 }
 
-fn intern_variants(
-    variants: RawVariantType<'_>,
-    strings: &mut UniqueStrings,
-) -> VariantType<'static> {
+fn intern_variants(variants: RawVariantType<'_>, strings: &UniqueStrings) -> VariantType<'static> {
     match variants {
         RawVariantType::SingleVariant(raw_model_properties) => {
             VariantType::SingleModel(intern_properties(raw_model_properties, strings))
@@ -124,7 +121,7 @@ fn intern_variants(
 
 fn intern_properties(
     properties: RawModelProperties<'_>,
-    strings: &mut UniqueStrings,
+    strings: &UniqueStrings,
 ) -> BlockModelInfo<'static> {
     let RawModelProperties {
         model,
@@ -134,7 +131,7 @@ fn intern_properties(
         weight,
     } = properties;
 
-    let interned = strings.get_or_insert(model);
+    let interned = strings.get_or_intern(model);
 
     BlockModelInfo {
         model_resource_path: interned,
