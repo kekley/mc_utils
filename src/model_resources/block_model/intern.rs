@@ -13,10 +13,10 @@ use crate::{
     },
 };
 
-pub(crate) fn intern_block_model(
+pub(crate) fn intern_block_model<'a>(
     model: RawBlockModel<'_>,
-    strings: &mut UniqueStrings,
-) -> BlockModel<'static> {
+    strings: &'a UniqueStrings,
+) -> BlockModel<'a> {
     let RawBlockModel {
         parent,
         ambient_occlusion,
@@ -44,7 +44,7 @@ pub(crate) fn intern_block_model(
     }
 }
 
-fn intern_element(raw_element: RawElement<'_>, strings: &UniqueStrings) -> Element<'static> {
+fn intern_element<'a>(raw_element: RawElement<'_>, strings: &'a UniqueStrings) -> Element<'a> {
     let RawElement {
         from,
         to,
@@ -54,7 +54,7 @@ fn intern_element(raw_element: RawElement<'_>, strings: &UniqueStrings) -> Eleme
         mut faces,
     } = raw_element;
 
-    let faces: [Option<Face<'static>>; 6] = (0..6)
+    let faces: [Option<Face<'a>>; 6] = (0..6)
         .map(|i| {
             let name = FaceName::from_usize(i).expect("0..6 should always give a valid facename");
 
@@ -77,7 +77,7 @@ fn intern_element(raw_element: RawElement<'_>, strings: &UniqueStrings) -> Eleme
     }
 }
 
-fn intern_face_data(face_data: RawFaceData<'_>, strings: &mut UniqueStrings) -> FaceData<'static> {
+fn intern_face_data<'a>(face_data: RawFaceData<'_>, strings: &'a UniqueStrings) -> FaceData<'a> {
     let RawFaceData {
         uv,
         texture,

@@ -34,7 +34,7 @@ pub(crate) fn intern_blockstate_type<'a>(
     }
 }
 
-fn intern_case(case: RawCase<'_>, strings: &UniqueStrings) -> Case<'static> {
+fn intern_case<'a>(case: RawCase<'_>, strings: &'a UniqueStrings) -> Case<'a> {
     let RawCase { when, apply } = case;
     let when = if let Some(when) = when {
         intern_when(when, strings)
@@ -48,7 +48,7 @@ fn intern_case(case: RawCase<'_>, strings: &UniqueStrings) -> Case<'static> {
     }
 }
 
-fn intern_apply(apply: RawApply<'_>, strings: &UniqueStrings) -> Apply<'static> {
+fn intern_apply<'a>(apply: RawApply<'_>, strings: &'a UniqueStrings) -> Apply<'a> {
     match apply {
         RawApply::Single(raw_model_properties) => {
             Apply::Single(intern_properties(raw_model_properties, strings))
@@ -62,7 +62,7 @@ fn intern_apply(apply: RawApply<'_>, strings: &UniqueStrings) -> Apply<'static> 
     }
 }
 
-fn intern_when(when: WhenStruct<'_>, strings: &UniqueStrings) -> When<'static> {
+fn intern_when<'a>(when: WhenStruct<'_>, strings: &'a UniqueStrings) -> When<'a> {
     if let Some(single_state) = when.single_state {
         When::SingleState(WhenStateList {
             data: intern_state_map(single_state, strings),
@@ -105,7 +105,10 @@ fn intern_state_map<'a>(
         .collect()
 }
 
-fn intern_variants(variants: RawVariantType<'_>, strings: &UniqueStrings) -> VariantType<'static> {
+fn intern_variants<'a>(
+    variants: RawVariantType<'_>,
+    strings: &'a UniqueStrings,
+) -> VariantType<'a> {
     match variants {
         RawVariantType::SingleVariant(raw_model_properties) => {
             VariantType::SingleModel(intern_properties(raw_model_properties, strings))
@@ -119,10 +122,10 @@ fn intern_variants(variants: RawVariantType<'_>, strings: &UniqueStrings) -> Var
     }
 }
 
-fn intern_properties(
+fn intern_properties<'a>(
     properties: RawModelProperties<'_>,
-    strings: &UniqueStrings,
-) -> BlockModelInfo<'static> {
+    strings: &'a UniqueStrings,
+) -> BlockModelInfo<'a> {
     let RawModelProperties {
         model,
         x,

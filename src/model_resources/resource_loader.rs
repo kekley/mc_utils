@@ -66,18 +66,18 @@ impl ResourceType {
 }
 
 trait InternedResource<'b> {
-    type View<'a>: Resource<'a, Interned = Self>;
+    type View<'a>: Resource<'a, Interned<'b> = Self>;
 }
 
-impl InternedResource<'_> for BlockVariants<'static> {
+impl<'b> InternedResource<'b> for BlockVariants<'b> {
     type View<'a> = RawBlockVariants<'a>;
 }
 
-impl InternedResource<'_> for BlockModel<'static> {
+impl<'b> InternedResource<'b> for BlockModel<'b> {
     type View<'a> = RawBlockModel<'a>;
 }
 
-impl InternedResource<'_> for Box<[u8]> {
+impl<'b> InternedResource<'b> for Box<[u8]> {
     type View<'a> = Box<[u8]>;
 }
 
@@ -88,18 +88,18 @@ pub enum ResourceLoadError {
 }
 
 trait Resource<'a>: Send + Debug + Sized {
-    type Interned;
+    type Interned<'b>;
     type LoadError;
     fn load(data: &'a mut [u8]) -> Result<Self, Self::LoadError>;
     fn folder_name() -> &'static str;
     fn extension() -> &'static str;
-    fn intern(self, strings: &mut UniqueStrings) -> Self::Interned;
+    fn intern<'b>(self, strings: &'b UniqueStrings) -> Self::Interned<'b>;
 }
 
-impl Resource<'_> for Box<[u8]> {
-    type Interned = Box<[u8]>;
+impl<'a> Resource<'a> for Box<[u8]> {
+    type Interned<'b> = Box<[u8]>;
     type LoadError = ();
-    fn load(data: &mut [u8]) -> Result<Self, ()> {
+    fn load(data: &'a mut [u8]) -> Result<Self, ()> {
         Ok(data.to_vec().into_boxed_slice())
     }
 
@@ -111,15 +111,15 @@ impl Resource<'_> for Box<[u8]> {
         "png"
     }
 
-    fn intern(self, _strings: &mut UniqueStrings) -> Self::Interned {
+    fn intern<'b>(self, _strings: &'b UniqueStrings) -> Self::Interned<'b> {
         self
     }
 }
 
 impl<'a> Resource<'a> for RawBlockVariants<'a> {
-    type Interned = BlockVariants<'static>;
+    type Interned<'b> = BlockVariants<'b>;
     type LoadError = ResourceLoadError;
-    fn load(data: &'a mut [u8]) -> Result<RawBlockVariants<'a>, ResourceLoadError> {
+    fn load(data: &'a mut [u8]) -> Result<Self, ResourceLoadError> {
         Ok(simd_json::serde::from_slice::<RawBlockVariants<'_>>(data)?)
     }
 
@@ -131,13 +131,13 @@ impl<'a> Resource<'a> for RawBlockVariants<'a> {
         "json"
     }
 
-    fn intern(self, strings: &mut UniqueStrings) -> Self::Interned {
+    fn intern<'b>(self, strings: &'b UniqueStrings) -> Self::Interned<'b> {
         intern_blockstate_type(self, strings)
     }
 }
 
 impl<'a> Resource<'a> for RawBlockModel<'a> {
-    type Interned = BlockModel<'static>;
+    type Interned<'b> = BlockModel<'b>;
     type LoadError = ResourceLoadError;
     fn load(data: &'a mut [u8]) -> Result<RawBlockModel<'a>, ResourceLoadError> {
         Ok(simd_json::serde::from_slice(data)?)
@@ -151,7 +151,7 @@ impl<'a> Resource<'a> for RawBlockModel<'a> {
         "json"
     }
 
-    fn intern(self, strings: &mut UniqueStrings) -> Self::Interned {
+    fn intern<'b>(self, strings: &'b UniqueStrings) -> Self::Interned<'b> {
         intern_block_model(self, strings)
     }
 }
@@ -159,7 +159,7 @@ impl<'a> Resource<'a> for RawBlockModel<'a> {
 #[derive(Debug)]
 pub struct ResourceLoader {
     //The backing store for the strings from deserialized JSON
-    _strings: UniqueStrings,
+    _strings: &'static UniqueStrings,
     textures: HashMap<CompactString, Box<[u8]>>,
     models: HashMap<CompactString, BlockModel<'static>>,
     variants: HashMap<CompactString, BlockVariants<'static>>,
@@ -200,11 +200,11 @@ impl ResourceLoader {
             }
         });
 
-        let mut strings = UniqueStrings::new();
+        let mut strings = Box::new(UniqueStrings::new());
+        let strings: &UniqueStrings = Box::leak(strings);
 
         let start = Instant::now();
-        let models =
-            ResourceLoader::parse_and_intern::<BlockModel<'static>>(&mut strings, model_files);
+        let models = ResourceLoader::parse_and_intern::<BlockModel<'static>>(strings, model_files);
         let end = Instant::now();
         event!(
             Level::INFO,
@@ -215,10 +215,8 @@ impl ResourceLoader {
         let textures = texture_files;
 
         let start = Instant::now();
-        let variants = ResourceLoader::parse_and_intern::<BlockVariants<'static>>(
-            &mut strings,
-            blockstate_files,
-        );
+        let variants =
+            ResourceLoader::parse_and_intern::<BlockVariants<'static>>(strings, blockstate_files);
         let end = Instant::now();
 
         event!(
@@ -379,12 +377,13 @@ impl ResourceLoader {
         Some(result)
     }
 
-    fn parse_and_intern<T>(
-        strings: &mut UniqueStrings,
+    fn parse_and_intern<'a, 'b, T>(
+        strings: &'b UniqueStrings,
         files: HashMap<CompactString, Box<[u8]>>,
     ) -> HashMap<CompactString, T>
     where
-        T: InternedResource<'static>,
+        'b: 'a,
+        T: InternedResource<'b>,
     {
         let resources: HashMap<CompactString, T> = files
             .into_iter()
