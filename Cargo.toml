@@ -1,13 +1,9 @@
-
 [package]
 name = "mc_utils"
 version = "0.1.0"
-edition = "2021"
-rust-version = "1.89.0"
-
+edition="2024"
 
 [dependencies]
-
 bumpalo = { version = "3.17.0", features = ["collections", "std"] }
 byteorder = "1.5.0"
 env_logger = "0.11.8"
@@ -38,11 +34,4 @@ hashbrown = { version = "0.16.1", features = ["rayon", "serde"] }
 [profile.release-with-debug]
 inherits = "release"
 debug = true
-codegen-units=1
-lto="fat"
-
-
-[profile.release]
-lto="fat"
-codegen-units=1
 
