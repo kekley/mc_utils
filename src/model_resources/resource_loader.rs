@@ -11,7 +11,7 @@ use std::{
     time::Instant,
 };
 use thiserror::Error;
-use tracing::{event, instrument, Level};
+use tracing::{Level, event, instrument};
 
 use compact_str::CompactString;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -255,7 +255,8 @@ impl ResourceLoader {
 
         event!(
             Level::INFO,
-            "Attemtping to traverse the namespace: {namespace:?} to find all resources of type {resource_type}\n",resource_type = T::extension()
+            "Attemtping to traverse the namespace: {namespace:?} to find all resources of type {resource_type}\n",
+            resource_type = T::extension()
         );
 
         let mut resource_type_path = folder.to_path_buf();
@@ -287,10 +288,10 @@ impl ResourceLoader {
                             folder_traversal_queue.push_back(dir_path);
                         } else if file_type.is_file() {
                             let file_path = entry.path();
-                            if let Some(extension) = file_path.extension() {
-                                if extension != T::extension() {
-                                    continue;
-                                }
+                            if let Some(extension) = file_path.extension()
+                                && extension != T::extension()
+                            {
+                                continue;
                             }
                             file_queue.push(file_path);
                         }
