@@ -1140,10 +1140,10 @@ pub mod nbt_list {
 
     use super::{
         nbt_compound::{
+            Element, InnerElement, NBTCompound,
             unaligned_types::{
                 BigEndianDouble, BigEndianFloat, BigEndianInt, BigEndianLong, BigEndianShort,
             },
-            Element, InnerElement, NBTCompound,
         },
         nbt_string::NBTStr,
     };
@@ -1881,10 +1881,4 @@ pub mod parsing_stack {
             self.depth == 0
         }
     }
-}
-
-#[cfg(test)]
-mod borrow_test {
-
-    use super::nbt_compound::RootNBTCompound;
 }

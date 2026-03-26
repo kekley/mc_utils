@@ -51,15 +51,15 @@ impl ResourceType {
 
         let folder_name = path.file_name();
 
-        if let Some(os_str) = folder_name {
-            if let Some(folder_name) = os_str.to_str() {
-                return match folder_name {
-                    "blockstates" => Some(ResourceType::BlockStates),
-                    "models" => Some(ResourceType::Models),
-                    "textures" => Some(ResourceType::Textures),
-                    _ => None,
-                };
-            }
+        if let Some(os_str) = folder_name
+            && let Some(folder_name) = os_str.to_str()
+        {
+            return match folder_name {
+                "blockstates" => Some(ResourceType::BlockStates),
+                "models" => Some(ResourceType::Models),
+                "textures" => Some(ResourceType::Textures),
+                _ => None,
+            };
         }
         None
     }
@@ -157,7 +157,7 @@ impl<'a> Resource<'a> for RawBlockModel<'a> {
 }
 
 #[derive(Debug)]
-pub struct ResourceLoader {
+pub struct LoadedResources {
     //The backing store for the strings from deserialized JSON
     _strings: &'static UniqueStrings,
     textures: HashMap<CompactString, Box<[u8]>>,
@@ -165,8 +165,8 @@ pub struct ResourceLoader {
     variants: HashMap<CompactString, BlockVariants<'static>>,
 }
 
-impl ResourceLoader {
-    pub fn load_resource_folder(path: &Path) -> Result<ResourceLoader, MCUtilsError> {
+impl LoadedResources {
+    pub fn load_resource_folder(path: &Path) -> Result<LoadedResources, MCUtilsError> {
         let resource_folder = std::fs::read_dir(path)?;
         let mut texture_files: HashMap<CompactString, Box<[u8]>> = Default::default();
 
@@ -180,31 +180,31 @@ impl ResourceLoader {
             event!(Level::INFO, "Loading namespace: {namespace_path:?}");
 
             event!(Level::INFO, "Loading Textures");
-            if let Some(textures) = ResourceLoader::traverse_and_load::<Box<[u8]>>(&namespace_path)
+            if let Some(textures) = LoadedResources::traverse_and_load::<Box<[u8]>>(&namespace_path)
             {
                 texture_files.extend(textures);
             }
 
             event!(Level::INFO, "Loading Models");
             if let Some(models) =
-                ResourceLoader::traverse_and_load::<RawBlockModel<'static>>(&namespace_path)
+                LoadedResources::traverse_and_load::<RawBlockModel<'static>>(&namespace_path)
             {
                 model_files.extend(models);
             }
 
             event!(Level::INFO, "Loading Blockstates");
             if let Some(block_states) =
-                ResourceLoader::traverse_and_load::<RawBlockVariants<'static>>(&namespace_path)
+                LoadedResources::traverse_and_load::<RawBlockVariants<'static>>(&namespace_path)
             {
                 blockstate_files.extend(block_states);
             }
         });
 
-        let mut strings = Box::new(UniqueStrings::new());
+        let strings = Box::new(UniqueStrings::new());
         let strings: &UniqueStrings = Box::leak(strings);
 
         let start = Instant::now();
-        let models = ResourceLoader::parse_and_intern::<BlockModel<'static>>(strings, model_files);
+        let models = LoadedResources::parse_and_intern::<BlockModel<'static>>(strings, model_files);
         let end = Instant::now();
         event!(
             Level::INFO,
@@ -216,7 +216,7 @@ impl ResourceLoader {
 
         let start = Instant::now();
         let variants =
-            ResourceLoader::parse_and_intern::<BlockVariants<'static>>(strings, blockstate_files);
+            LoadedResources::parse_and_intern::<BlockVariants<'static>>(strings, blockstate_files);
         let end = Instant::now();
 
         event!(
@@ -225,7 +225,7 @@ impl ResourceLoader {
             time = end.duration_since(start)
         );
 
-        Ok(ResourceLoader {
+        Ok(LoadedResources {
             _strings: strings,
             textures,
             models,
@@ -420,7 +420,7 @@ pub enum BlockstateLookupError {
     },
 }
 
-impl ResourceLoader {
+impl LoadedResources {
     pub fn get_blockstates_for_mapped_state<'a>(
         &'a self,
         mapped_state_str: &str,
@@ -524,6 +524,6 @@ mod tests {
     #[test]
     #[traced_test]
     fn resource_folder() {
-        ResourceLoader::load_resource_folder(&PathBuf::from("../resource_pack/assets/")).unwrap();
+        LoadedResources::load_resource_folder(&PathBuf::from("../resource_pack/assets/")).unwrap();
     }
 }

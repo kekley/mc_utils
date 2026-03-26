@@ -83,7 +83,7 @@ impl UniqueStrings {
 
     #[expect(unsafe_code)]
     fn get_or_insert_inner<'a>(&'a self, new_str: &str) -> &'a str {
-        let interned_str = *self
+        (*self
             .strings
             .write()
             .unwrap()
@@ -96,8 +96,6 @@ impl UniqueStrings {
 
                 //SAFETY these bytes came from a str, so they are always valid utf8
                 unsafe { str::from_utf8_unchecked(static_slice) }
-            });
-
-        interned_str
+            })) as _
     }
 }

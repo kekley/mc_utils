@@ -354,10 +354,3 @@ pub mod nbt_compound {
         Ok(NBTString::new_from_vec(buf))
     }
 }
-
-#[cfg(test)]
-mod nbt_test {
-    use std::io::Cursor;
-
-    use super::nbt_compound::NBTCompound;
-}
