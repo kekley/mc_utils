@@ -1,9 +1,9 @@
 pub mod nbt_string {
-    use std::borrow::Borrow;
+    use std::{borrow::Borrow, fmt::Write};
 
     use crate::borrow::nbt_string::NBTStr;
 
-    #[derive(Debug, Clone, Hash, PartialEq, Eq)]
+    #[derive(Clone, Hash, PartialEq, Eq)]
     //Data is validated when converting to/from str/String
     pub struct NBTString {
         pub data: Vec<u8>,
@@ -37,6 +37,19 @@ pub mod nbt_string {
     impl Borrow<NBTStr> for NBTString {
         fn borrow(&self) -> &NBTStr {
             self.as_nbt_str()
+        }
+    }
+
+    impl std::fmt::Debug for NBTString {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("NBTString")
+                .field("data", &self.as_nbt_str())
+                .finish()
+        }
+    }
+    impl std::fmt::Display for NBTString {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_fmt(format_args!("{}", &self.as_nbt_str()))
         }
     }
 }
